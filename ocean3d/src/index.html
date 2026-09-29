@@ -16,6 +16,19 @@
 html,body{width:100%;height:100%;overflow:hidden;background:#021526;color:var(--txt);font-family:var(--font);-webkit-user-select:none;user-select:none;touch-action:none;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
 canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
 canvas#overlay{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:4}
+canvas#cockpit{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
+#dash{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);display:flex;align-items:flex-end;gap:14px;pointer-events:none}
+#dash .dcol{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.lamp{min-width:96px;padding:5px 10px;border-radius:8px;font:800 11px var(--font);letter-spacing:.3px;background:rgba(8,13,17,.9);border:1px solid rgba(255,255,255,.08);color:#4d5b66;white-space:nowrap}
+.lamp.ok{color:#5dff9a;border-color:rgba(93,255,154,.35)}
+.lamp.on{color:#3fe0d0;border-color:rgba(63,224,208,.55);box-shadow:0 0 12px rgba(63,224,208,.35)}
+.lamp.warn{color:#ffd23f;border-color:rgba(255,210,63,.55);animation:blink .9s steps(2) infinite}
+.lamp.bad{color:#ff5a5f;border-color:rgba(255,90,95,.7);background:rgba(60,8,12,.92);animation:blink .45s steps(2) infinite}
+.radarbox{position:relative;width:150px;height:150px;border-radius:50%;padding:6px;background:linear-gradient(180deg,#3b4953,#12181d);box-shadow:0 6px 20px rgba(0,0,0,.6),inset 0 2px 0 rgba(255,255,255,.15)}
+#radar{width:138px;height:138px;border-radius:50%;display:block}
+#heading{position:absolute;left:50%;top:-24px;transform:translateX(-50%);font:900 12px var(--font);color:#9ff4ea;background:rgba(5,20,24,.88);padding:2px 9px;border-radius:6px;border:1px solid rgba(63,224,208,.35);white-space:nowrap}
+body.fp #vign,body.fp #sonarInd{display:none}
+body.fp #hint{bottom:182px}
 #crosshair{position:fixed;left:50%;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;pointer-events:none;z-index:4;opacity:.85}
 #crosshair::before,#crosshair::after{content:'';position:absolute;background:rgba(255,255,255,.85);box-shadow:0 0 4px rgba(0,0,0,.6)}
 #crosshair::before{left:12px;top:3px;width:2px;height:20px;clip-path:polygon(0 0,100% 0,100% 30%,0 30%,0 70%,100% 70%,100% 100%,0 100%)}
@@ -208,11 +221,15 @@ body.touch #crosshair{opacity:.6}
   .toast{font-size:12px;padding:8px 12px}
   #alert{font-size:16px}
   body.touch #hudMission{display:none}
+  #dash .dcol{display:none}
+  .radarbox{width:104px;height:104px;padding:5px}
+  #radar{width:94px;height:94px}
 }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
+<canvas id="cockpit" class="hidden"></canvas>
 <canvas id="overlay"></canvas>
 <div id="vign"></div><div id="dmgVig"></div><div id="flash"></div>
 <div id="loading"><i></i><span>심해 세계를 생성하는 중…</span></div>
@@ -235,6 +252,7 @@ body.touch #crosshair{opacity:.6}
       <div class="bar cleanbar"><i id="hCleanBar" style="width:0%"></i></div>
     </div>
     <div class="btnrow">
+      <button class="ibtn" id="bView" title="1인칭/3인칭 전환 (V)" aria-label="시점 전환">👁️</button>
       <button class="ibtn" id="bMap" title="지도 (M)" aria-label="지도">🗺️</button>
       <button class="ibtn" id="bCodex" title="도감 (Tab)" aria-label="도감">📖</button>
       <button class="ibtn" id="bPause" title="일시정지 (Esc)" aria-label="일시정지">⏸</button>
@@ -245,6 +263,11 @@ body.touch #crosshair{opacity:.6}
     <div class="mn" id="mName"></div>
     <div class="md" id="mDesc"></div>
     <div class="mp" id="mProgRow"><div class="bar"><i id="mBar"></i></div><span id="mProg"></span></div>
+  </div>
+  <div id="dash" class="hidden">
+    <div class="dcol"><div class="lamp" id="lPower">⚡ 전력</div><div class="lamp" id="lHull">🛡 선체</div><div class="lamp" id="lPress">⏬ 수압</div></div>
+    <div class="radarbox"><div id="heading">N 000°</div><canvas id="radar" width="276" height="276"></canvas></div>
+    <div class="dcol"><div class="lamp" id="lCargo">📦 화물</div><div class="lamp" id="lBeam">🧲 트랙터 빔</div><div class="lamp" id="lSonar">📡 소나</div></div>
   </div>
   <div id="toasts"></div>
   <div id="alert"></div>
@@ -333,6 +356,7 @@ body.touch #crosshair{opacity:.6}
   <div class="setrow"><span>음악</span><input type="range" id="sMusic" min="0" max="100" value="60"></div>
   <div class="setrow"><span>효과음</span><input type="range" id="sSfx" min="0" max="100" value="90"></div>
   <div class="setrow"><span>그래픽 품질</span><select id="sQuality"><option value="2">높음</option><option value="1">보통</option><option value="0">낮음</option></select></div>
+  <div class="setrow"><span>시점</span><select id="sView"><option value="1">1인칭 (조종석)</option><option value="0">3인칭 (추적)</option></select></div>
   <div class="setrow"><span>마우스 감도</span><input type="range" id="sSens" min="30" max="250" value="100"></div>
   <div class="setrow"><span>화면 흔들림</span><select id="sShake"><option value="1">켜기</option><option value="0">끄기</option></select></div>
   <div class="mfoot"><button class="btn small ghost" id="bReset" style="border-color:rgba(255,90,95,.5);color:#ffb3b5">저장 데이터 삭제</button><button class="btn small primary" data-close="settings">확인</button></div>
@@ -348,6 +372,7 @@ body.touch #crosshair{opacity:.6}
     <span><kbd>클릭</kbd><kbd>E</kbd></span><span>트랙터 빔: 조준점의 쓰레기 끌어오기 · 그물 절단</span>
     <span><kbd>Shift</kbd></span><span>부스트 (에너지 추가 소모)</span>
     <span><kbd>Q</kbd><kbd>우클릭</kbd></span><span>소나 핑: 주변 쓰레기 탐지 · 상어 퇴치</span>
+    <span><kbd>V</kbd></span><span>1인칭 조종석 ↔ 3인칭 시점 전환</span>
     <span><kbd>M</kbd></span><span>지도</span>
     <span><kbd>Tab</kbd></span><span>해양 도감</span>
     <span><kbd>P</kbd></span><span>일시정지</span>

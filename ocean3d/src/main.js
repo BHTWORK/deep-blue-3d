@@ -8,6 +8,7 @@ import { TAU, clamp, lerp, smooth, rnd, fmt, $, esc, seed, rr, rpick, wpick, SR 
 import { TRASH, TREASURE, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS } from './data.js';
 import { AU, Music } from './audio.js';
 import { MAT, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO } from './models.js';
+import { drawCockpit, drawRadar, headingLabel } from './cockpit.js';
 import { WORLD, heightAt, normalAt, U, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBaseShip, buildDockRing, gradTex } from './world.js';
 
 const V3 = THREE.Vector3, UPV = new V3(0, 1, 0), ZERO = new V3();
@@ -36,7 +37,7 @@ const overlay = $('overlay'), octx = overlay.getContext('2d');
 // GAME STATE
 // =====================================================================
 const G = { state: 'title', t: 0, dayT: 0.12, night: 0, sunH: 1, clean: 0, poll: 1, shake: 0, flash: 0, flashCol: '255,60,60', combo: 0, comboT: 0, sonar: null, sonarCd: 0, autosave: 0, tick: 0,
-  alert: '', alertPri: 0, fullT: 0, creakT: 0, alarmT: 0, lowWarned: false, pendingWin: 0, quality: 2, shakeOn: true, lastMTip: -99, sens: 1, glowSrc: [], coralH: -1, VW: innerWidth, VH: innerHeight };
+  alert: '', alertPri: 0, fullT: 0, creakT: 0, alarmT: 0, lowWarned: false, pendingWin: 0, quality: 2, shakeOn: true, lastMTip: -99, sens: 1, fp: true, fpTier: -1, glowSrc: [], coralH: -1, VW: innerWidth, VH: innerHeight };
 let SV = null; const S = {};
 const DOCK = new V3(2.6, -8, -19);
 const P = { pos: new V3(DOCK.x, DOCK.y - 3, DOCK.z - 15), vel: new V3(), yaw: Math.PI, pitch: -0.1, vyaw: Math.PI, vpitch: 0, roll: 0, bat: 100, hull: 100, kg: 0, cargo: [], beam: false, boost: false, thrust: 0, inv: 0, alive: true, deadT: 0, canDock: false, dmgT: 0, nose: new V3(), fwd: new V3(0, 0, -1) };
@@ -406,6 +407,8 @@ function updatePlayer(dt) {
   // visual orientation
   const turn = ((((P.yaw - P.vyaw + Math.PI) % TAU) + TAU) % TAU) - Math.PI; P.vyaw += turn * Math.min(1, dt * 5);
   P.vpitch += (P.pitch * 0.75 - P.vpitch) * Math.min(1, dt * 4); P.roll += (clamp(-turn * 1.5, -0.5, 0.5) - P.roll) * Math.min(1, dt * 4);
+  if (G.fp) { const yr = angDelta(P.yaw, P.lyaw ?? P.yaw) / Math.max(dt, 1e-3); P.lyaw = P.yaw; P.vyaw = P.yaw; P.vpitch = P.pitch; P.roll += (clamp(-yr * 0.035, -0.12, 0.12) - P.roll) * Math.min(1, dt * 3);
+    if (ml > 0.3 && Math.random() < dt * (10 + (boosting ? 25 : 0))) { const cp = camera.position, fw = P.fwd; bubble(cp.x + fw.x * 5 + rnd(-2.5, 2.5), cp.y + fw.y * 5 + rnd(-1.8, 1.8), cp.z + fw.z * 5 + rnd(-2.5, 2.5), 0, rnd(0.3, 1), 0, rnd(0.03, 0.08)); } }
   SUB.root.position.copy(P.pos); if (P.pos.y > -1.6) SUB.root.position.y += Math.sin(G.t * 2) * 0.15;
   SUB.root.rotation.set(-P.vpitch, P.vyaw, P.roll, 'YXZ');
   SUB.prop.rotation.z += dt * (3 + ml * 25 + (boosting ? 20 : 0));
@@ -425,7 +428,14 @@ function updatePlayer(dt) {
   const dd = P.pos.distanceTo(DOCK); if (dd > 16) P.canDock = true; if (P.canDock && dd < 6.5 && P.alive) { P.canDock = false; openDock(); }
   exploreAt(P.pos.x, P.pos.z, Math.max(70, S.light * 1.1));
 }
+const angDelta = (a, b) => ((((a - b + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
 function updateCamera(dt) {
+  if (G.fp) { // cockpit view: eye just behind the front viewport
+    SUB.root.updateMatrixWorld(); camera.position.set(0, 0.12, 1.0).applyMatrix4(SUB.root.matrixWorld);
+    const sp = clamp(P.vel.length() / S.speed, 0, 1.6); camera.position.y += Math.sin(G.t * 1.1) * 0.05 + Math.sin(G.t * 7.5) * 0.03 * sp;
+    if (G.shake > 0 && G.shakeOn) camera.position.add(tv3.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).multiplyScalar(G.shake * 0.5));
+    camera.rotation.set(P.pitch + Math.sin(G.t * 0.9) * 0.004, P.yaw + Math.PI, P.roll, 'YXZ'); return;
+  }
   const f = fwdOf(P.yaw, P.pitch, tv1); const dist = 8;
   tv2.copy(P.pos).addScaledVector(f, -dist).addScaledVector(rightOf(P.yaw, tv3), 1.6); tv2.y += 2.6 + Math.max(0, -P.pitch) * 1.5;
   const fl = heightAt(tv2.x, tv2.z) + 1.2; if (tv2.y < fl) tv2.y = fl;
@@ -644,7 +654,7 @@ function updateEnv(dt) {
   // god rays follow the camera near the surface
   const ra = rays.userData; ra.mat.opacity = 0.05 * day * (1 - smooth(10, 140, dep)) * (0.6 + 0.4 * cv); rays.visible = ra.mat.opacity > 0.003 && cy < 0;
   if (rays.visible) for (const m of ra.rays) { const u = m.userData; m.position.set(Math.round(camera.position.x / 40) * 40 + u.ox, 0, Math.round(camera.position.z / 40) * 40 + u.oz); m.rotation.set(u.tilt + sunDir.x * 0.2, Math.atan2(camera.position.x - m.position.x, camera.position.z - m.position.z), 0); m.scale.x = 0.7 + 0.3 * Math.sin(G.t * 0.4 + u.ph); }
-  const shallow = 1 - smooth(0, 60, dep); lightCone.material.uniforms.uA.value = P.alive ? 0.01 + 0.12 * (1 - shallow * 0.95) : 0; lightCone.scale.set(S.light * 0.42 * 0.55, S.light * 0.42 * 0.55, S.light * 0.55);
+  const shallow = 1 - smooth(0, 60, dep); lightCone.material.uniforms.uA.value = P.alive ? (0.01 + 0.12 * (1 - shallow * 0.95)) * (inCockpit() ? 0.45 : 1) : 0; lightCone.scale.set(S.light * 0.42 * 0.55, S.light * 0.42 * 0.55, S.light * 0.55);
   SUB.spot.intensity = P.alive ? (90 + SV.up.light * 35) * lerp(0.25, 1, smooth(10, 120, dep)) * (P.bat < S.bat * 0.08 ? rnd(0.3, 1) : 1) : 0; SUB.lamps.visible = P.alive;
   // glow light pool: nearest emissive sources
   for (const v of pieces.vents) G.glowSrc.push([tv2.set(v.x, v.top + 1, v.z).clone(), 0xff7a2a, 14]);
@@ -693,6 +703,31 @@ function drawOverlay() {
     const ax = cx + dx * k, ay = cy + dy * k, ang = Math.atan2(dy, dx);
     c.save(); c.translate(ax, ay); c.rotate(ang); c.globalAlpha = t.big ? 0.95 : 0.55; c.fillStyle = t.col; const sz = t.big ? 15 : 8; c.beginPath(); c.moveTo(sz, 0); c.lineTo(-sz * 0.8, -sz * 0.75); c.lineTo(-sz * 0.4, 0); c.lineTo(-sz * 0.8, sz * 0.75); c.closePath(); c.fill(); c.restore(); c.globalAlpha = 1;
     if (t.big) { const lx = ax - Math.cos(ang) * 36, ly = ay - Math.sin(ang) * 26; c.font = '800 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; const txt = `${t.label} ${dm}m`; c.strokeText(txt, lx, ly + 4); c.fillStyle = t.col; c.fillText(txt, lx, ly + 4); } }
+}
+
+// =====================================================================
+// VIEW MODE (first / third person) + COCKPIT
+// =====================================================================
+const inCockpit = () => G.fp && G.state !== 'title';
+function redrawCockpit() { if (!inCockpit()) return; drawCockpit($('cockpit'), G.VW, G.VH, Math.min(devicePixelRatio || 1, 2), G.fpTier < 0 ? 0 : G.fpTier, IN.touch); }
+function applyView() {
+  const on = inCockpit();
+  for (const ch of SUB.root.children) if (ch.isMesh && ch !== lightCone) ch.visible = !on;
+  document.body.classList.toggle('fp', on); $('cockpit').classList.toggle('hidden', !on); $('dash').classList.toggle('hidden', !on);
+  camera.fov = on ? 76 : 68; resize(); G.fpTier = -1;
+}
+function toggleView() { if (G.state !== 'play') return; G.fp = !G.fp; applyView(); saveSettings(); $('sView').value = G.fp ? '1' : '0'; AU.click(); updateCamera(1); toast(G.fp ? '👁️ 1인칭 조종석 시점' : '👁️ 3인칭 추적 시점', '', 'V 키로 전환'); }
+const LAMP = {};
+function setLamp(id, cls) { const el = LAMP[id] || (LAMP[id] = $(id)); const c = 'lamp ' + cls; if (el.className !== c) el.className = c; }
+function updateDash() {
+  const tier = P.hull < S.hull * 0.25 ? 2 : P.hull < S.hull * 0.5 ? 1 : 0; if (tier !== G.fpTier) { G.fpTier = tier; redrawCockpit(); }
+  const dm = depthOf(P.pos.y);
+  setLamp('lPower', !P.alive || P.bat < S.bat * 0.1 ? 'bad' : P.bat < S.bat * 0.25 ? 'warn' : 'ok');
+  setLamp('lHull', P.hull < S.hull * 0.3 ? 'bad' : P.hull < S.hull * 0.6 ? 'warn' : 'ok');
+  setLamp('lPress', dm > S.depth ? 'bad' : dm > S.depth * 0.9 ? 'warn' : 'ok');
+  setLamp('lCargo', P.kg >= S.cargo * 0.92 ? 'warn' : P.kg > 0 ? 'ok' : '');
+  setLamp('lBeam', P.beam ? 'on' : ''); setLamp('lSonar', G.sonarCd > 0 ? '' : 'on');
+  $('heading').textContent = headingLabel(P.yaw);
 }
 
 // =====================================================================
@@ -755,6 +790,7 @@ function updateHUD() {
   if (G.alert) { H.alert.textContent = G.alert; H.alert.classList.add('on'); } else H.alert.classList.remove('on');
   const cd = G.sonarCd > 0; H.sonarInd.classList.toggle('cd', cd); H.sonarTxt.textContent = cd ? `소나 충전 중 ${G.sonarCd.toFixed(1)}s` : '소나 준비 (Q)'; H.tSonar.innerHTML = cd ? `<span>${Math.ceil(G.sonarCd)}</span>` : '소나';
   $('lockHint').classList.toggle('hidden', IN.locked || IN.touch || G.state !== 'play');
+  if (inCockpit()) updateDash();
   $('dmgVig').style.opacity = P.hull < S.hull * 0.3 ? 0.55 + 0.35 * Math.sin(G.t * 6) : 0; $('flash').style.opacity = G.flash; $('flash').style.background = `rgba(${G.flashCol},1)`;
 }
 // ---- flow
@@ -767,10 +803,10 @@ function togglePause() { if (G.state === 'play') { G.state = 'pause'; IN.keys = 
 function openSub(id, from) { modalBack = from; if (from) hide(from); show(id); AU.click(); }
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => { const id = b.dataset.close; AU.click(); if (id === 'mapm' || id === 'codex') { closeModal(id); return; } hide(id); if (modalBack) { show(modalBack); modalBack = null; } }));
 function showTitle() { G.state = 'title'; unlockPointer(); hide('hud'); hide('touch'); ['dock', 'codex', 'mapm', 'pause', 'fail', 'win', 'settings', 'help'].forEach(hide); show('title');
-  const d = loadGame(); $('bContinue').classList.toggle('hidden', !d); $('bNew').classList.toggle('primary', !d); SV = freshSave(); calcStats(); resetWorld(); G.clean = 0.6; G.coralH = -1; missionTickCoral(); SUB.root.visible = false; }
+  const d = loadGame(); $('bContinue').classList.toggle('hidden', !d); $('bNew').classList.toggle('primary', !d); SV = freshSave(); calcStats(); resetWorld(); G.clean = 0.6; G.coralH = -1; missionTickCoral(); SUB.root.visible = false; applyView(); }
 function missionTickCoral() { const h = Math.round(clamp(0.12 + G.clean * 1.15, 0, 1) * 50) / 50; if (h !== G.coralH) { G.coralH = h; flora.setCoralHealth(h); } }
-function startGame(d) { AU.init(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; G.tick = 0; SUB.root.visible = true; update(1 / 60); updateCamera(1); requestLock();
-  const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽: 이동</span><span>오른쪽 드래그: 시점</span><span>빔: 수거·절단</span>' : '<span><kbd>WASD</kbd> 이동</span><span><kbd>마우스</kbd> 시점</span><span><kbd>Space</kbd>/<kbd>C</kbd> 상승·하강</span><span><kbd>클릭</kbd>/<kbd>E</kbd> 빔</span><span><kbd>Q</kbd> 소나</span><span><kbd>Shift</kbd> 부스트</span><span><kbd>M</kbd> 지도</span><span><kbd>Tab</kbd> 도감</span>';
+function startGame(d) { AU.init(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); requestLock();
+  const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽: 이동</span><span>오른쪽 드래그: 시점</span><span>빔: 수거·절단</span><span>👁️ 시점 전환</span>' : '<span><kbd>WASD</kbd> 이동</span><span><kbd>마우스</kbd> 시점</span><span><kbd>Space</kbd>/<kbd>C</kbd> 상승·하강</span><span><kbd>클릭</kbd>/<kbd>E</kbd> 빔</span><span><kbd>Q</kbd> 소나</span><span><kbd>Shift</kbd> 부스트</span><span><kbd>V</kbd> 1인칭/3인칭</span><span><kbd>M</kbd> 지도</span><span><kbd>Tab</kbd> 도감</span>';
   setTimeout(() => { hint.style.opacity = 0; }, 25000);
   if (!d) { setTimeout(() => toast('🌊 해양 정화선 푸른바다호에 오신 것을 환영합니다', 'big', '바다가 쓰레기로 죽어가고 있습니다. 잠수정으로 쓰레기를 수거해 주세요.'), 600); setTimeout(() => { const m = MISSIONS[0]; toast(`임무: ${m.t}`, 'tip', m.d); }, 4200); }
   else toast('이어서 탐험을 시작합니다', '', `바다 정화율 ${cleanPct()}%`);
@@ -787,16 +823,18 @@ $('bLaunch').onclick = () => launch(); $('bRespawn').onclick = () => respawn(); 
 $('bMap').onclick = () => openMap(); $('bCodex').onclick = () => openCodex(); $('bPause').onclick = () => togglePause();
 $('bReset').onclick = () => confirmBox('저장 데이터 삭제', '모든 진행 상황을 삭제합니다. 되돌릴 수 없습니다.', () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } hide('settings'); hide('pause'); modalBack = null; showTitle(); toast('저장 데이터를 삭제했습니다', ''); });
 // ---- settings
-function loadSettings() { try { const s = JSON.parse(localStorage.getItem(SET_KEY) || '{}'); if (s.master != null) AU.vol.master = s.master; if (s.music != null) AU.vol.music = s.music; if (s.sfx != null) AU.vol.sfx = s.sfx; if (s.quality != null) G.quality = s.quality; if (s.shake != null) G.shakeOn = !!s.shake; if (s.sens != null) G.sens = s.sens; } catch (e) { /* ignore */ }
+function loadSettings() { try { const s = JSON.parse(localStorage.getItem(SET_KEY) || '{}'); if (s.master != null) AU.vol.master = s.master; if (s.music != null) AU.vol.music = s.music; if (s.sfx != null) AU.vol.sfx = s.sfx; if (s.quality != null) G.quality = s.quality; if (s.shake != null) G.shakeOn = !!s.shake; if (s.sens != null) G.sens = s.sens; if (s.fp != null) G.fp = !!s.fp; } catch (e) { /* ignore */ }
   try { if (matchMedia('(pointer:coarse)').matches && !localStorage.getItem(SET_KEY)) G.quality = 1; } catch (e) { /* ignore */ }
-  $('sMaster').value = Math.round(AU.vol.master * 100); $('sMusic').value = Math.round(AU.vol.music * 100); $('sSfx').value = Math.round(AU.vol.sfx * 100); $('sQuality').value = G.quality; $('sShake').value = G.shakeOn ? 1 : 0; $('sSens').value = Math.round(G.sens * 100); }
-function saveSettings() { try { localStorage.setItem(SET_KEY, JSON.stringify({ master: AU.vol.master, music: AU.vol.music, sfx: AU.vol.sfx, quality: G.quality, shake: G.shakeOn ? 1 : 0, sens: G.sens })); } catch (e) { /* ignore */ } }
+  $('sMaster').value = Math.round(AU.vol.master * 100); $('sMusic').value = Math.round(AU.vol.music * 100); $('sSfx').value = Math.round(AU.vol.sfx * 100); $('sQuality').value = G.quality; $('sShake').value = G.shakeOn ? 1 : 0; $('sSens').value = Math.round(G.sens * 100); $('sView').value = G.fp ? '1' : '0'; }
+function saveSettings() { try { localStorage.setItem(SET_KEY, JSON.stringify({ master: AU.vol.master, music: AU.vol.music, sfx: AU.vol.sfx, quality: G.quality, shake: G.shakeOn ? 1 : 0, sens: G.sens, fp: G.fp ? 1 : 0 })); } catch (e) { /* ignore */ } }
 $('sMaster').oninput = (e) => { AU.vol.master = e.target.value / 100; AU.setVol(); saveSettings(); };
 $('sMusic').oninput = (e) => { AU.vol.music = e.target.value / 100; AU.setVol(); saveSettings(); };
 $('sSfx').oninput = (e) => { AU.vol.sfx = e.target.value / 100; AU.setVol(); saveSettings(); AU.click(); };
 $('sQuality').onchange = (e) => { G.quality = +e.target.value; resize(); saveSettings(); };
 $('sShake').onchange = (e) => { G.shakeOn = e.target.value === '1'; saveSettings(); };
 $('sSens').oninput = (e) => { G.sens = e.target.value / 100; saveSettings(); };
+$('sView').onchange = (e) => { G.fp = e.target.value === '1'; applyView(); saveSettings(); };
+$('bView').onclick = () => toggleView();
 
 // =====================================================================
 // INPUT LISTENERS
@@ -809,7 +847,7 @@ addEventListener('keydown', (e) => {
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
   if (BLOCK.has(e.code)) e.preventDefault(); AU.init();
   IN.keys[e.code] = true; if (e.repeat) return;
-  if (G.state === 'play') { if (e.code === 'KeyQ' || e.code === 'KeyR') doSonar(); else if (e.code === 'KeyM') openMap(); else if (e.code === 'Tab' || e.code === 'KeyB') openCodex(); else if (e.code === 'Escape' || e.code === 'KeyP') togglePause(); }
+  if (G.state === 'play') { if (e.code === 'KeyQ' || e.code === 'KeyR') doSonar(); else if (e.code === 'KeyM') openMap(); else if (e.code === 'Tab' || e.code === 'KeyB') openCodex(); else if (e.code === 'Escape' || e.code === 'KeyP') togglePause(); else if (e.code === 'KeyV') toggleView(); }
   else if (G.state === 'menu') { if (e.code === 'KeyM' && !$('mapm').classList.contains('hidden')) openMap(); else if ((e.code === 'Tab' || e.code === 'KeyB') && !$('codex').classList.contains('hidden')) openCodex(); else if (e.code === 'Escape') { if (!$('mapm').classList.contains('hidden')) closeModal('mapm'); else if (!$('codex').classList.contains('hidden')) closeModal('codex'); else if (!$('win').classList.contains('hidden')) { hide('win'); G.state = 'play'; } } }
   else if (G.state === 'pause') { if (e.code === 'Escape' || e.code === 'KeyP') { if (!$('settings').classList.contains('hidden') || !$('help').classList.contains('hidden')) { hide('settings'); hide('help'); show('pause'); modalBack = null; } else togglePause(); } }
   else if (G.state === 'dock') { if (e.code === 'Enter') launch(); }
@@ -843,9 +881,9 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 // =====================================================================
 function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; const pr = Math.min(devicePixelRatio || 1, q === 2 ? 1.75 : q === 1 ? 1.25 : 0.85);
   renderer.setPixelRatio(pr); renderer.setSize(G.VW, G.VH, false); composer.setPixelRatio(pr); composer.setSize(G.VW, G.VH); bloom.enabled = q > 0; bloom.strength = q === 2 ? 0.55 : 0.45;
-  camera.aspect = G.VW / G.VH; camera.updateProjectionMatrix(); overlay.width = Math.round(G.VW * pr); overlay.height = Math.round(G.VH * pr);
+  camera.fov = inCockpit() ? 76 : 68; camera.aspect = G.VW / G.VH; camera.updateProjectionMatrix(); overlay.width = Math.round(G.VW * pr); overlay.height = Math.round(G.VH * pr);
   const sc = (G.VH * pr) / (2 * Math.tan((camera.fov * Math.PI) / 360)); FXA.mat.uniforms.uScale.value = sc; FXN.mat.uniforms.uScale.value = sc;
-  snow.visible = true; flora.grass.visible = q > 0; }
+  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); }
 addEventListener('resize', resize);
 function update(dt) {
   G.dayT = (G.dayT + dt / 600) % 1; G.alert = ''; G.alertPri = 0; ST().time += dt;
@@ -867,7 +905,7 @@ function updateAttract(dt) {
   for (const c of creatures) updateCreature(c, dt); for (const s of schools) updateSchool(s, dt);
   for (const it of items) if (it.buoy >= 0 && it.pos.distanceToSquared(camera.position) < 150 * 150) writeItem(it, 1);
 }
-let last = performance.now(), hudAcc = 0, mmAcc = 0;
+let last = performance.now(), hudAcc = 0, mmAcc = 0, rdAcc = 0;
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = (now - last) / 1000; last = now; if (!(dt > 0)) dt = 0.016; dt = Math.min(dt, 1 / 30);
@@ -876,7 +914,7 @@ function frame(now) {
     const live = G.state === 'play' || G.state === 'title';
     if (live) { G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); else updateAttract(dt); FXA.update(dt); FXN.update(dt); for (let i = ftexts.length - 1; i >= 0; i--) { const f = ftexts[i]; f.life -= dt; f.p.y += dt * 1.2; if (f.life <= 0) ftexts.splice(i, 1); } writeFish(); }
     if (live || G.needRender) { updateEnv(dt); if (bloom.enabled) composer.render(); else renderer.render(scene, camera); drawOverlay(); G.needRender = false; }
-    if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } }
+    if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit()) { rdAcc += dt; if (rdAcc > 0.05) { rdAcc = 0; drawRadar($('radar'), { t: G.t, pos: P.pos, yaw: P.yaw, range: 50 + SV.up.sonar * 10, items, rescues, creatures, dock: DOCK, target: mTarget(MISSIONS[SV.mission]) }); } } }
     if (G.state === 'menu' && !$('mapm').classList.contains('hidden')) { mmAcc += dt; if (mmAcc > 0.3) { mmAcc = 0; drawBigMap(); } }
     AU.update(G.state === 'title' ? 20 : depthOf(P.pos.y), P.vel.length() * 12, G.state === 'play' ? P.thrust : 0, G.state === 'play' && P.beam, G.state === 'play');
   } catch (err) { console.error(err); }
@@ -888,6 +926,6 @@ genItems(); genRescues(); buildItemMeshes(); genCreatures(); buildMap();
 G.poll = items.filter((i) => !i.tr).length;
 loadSettings(); resize(); showTitle();
 function simulate(sec) { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) { const dt = 1 / 30; G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); FXA.update(dt); FXN.update(dt); } writeFish(); }
-window.__game = { simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
+window.__game = { toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
 $('loading').classList.add('hidden');
 requestAnimationFrame((t) => { last = t; frame(t); });
