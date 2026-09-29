@@ -992,7 +992,7 @@ function update(dt) {
   // beam visual
   beamCone.visible = P.beam; if (P.beam) { beamCone.position.copy(P.nose); tv1.copy(P.nose).add(P.fwd); beamCone.lookAt(tv1); const R = S.beam; beamCone.scale.set(Math.tan(0.36) * R, Math.tan(0.36) * R, R); beamMat.uniforms.uA.value = 0.22; }
 }
-const attractPath = (t) => new V3(Math.sin(t * 0.05) * 140 + 60, -14 + Math.sin(t * 0.09) * 6, Math.cos(t * 0.04) * 110);
+const attractPath = (t) => { const x = Math.sin(t * 0.05) * 140 + 60, z = Math.cos(t * 0.04) * 110; return new V3(x, Math.max(-14 + Math.sin(t * 0.09) * 6, heightAt(x, z) + 7), z); }; // keeps clear of the hills
 function updateAttract(dt) {
   G.dayT = (G.dayT + dt / 300) % 1;
   const p = attractPath(G.t), q = attractPath(G.t + 3); camera.position.lerp(p, 1 - Math.exp(-dt * 2)); tv1.copy(q); tv1.y -= 6; camera.lookAt(tv1);

@@ -9,6 +9,11 @@ const GN = WORLD.N + 1, CELL = WORLD.size / WORLD.N;
 export const HGT = new Float32Array(GN * GN);
 export const U = { time: { value: 0 }, caust: { value: 1 }, sway: { value: 1 } }; // shared shader uniforms
 
+// ridged multi-octave noise in 0..1: sharp crests along the zero lines of the base noise
+function ridged(x, z, oct = 4) { let s = 0, a = 1, f = 1, n = 0; for (let i = 0; i < oct; i++) { const v = 1 - Math.abs(NZ(x * f + i * 13.7, z * f - i * 7.3)); s += v * v * a; n += a; a *= 0.5; f *= 2.1; } return s / n; }
+function segDist(x, z, ax, az, bx, bz) { const vx = bx - ax, vz = bz - az, t = clamp(((x - ax) * vx + (z - az) * vz) / (vx * vx + vz * vz), 0, 1); return [Math.hypot(x - ax - vx * t, z - az - vz * t), t]; }
+const CANYONS = [[40, -210, 150, -520, 55, 75], [-160, -200, -400, -430, 50, 65], [230, 150, 470, 260, 44, 55]]; // from the shelf edge down the slope: a, b, width, depth
+const SEAMOUNTS = [[-380, -480, 110, 190], [520, 330, 95, 165], [-150, 650, 85, 150]]; // x, z, radius, rise
 function heightRaw(x, z) {
   const d = Math.hypot(x, z);
   let h = -36;
@@ -20,9 +25,20 @@ function heightRaw(x, z) {
   const rough = 0.25 + smooth(150, 500, d);
   h += fbm(x * 0.0055, z * 0.0055, 5) * 30 * rough + NZ(x * 0.035, z * 0.035) * 2.2 * (0.5 + rough);
   h += Math.sin(x * 0.06 + NZ(x * 0.01, z * 0.01) * 4) * 0.7 * (1 - smooth(150, 260, d));
+  // relief: hills, dunes, canyons and seamounts, kept calm around the base ship and the wreck sites
+  let calm = smooth(25, 75, Math.hypot(x - 3, z + 19));
+  for (const p of POIS) if (p.id !== 'patch' && p.id !== 'reef' && p.id !== 'kelp') calm = Math.min(calm, smooth(p.r * 0.35, p.r * 0.9, Math.hypot(x - p.x, z - p.z)));
+  const shelf = 1 - smooth(200, 300, d), deepZone = smooth(300, 480, d);
+  h += calm * shelf * (fbm(x * 0.011 + 3.1, z * 0.011 - 5.2, 4) * 22 + (ridged(x * 0.02, z * 0.02, 3) - 0.45) * 12);
+  h += shelf * 8 * Math.exp(-((x - 150) ** 2 + (z - 20) ** 2) / (2 * 70 * 70)); // the east reef sits on a low plateau
+  h += calm * shelf * Math.sin(x * 0.21 + z * 0.08 + NZ(x * 0.02, z * 0.02) * 3) * 1.3 * (0.6 + 0.4 * NZ(x * 0.01 + 9, z * 0.01)); // sand dunes
+  for (const [ax, az, bx, bz, cw, cd] of CANYONS) { const [dist, t] = segDist(x, z, ax, az, bx, bz), wob = NZ(x * 0.012 + ax, z * 0.012) * cw * 0.5;
+    h -= cd * smooth(0, 0.2, t) * (1 - smooth(cw * 0.3, cw, Math.max(0, dist + wob))); }
+  h += calm * deepZone * (ridged(x * 0.007, z * 0.007, 4) - 0.4) * 75;
+  for (const [sx, sz, r, rise] of SEAMOUNTS) { const q2 = ((x - sx) ** 2 + (z - sz) ** 2) / (r * r); h += rise * Math.exp(-q2 * 1.6) * (0.85 + 0.3 * NZ(x * 0.03, z * 0.03)); }
   const edge = Math.max(Math.abs(x), Math.abs(z));
   h += smooth(790, 895, edge) * 520;
-  return Math.min(h, -3);
+  return Math.min(h, -5);
 }
 export function heightAt(x, z) {
   const gx = clamp((x + WORLD.half) / CELL, 0, WORLD.N - 0.001), gz = clamp((z + WORLD.half) / CELL, 0, WORLD.N - 0.001);
