@@ -131,7 +131,7 @@ const PT = { BUB: 0, SPARK: 1, SMOKE: 2, INK: 3, SAND: 4, TOX: 5, SPLASH: 6, BLI
 const bubble = (x, y, z, vx = 0, vy = 1, vz = 0, s = 0.12) => FXN.emit(PT.BUB, x, y, z, vx, vy, vz, rnd(2, 4), s, 0.85, 0.95, 1, 0.7, 1);
 function burst(p, n, r, g, b, spd = 6, size = 0.25) { for (let i = 0; i < n; i++) { tv3.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize().multiplyScalar(spd * rnd(0.3, 1)); FXA.emit(PT.SPARK, p.x, p.y, p.z, tv3.x, tv3.y, tv3.z, rnd(0.4, 1), size, r, g, b, 1); } }
 const ftexts = [];
-function ftext(p, txt, col = '#ffd23f', size = 16) { ftexts.push({ p: p.clone(), txt, col, size, life: 1.6, max: 1.6 }); if (ftexts.length > 30) ftexts.shift(); }
+function ftext(p, txt, col = '#e9c46a', size = 14) { ftexts.push({ p: p.clone(), txt, col, size, life: 1.6, max: 1.6 }); if (ftexts.length > 30) ftexts.shift(); }
 
 // =====================================================================
 // ITEMS (instanced per type)
@@ -268,7 +268,7 @@ function updateCreature(e, dt) {
       break; }
     case 'shark': { e.cd -= dt;
       if (e.state === 0) { wander(e, dt, 1, 1.1); if (play && dp < 32 && e.cd <= 0) { e.state = 1; e.chaseT = 7; } }
-      else if (e.state === 1) { steer(e, P.pos.x, P.pos.y, P.pos.z, Math.max(e.spd * 1.6, S.speed * 0.8), 2.2, dt); e.chaseT -= dt; setAlert('🦈 상어가 추격합니다! (Q: 소나로 퇴치)', 1);
+      else if (e.state === 1) { steer(e, P.pos.x, P.pos.y, P.pos.z, Math.max(e.spd * 1.6, S.speed * 0.8), 2.2, dt); e.chaseT -= dt; setAlert('상어 접근 · Q 소나로 쫓아내기', 1);
         if (dp < e.r + 1.6) { damage(16, '상어'); AU.bite(); e.state = 2; e.fleeT = 4; e.cd = 9; tip('shark', '상어는 소나 핑(Q)을 싫어합니다. 쫓아내 보세요!'); }
         if (e.chaseT <= 0 || !play) { e.state = 0; e.cd = 6; } }
       else { steer(e, e.pos.x - tv3.x / dp * 40, e.pos.y - tv3.y / dp * 10, e.pos.z - tv3.z / dp * 40, e.spd * 1.6, 2, dt); e.fleeT -= dt; if (e.fleeT <= 0) { e.state = 0; newTarget(e); } }
@@ -387,7 +387,7 @@ function pollGamepad(dt) { const pads = navigator.getGamepads ? navigator.getGam
 // =====================================================================
 function setAlert(msg, pri) { if (pri >= G.alertPri) { G.alert = msg; G.alertPri = pri; } }
 function damage(v, cause, silent) { if (G.state !== 'play' || v <= 0) return; if (!silent && P.inv > 0) return;
-  P.hull -= v; if (!silent) { P.inv = 0.7; G.flash = Math.min(0.6, 0.2 + v / 40); G.flashCol = '255,60,60'; G.shake = Math.max(G.shake, 0.15 + v * 0.015); AU.hurt(); P.dmgT = 0.4; burst(P.pos, 14, 1, 0.8, 0.5, 5, 0.18); ftext(P.pos.clone().add(new V3(0, 2, 0)), `-${Math.round(v)}`, '#ff6b6b', 15); }
+  P.hull -= v; if (!silent) { P.inv = 0.7; G.flash = Math.min(0.6, 0.2 + v / 40); G.flashCol = '255,60,60'; G.shake = Math.max(G.shake, 0.15 + v * 0.015); AU.hurt(); P.dmgT = 0.4; burst(P.pos, 14, 1, 0.8, 0.5, 5, 0.18); ftext(P.pos.clone().add(new V3(0, 2, 0)), `-${Math.round(v)}`, '#e5645e', 14); }
   if (P.hull <= 0) { P.hull = 0; fail(cause === '수압' ? 'pressure' : 'hull'); } }
 function updatePlayer(dt) {
   const sens = 0.0022 * G.sens; P.yaw -= IN.mdx * sens; P.pitch = clamp(P.pitch - IN.mdy * sens, -1.3, 1.3); IN.mdx = IN.mdy = 0;
@@ -415,14 +415,14 @@ function updatePlayer(dt) {
   SUB.root.updateMatrixWorld(); P.nose.set(0, -0.3, 2.0).applyMatrix4(SUB.root.matrixWorld);
   P.thrust = ml; P.beam = inp.beam && P.alive;
   const drain = 0.2 + ml * 0.5 + (boosting ? 1.5 : 0) + (P.beam ? 1.3 : 0);
-  if (P.alive) { P.bat = Math.max(0, P.bat - drain * dt); if (P.bat <= 0) { P.deadT = 0; toast('⚡ 배터리 방전! 비상 부상 장치 작동', 'bad'); AU.fail(); } }
+  if (P.alive) { P.bat = Math.max(0, P.bat - drain * dt); if (P.bat <= 0) { P.deadT = 0; toast('배터리 방전', 'bad', '비상 부상 장치가 작동했습니다.'); AU.fail(); } }
   else { P.deadT += dt; if (P.deadT > 3.2) fail('battery'); }
   if (ml > 0.1 && Math.random() < dt * (20 + (boosting ? 30 : 0))) { tv2.set(rnd(-0.2, 0.2), rnd(-0.2, 0.2), -2.3).applyMatrix4(SUB.root.matrixWorld); bubble(tv2.x, tv2.y, tv2.z, rnd(-0.5, 0.5), rnd(0.5, 1.5), rnd(-0.5, 0.5), rnd(0.06, 0.16)); }
   if (ml > 0.1 && P.pos.y - heightAt(P.pos.x, P.pos.z) < 5 && Math.random() < dt * 16) FXN.emit(PT.SAND, P.pos.x + rnd(-2, 2), heightAt(P.pos.x, P.pos.z) + 0.3, P.pos.z + rnd(-2, 2), rnd(-1.5, 1.5), rnd(0.3, 1.2), rnd(-1.5, 1.5), rnd(2, 4), rnd(0.6, 1.4), 0.6, 0.53, 0.42, 0.45);
   const dm = depthOf(P.pos.y); if (dm > ST().deepest) ST().deepest = Math.floor(dm);
-  if (dm > S.depth) { const over = dm - S.depth; damage((5 + over * 0.25) * dt, '수압', true); setAlert('⚠ 수압 한계 초과! 선체가 찌그러집니다', 3); G.creakT -= dt; if (G.creakT <= 0) { AU.creak(); G.creakT = rnd(0.8, 1.6); G.shake = Math.max(G.shake, 0.15); } tip('depth', '선체가 수압을 견디지 못합니다! 기지선에서 내압 선체를 업그레이드하세요.'); }
+  if (dm > S.depth) { const over = dm - S.depth; damage((5 + over * 0.25) * dt, '수압', true); setAlert('수압 한계 초과 · 선체 손상 중', 3); G.creakT -= dt; if (G.creakT <= 0) { AU.creak(); G.creakT = rnd(0.8, 1.6); G.shake = Math.max(G.shake, 0.15); } tip('depth', '선체가 수압을 견디지 못합니다! 기지선에서 내압 선체를 업그레이드하세요.'); }
   else if (dm > S.depth * 0.9) setAlert('심도 한계 근접', 1);
-  if (P.bat < S.bat * 0.25 && P.alive) { if (P.bat < S.bat * 0.1) setAlert('⚡ 에너지 부족! 즉시 귀환하세요', 2); if (!G.lowWarned) { G.lowWarned = true; toast('🔋 에너지가 25% 남았습니다. 기지선으로 돌아갈 준비를 하세요.', 'bad'); } if (P.bat < S.bat * 0.1) { G.alarmT -= dt; if (G.alarmT <= 0) { AU.alarm(); G.alarmT = 2; } } }
+  if (P.bat < S.bat * 0.25 && P.alive) { if (P.bat < S.bat * 0.1) setAlert('에너지 부족 · 기지선으로 귀환', 2); if (!G.lowWarned) { G.lowWarned = true; toast('에너지 25% 남음', 'bad', '기지선으로 돌아갈 준비를 하세요.'); } if (P.bat < S.bat * 0.1) { G.alarmT -= dt; if (G.alarmT <= 0) { AU.alarm(); G.alarmT = 2; } } }
   P.inv = Math.max(0, P.inv - dt); P.dmgT = Math.max(0, P.dmgT - dt);
   if (P.hull < S.hull * 0.35 && Math.random() < dt * 6) bubble(P.pos.x + rnd(-1, 1), P.pos.y + 0.8, P.pos.z + rnd(-1, 1));
   const dd = P.pos.distanceTo(DOCK); if (dd > 16) P.canDock = true; if (P.canDock && dd < 6.5 && P.alive) { P.canDock = false; openDock(); }
@@ -467,22 +467,22 @@ function updateItems(dt) {
       writeItem(it);
     } else if (it.buoy >= 0 && dc2 < 200 * 200) writeItem(it, 1);
     if (it.leak) { if (dc2 < 90 * 90 && Math.random() < dt * 3) FXA.emit(PT.TOX, it.pos.x + rnd(-0.4, 0.4), it.pos.y + it.r, it.pos.z + rnd(-0.4, 0.4), rnd(-0.2, 0.2), rnd(0.5, 1.2), rnd(-0.2, 0.2), rnd(2, 3.5), rnd(0.15, 0.3), 0.4, 1, 0.3, 0.8);
-      if (G.state === 'play' && it.pos.distanceToSquared(P.pos) < (it.r + 4.5) ** 2) { damage(5 * dt, '독성', true); setAlert('☣ 독성 물질! 선체 부식 중', 2); tip('drum', '새는 드럼통 근처는 위험합니다. 멀리서 트랙터 빔으로 끌어오세요.'); } }
+      if (G.state === 'play' && it.pos.distanceToSquared(P.pos) < (it.r + 4.5) ** 2) { damage(5 * dt, '독성', true); setAlert('독성 물질 · 선체 부식 중', 2); tip('drum', '새는 드럼통 근처는 위험합니다. 멀리서 트랙터 빔으로 끌어오세요.'); } }
     if (G.state === 'play') { const pr = 1.8 + it.r; if (it.pos.distanceToSquared(P.pos) < pr * pr || it.pos.distanceToSquared(P.nose) < (1.2 + it.r) ** 2) tryCollect(it); }
   }
 }
 const itemName = (it) => (it.tr ? TREASURE : TRASH)[it.type].n;
 function tryCollect(it) {
-  if (P.kg + it.kg > S.cargo + 1e-6) { if (G.t - G.fullT > 2.5) { G.fullT = G.t; if (it.kg > S.cargo) toast(`${itemName(it)}은(는) 너무 무겁습니다 (${it.kg}kg)`, 'bad', '화물칸을 업그레이드하세요'); else toast('📦 화물칸이 가득 찼습니다!', 'bad', '기지선으로 돌아가 판매하세요'); }
+  if (P.kg + it.kg > S.cargo + 1e-6) { if (G.t - G.fullT > 2.5) { G.fullT = G.t; if (it.kg > S.cargo) toast(`${itemName(it)}은(는) 너무 무겁습니다 (${it.kg}kg)`, 'bad', '화물칸을 업그레이드하세요'); else toast('화물칸이 가득 찼습니다', 'bad', '기지선으로 돌아가 판매하세요.'); }
     tv1.subVectors(it.pos, P.pos).normalize().multiplyScalar(6); it.vel.copy(tv1); it.state = 2; return; }
   it.col = true; writeItem(it); P.cargo.push(it.id); P.kg += it.kg;
   G.combo = G.t - G.comboT < 1.6 ? G.combo + 1 : 0; G.comboT = G.t;
   const s = ST(); s.collected++; s.kg += it.kg; s.types[it.type] = (s.types[it.type] || 0) + 1;
   if (it.tr) burst(it.pos, 40, 1, 0.85, 0.3, 7, 0.25); else burst(it.pos, 18, 0.4, 1, 0.9, 5, 0.18);
   FXA.emit(PT.BLIP, it.pos.x, it.pos.y, it.pos.z, 0, 0, 0, 0.5, it.r * 2, it.tr ? 1 : 0.4, it.tr ? 0.85 : 1, it.tr ? 0.35 : 0.9, 1, 1);
-  ftext(it.pos.clone().add(new V3(0, it.r + 0.5, 0)), `+${it.v}`, it.tr ? '#ffd23f' : '#9ff4ea', it.tr ? 20 : 15);
+  ftext(it.pos.clone().add(new V3(0, it.r + 0.5, 0)), `+${it.v}`, it.tr ? '#e9c46a' : '#e8edf1', it.tr ? 17 : 14);
   AU.collect(G.combo, it.kg >= 9 || it.tr);
-  if (it.tr) { s.treasures++; toast(`💎 보물 발견! ${itemName(it)}`, 'big', `판매 가치 ${fmt(it.v)}`); }
+  if (it.tr) { s.treasures++; toast(`보물 발견: ${itemName(it)}`, 'big', `판매 가치 ${fmt(it.v)}`); }
   else if (!SV.tips['t_' + it.type]) { SV.tips['t_' + it.type] = 1; toast(`새로운 쓰레기: ${TRASH[it.type].n}`, 'tip', TRASH[it.type].fact); }
   if (!it.tr) recount();
 }
@@ -500,7 +500,7 @@ function freeAnimal(r) {
   const z = r.sp === 'turtle' ? Z(r.pos.x, r.pos.z, 150, -60, -3) : r.sp === 'dolphin' ? Z(r.pos.x, r.pos.z, 200, -25, -2) : Z(r.pos.x, r.pos.z, 150, r.pos.y - 60, Math.min(-3, r.pos.y + 40));
   const c = addC(r.sp, z, { at: r.pos.clone(), extra: { freed: true, cd: 30 } }); c.a = 1; c.vel.subVectors(r.pos, P.pos).setY(0).normalize().multiplyScalar(c.spd * 1.5); c.vel.y = 1; c.tgt.copy(r.pos).addScaledVector(c.vel, 8); c.tgt.y = Math.min(-3, r.pos.y + 10); c.timer = 6;
   for (let i = 0; i < 30; i++) FXA.emit(PT.SPARK, r.pos.x + rnd(-1, 1), r.pos.y + rnd(-1, 1), r.pos.z + rnd(-1, 1), rnd(-2, 2), rnd(0.5, 3), rnd(-2, 2), rnd(1.2, 2.2), rnd(0.25, 0.45), 1, 0.45, 0.65, 1);
-  ST().rescues++; SV.money += 150; AU.rescue(); toast(`💚 ${SPECIES[r.sp].n}을(를) 구조했습니다!`, 'big', '구조 보상 +150 · 남은 폐그물도 수거하세요'); ftext(r.pos.clone().add(new V3(0, 2.5, 0)), '+150', '#5dff9a', 20);
+  ST().rescues++; SV.money += 150; AU.rescue(); toast(`${SPECIES[r.sp].n} 구조 완료`, 'good', '보상 +150. 남은 폐그물도 수거하세요.'); ftext(r.pos.clone().add(new V3(0, 2.5, 0)), '+150', '#8fcf9b', 17);
   if (!SV.species[r.sp]) discover(r.sp); saveGame();
 }
 function doSonar() { if (G.state !== 'play') return; if (G.sonarCd > 0 || P.bat < 3) { AU.click(); return; } P.bat -= 3; G.sonarCd = S.sonarCd; G.sonar = { p: P.pos.clone(), r: 0, max: S.sonar, n: 0 }; AU.ping(); }
@@ -510,16 +510,16 @@ function updateSonar(dt) { G.sonarCd = Math.max(0, G.sonarCd - dt); const s = G.
   for (const r of rescues) { if (r.freed) continue; const d = r.pos.distanceToSquared(s.p); if (d >= a && d < b) r.known = true; }
   for (const c of creatures) { if (c.sp !== 'shark' && c.sp !== 'angler') continue; const d = c.pos.distanceToSquared(s.p); if (d >= a && d < b && s.r < s.max * 0.9) { c.state = 2; c.fleeT = 5; c.cd = 12; } }
   for (const p of POIS) { const d = (p.x - s.p.x) ** 2 + (p.y - s.p.y) ** 2 + (p.z - s.p.z) ** 2; if (d >= a && d < b) p.pinged = true; }
-  if (s.r > s.max) { if (s.n > 0) toast(`📡 소나: 쓰레기 ${s.n}개 탐지`, '', '화면과 지도에 표시됩니다'); else toast('📡 소나: 주변에 탐지된 쓰레기가 없습니다', ''); G.sonar = null; sonarMesh.visible = false; } }
-function updateHazards(dt) { for (const v of pieces.vents) { if (Math.hypot(P.pos.x - v.x, P.pos.z - v.z) < 2.6 && P.pos.y > v.top - 1 && P.pos.y < v.top + 22) { damage(9 * dt, '열수', true); setAlert('🔥 열수 분출! 고온 주의', 2); } } }
+  if (s.r > s.max) { if (s.n > 0) toast(`소나: 쓰레기 ${s.n}개 탐지`, '', '화면과 지도에 표시됩니다.'); else toast('소나: 주변에 쓰레기가 없습니다', ''); G.sonar = null; sonarMesh.visible = false; } }
+function updateHazards(dt) { for (const v of pieces.vents) { if (Math.hypot(P.pos.x - v.x, P.pos.z - v.z) < 2.6 && P.pos.y > v.top - 1 && P.pos.y < v.top + 22) { damage(9 * dt, '열수', true); setAlert('열수 분출 · 고온 주의', 2); } } }
 
 // =====================================================================
 // DISCOVERY / DOCK / FAIL / SAVE
 // =====================================================================
 function discR(sp) { return ({ whale: 90, squid: 55, manta: 50, shark: 45, jelly: 40, lantern: 40, angler: 35, dolphin: 50, turtle: 35 })[sp] || Math.max(22, S.light * 0.5); }
 const frustum = new THREE.Frustum();
-function discover(sp) { if (SV.species[sp]) return; SV.species[sp] = true; SV.money += 30; AU.discover(); toast(`${SPECIES[sp].i} 새로운 생물 발견: ${SPECIES[sp].n}`, 'good', '도감(C)에 기록되었습니다 · +30'); }
-function discoverPOI(p) { SV.pois[p.id] = true; SV.money += 100; AU.discover(); toast(`📍 ${p.n} 발견!`, 'big', `${p.d} (+100)`); saveGame(); }
+function discover(sp) { if (SV.species[sp]) return; SV.species[sp] = true; SV.money += 30; AU.discover(); toast(`새로운 생물: ${SPECIES[sp].n}`, 'good', '도감에 기록했습니다. +30'); }
+function discoverPOI(p) { SV.pois[p.id] = true; SV.money += 100; AU.discover(); toast(`장소 발견: ${p.n}`, 'big', `${p.d} (+100)`); saveGame(); }
 function discoveryTick() {
   frustum.setFromProjectionMatrix(tm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
   for (const c of creatures) { if (c.a < 0.5 || SV.species[c.sp]) continue; if (c.pos.distanceTo(P.pos) < discR(c.sp) && frustum.containsPoint(c.pos)) discover(c.sp); }
@@ -529,16 +529,16 @@ function discoveryTick() {
 }
 function missionTick() {
   const m = MISSIONS[SV.mission];
-  if (m) { const [c, g] = mProg(m); if (c >= g) { SV.money += m.rw; toast(`🎯 임무 완료: ${m.t}`, 'big', `보상 +${fmt(m.rw)}`); AU.mission(); SV.mission++; saveGame();
-    const n = MISSIONS[SV.mission]; if (n) setTimeout(() => { if (G.state === 'play') toast(`새 임무: ${n.t}`, 'tip', n.d); }, 2200); else setTimeout(() => toast('모든 임무를 완료했습니다! 자유롭게 바다를 탐험하세요.', 'big'), 2200); } }
+  if (m) { const [c, g] = mProg(m); if (c >= g) { SV.money += m.rw; toast(`임무 완료: ${m.t}`, 'big', `보상 +${fmt(m.rw)}`); AU.mission(); SV.mission++; saveGame();
+    const n = MISSIONS[SV.mission]; if (n) setTimeout(() => { if (G.state === 'play') toast(`새 임무: ${n.t}`, 'tip', n.d); }, 2200); else setTimeout(() => toast('모든 임무 완료', 'big', '남은 쓰레기를 찾아 바다를 끝까지 되살려 보세요.'), 2200); } }
   if (G.clean >= 0.95 && !SV.won) { SV.won = true; G.pendingWin = 2.5; }
   const h = Math.round(clamp(0.12 + G.clean * 1.15, 0, 1) * 50) / 50; if (h !== G.coralH) { G.coralH = h; flora.setCoralHealth(h); }
 }
 function openDock() {
   G.state = 'dock'; unlockPointer(); AU.dock(); const rec = sellCargo(); P.bat = S.bat; P.hull = S.hull; P.vel.set(0, 0, 0); G.lowWarned = false; G.alert = '';
-  const rows = Object.values(rec.groups).sort((a, b) => b.v - a.v).map((g) => `<tr><td>${g.tr ? '💎 ' : ''}${esc(g.n)} <span style="color:var(--muted)">× ${g.c}</span></td><td>${fmt(g.v)}</td></tr>`).join('');
-  $('dSell').innerHTML = rec.total > 0 ? `<table class="receipt">${rows}<tr class="bonus"><td>🌊 해양 정화 기금 보너스 (+${Math.round(G.clean * 50)}%)</td><td>+${fmt(rec.bonus)}</td></tr><tr class="tot"><td>총 수익</td><td>+${fmt(rec.total)}</td></tr></table>`
-    : '<div class="empty">판매할 수거물이 없습니다.<br>바다로 나가 쓰레기를 수거해 오세요!<br><small>정화율이 높아질수록 판매 보너스가 커집니다.</small></div>';
+  const rows = Object.values(rec.groups).sort((a, b) => b.v - a.v).map((g) => `<tr><td>${esc(g.n)}<span class="q">× ${g.c}</span></td><td>${fmt(g.v)}</td></tr>`).join('');
+  $('dSell').innerHTML = rec.total > 0 ? `<table class="receipt">${rows}<tr class="bonus"><td>정화 기금 보너스 +${Math.round(G.clean * 50)}%</td><td>+${fmt(rec.bonus)}</td></tr><tr class="tot"><td>총 수익</td><td>+${fmt(rec.total)}</td></tr></table>`
+    : '<div class="empty">판매할 수거물이 없습니다. 바다로 나가 쓰레기를 수거해 오세요.<br>정화율이 높을수록 판매 보너스가 커집니다.</div>';
   $('dSubtitle').textContent = `에너지 충전 · 선체 수리 완료 · 바다 정화율 ${cleanPct()}%`;
   renderUpgrades(); renderStats($('dStat')); switchTab('dock', rec.total > 0 ? 'dSell' : 'dUp'); show('dock'); saveGame();
 }
@@ -552,9 +552,9 @@ function fail(kind) {
   for (const id of lost) { const it = items[id]; it.col = false; it.pos.copy(it.home); it.state = 0; it.vel.set(0, 0, 0); it.known = true; lkg += it.kg; writeItem(it); }
   P.cargo = cargo.slice(nLost); P.kg = P.cargo.reduce((s, id) => s + items[id].kg, 0);
   const fee = Math.min(SV.money, Math.round(30 + SV.money * 0.08)); SV.money -= fee; ST().fails++; recount();
-  const T = { battery: ['⚡', '배터리 방전', '에너지가 바닥나 비상 부상 장치가 작동했습니다.'], hull: ['💥', '선체 파손', '잠수정이 심하게 파손되었습니다.'], pressure: ['🫧', '수압에 의한 선체 붕괴', '한계 수심을 넘어 선체가 버티지 못했습니다.'] }[kind];
-  $('failIco').textContent = T[0]; $('failTitle').textContent = T[1]; $('failText').textContent = T[2] + ' 구조대가 잠수정을 기지선까지 견인했습니다.';
-  $('failLoss').innerHTML = `잃어버린 화물: <b>${lost.length}개 (${Math.round(lkg * 10) / 10}kg)</b> — 원래 자리로 가라앉았습니다<br>견인 비용: <b>${fmt(fee)}</b>` + (kind === 'pressure' ? '<br><small>💡 기지선에서 <b>내압 선체</b>를 업그레이드하면 더 깊이 내려갈 수 있습니다.</small>' : kind === 'battery' ? '<br><small>💡 <b>배터리</b>를 업그레이드하고 에너지가 25% 남으면 귀환하세요.</small>' : '');
+  const T = { battery: ['배터리 방전', '에너지가 바닥나 비상 부상 장치가 작동했습니다.'], hull: ['선체 파손', '잠수정이 심하게 파손되었습니다.'], pressure: ['수압으로 선체 손상', '한계 수심을 넘어 선체가 버티지 못했습니다.'] }[kind];
+  $('failTitle').textContent = T[0]; $('failText').textContent = T[1] + ' 구조대가 잠수정을 기지선까지 견인했습니다.';
+  $('failLoss').innerHTML = `잃어버린 화물 <b>${lost.length}개 · ${Math.round(lkg * 10) / 10}kg</b> (원래 자리로 가라앉음)<br>견인 비용 <b>${fmt(fee)}</b>` + (kind === 'pressure' ? '<small>기지선에서 내압 선체를 업그레이드하면 더 깊이 내려갈 수 있습니다.</small>' : kind === 'battery' ? '<small>배터리를 업그레이드하고, 에너지가 25% 남으면 귀환하세요.</small>' : '');
   $('fade').classList.add('on'); setTimeout(() => { $('fade').classList.remove('on'); show('fail'); }, 650); saveGame();
 }
 function respawn() { hide('fail'); P.pos.copy(DOCK).add(new V3(0, -3, -15)); P.vel.set(0, 0, 0); P.deadT = 0; P.alive = true; P.bat = S.bat; P.hull = S.hull; updateCamera(1); openDock(); }
@@ -610,15 +610,15 @@ function drawMapLayer(c, W, H, x0, z0, span, big) {
   const csx = Math.max(0, sx), csy = Math.max(0, sy), cex = Math.min(MAPN, sx + sw), cey = Math.min(MAPN, sy + shh);
   if (cex > csx && cey > csy) { const dx = (csx - sx) / sw * W, dy = (csy - sy) / shh * H, dw = (cex - csx) / sw * W, dh = (cey - csy) / shh * H; c.drawImage(MAPBASE, csx, csy, cex - csx, cey - csy, dx, dy, dw, dh); c.drawImage(FOG, csx, csy, cex - csx, cey - csy, dx, dy, dw, dh); }
   const dsz = big ? 3 : 4;
-  for (const it of items) { if (it.col || it.locked || !it.known) continue; const x = X(it.pos.x), y = Y(it.pos.z); if (x < 0 || x > W || y < 0 || y > H) continue; c.fillStyle = it.tr ? '#ffd23f' : '#ff7a59'; c.fillRect(x - dsz / 2, y - dsz / 2, dsz, dsz); }
-  for (const r of rescues) { if (r.freed || !r.known) continue; c.fillStyle = '#ff4fa3'; c.beginPath(); c.arc(X(r.pos.x), Y(r.pos.z), big ? 6 : 5, 0, TAU); c.fill(); }
+  for (const it of items) { if (it.col || it.locked || !it.known) continue; const x = X(it.pos.x), y = Y(it.pos.z); if (x < 0 || x > W || y < 0 || y > H) continue; c.fillStyle = it.tr ? '#f0d98c' : '#e8925a'; c.fillRect(x - dsz / 2, y - dsz / 2, dsz, dsz); }
+  for (const r of rescues) { if (r.freed || !r.known) continue; c.fillStyle = '#e07aa8'; c.beginPath(); c.arc(X(r.pos.x), Y(r.pos.z), big ? 5 : 4, 0, TAU); c.fill(); }
   c.textAlign = 'center';
-  for (const p of POIS) { const has = SV.pois[p.id]; if (!has && !p.pinged) continue; const x = X(p.x), y = Y(p.z); if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue; c.fillStyle = has ? '#fff' : 'rgba(255,255,255,.5)'; c.beginPath(); c.moveTo(x, y - 6); c.lineTo(x + 5, y); c.lineTo(x, y + 6); c.lineTo(x - 5, y); c.fill();
-    if (big) { c.font = '800 13px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.8)'; const t = has ? `${p.i} ${p.n}` : '❔ 미확인 신호'; c.strokeText(t, x, y - 10); c.fillText(t, x, y - 10); } }
-  const mt = mTarget(MISSIONS[SV.mission]); if (mt) { const x = clamp(X(mt.x), 6, W - 6), y = clamp(Y(mt.z), 6, H - 6), p = 0.5 + 0.5 * Math.sin(performance.now() / 200); c.strokeStyle = `rgba(255,176,0,${0.5 + 0.5 * p})`; c.lineWidth = 3; c.beginPath(); c.arc(x, y, 8 + p * 4, 0, TAU); c.stroke(); }
-  { const x = X(DOCK.x), y = Y(DOCK.z); c.fillStyle = '#3fe0d0'; c.fillRect(x - 6, y - 10, 12, 20); if (big) { c.font = '800 12px sans-serif'; c.fillText('기지선', x, y - 14); } }
-  if (G.sonar) { c.strokeStyle = 'rgba(90,255,230,.7)'; c.lineWidth = 2; c.beginPath(); c.arc(X(G.sonar.p.x), Y(G.sonar.p.z), G.sonar.r * k, 0, TAU); c.stroke(); }
-  c.save(); c.translate(X(P.pos.x), Y(P.pos.z)); c.rotate(-P.yaw + Math.PI); c.fillStyle = '#ffd23f'; c.shadowColor = '#ffd23f'; c.shadowBlur = 8; c.beginPath(); c.moveTo(0, -10); c.lineTo(7, 7); c.lineTo(0, 3); c.lineTo(-7, 7); c.closePath(); c.fill(); c.restore();
+  for (const p of POIS) { const has = SV.pois[p.id]; if (!has && !p.pinged) continue; const x = X(p.x), y = Y(p.z); if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue; c.fillStyle = has ? '#9fb0bd' : 'rgba(159,176,189,.5)'; c.beginPath(); c.moveTo(x, y - 6); c.lineTo(x + 5, y); c.lineTo(x, y + 6); c.lineTo(x - 5, y); c.fill();
+    if (big) { c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.8)'; const t = has ? p.n : '미확인 신호'; c.strokeText(t, x, y - 10); c.fillText(t, x, y - 10); } }
+  const mt = mTarget(MISSIONS[SV.mission]); if (mt) { const x = clamp(X(mt.x), 6, W - 6), y = clamp(Y(mt.z), 6, H - 6), p = 0.5 + 0.5 * Math.sin(performance.now() / 200); c.strokeStyle = `rgba(233,196,106,${0.55 + 0.45 * p})`; c.lineWidth = 2; c.beginPath(); c.arc(x, y, 8 + p * 3, 0, TAU); c.stroke(); }
+  { const x = X(DOCK.x), y = Y(DOCK.z); c.fillStyle = '#8fcf9b'; c.fillRect(x - 4, y - 8, 8, 16); if (big) { c.font = '600 12px sans-serif'; c.fillText('기지선', x, y - 12); } }
+  if (G.sonar) { c.strokeStyle = 'rgba(232,237,241,.5)'; c.lineWidth = 2; c.beginPath(); c.arc(X(G.sonar.p.x), Y(G.sonar.p.z), G.sonar.r * k, 0, TAU); c.stroke(); }
+  c.save(); c.translate(X(P.pos.x), Y(P.pos.z)); c.rotate(-P.yaw + Math.PI); c.fillStyle = '#ffffff'; c.beginPath(); c.moveTo(0, -10); c.lineTo(7, 7); c.lineTo(0, 3); c.lineTo(-7, 7); c.closePath(); c.fill(); c.restore();
 }
 let MMC = null;
 function drawMinimap() { const cv = $('minimap'); const c = MMC || (MMC = cv.getContext('2d')); const W = cv.width, H = cv.height, span = 520; drawMapLayer(c, W, H, P.pos.x - span / 2, P.pos.z - span * H / W / 2, span, false); }
@@ -678,31 +678,31 @@ function drawOverlay() {
   c.textAlign = 'center';
   // revealed items
   for (const it of items) { if (it.col || it.locked || it.rev < G.t) continue; const d = it.pos.distanceTo(camera.position); if (d > 260) continue; const s = project(it.pos, pv); if (s.behind || s.x < -20 || s.x > W + 20 || s.y < -20 || s.y > H + 20) continue;
-    const f = Math.min(1, (it.rev - G.t) / 2), p = 0.5 + 0.5 * Math.sin(G.t * 5 + it.ph), r = clamp(260 / d, 6, 26) + p * 3; c.strokeStyle = it.tr ? `rgba(255,215,90,${0.85 * f})` : `rgba(255,130,95,${0.8 * f})`; c.lineWidth = 2; c.beginPath(); c.arc(s.x, s.y, r, 0, TAU); c.stroke(); }
+    const f = Math.min(1, (it.rev - G.t) / 2), p = 0.5 + 0.5 * Math.sin(G.t * 5 + it.ph), r = clamp(260 / d, 6, 26) + p * 3; c.strokeStyle = it.tr ? `rgba(240,217,140,${0.8 * f})` : `rgba(232,146,90,${0.75 * f})`; c.lineWidth = 1.5; c.beginPath(); c.arc(s.x, s.y, r, 0, TAU); c.stroke(); }
   // rescues
   for (const r of rescues) { if (r.freed) continue; const d = r.pos.distanceTo(camera.position); if (d > 120) continue; const s = project(r.pos, pv); if (s.behind) continue; const p = 0.5 + 0.5 * Math.sin(G.t * 4); const R = clamp(900 / d, 20, 90);
-    c.strokeStyle = `rgba(255,80,163,${0.4 + 0.4 * p})`; c.lineWidth = 2.5; c.beginPath(); c.arc(s.x, s.y, R, 0, TAU); c.stroke();
-    if (r.prog > 0) { c.strokeStyle = '#5dff9a'; c.lineWidth = 5; c.beginPath(); c.arc(s.x, s.y, R, -Math.PI / 2, -Math.PI / 2 + TAU * r.prog); c.stroke(); }
-    c.font = '900 14px sans-serif'; c.fillStyle = '#ff6fb5'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.7)'; const t = r.cutting ? `그물 절단 중 ${Math.floor(r.prog * 100)}%` : 'SOS · 조준 후 빔으로 그물 절단'; c.strokeText(t, s.x, s.y - R - 10); c.fillText(t, s.x, s.y - R - 10); }
+    c.strokeStyle = `rgba(224,122,168,${0.35 + 0.35 * p})`; c.lineWidth = 1.5; c.beginPath(); c.arc(s.x, s.y, R, 0, TAU); c.stroke();
+    if (r.prog > 0) { c.strokeStyle = '#8fcf9b'; c.lineWidth = 3; c.beginPath(); c.arc(s.x, s.y, R, -Math.PI / 2, -Math.PI / 2 + TAU * r.prog); c.stroke(); }
+    c.font = '600 12px sans-serif'; c.fillStyle = '#f2d4e2'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.7)'; const t = r.cutting ? `그물 절단 ${Math.floor(r.prog * 100)}%` : '구조 필요 · 빔으로 그물 절단'; c.strokeText(t, s.x, s.y - R - 10); c.fillText(t, s.x, s.y - R - 10); }
   // dock label
-  { const d = DOCK.distanceTo(camera.position); if (d < 140) { const s = project(DOCK, pv); if (!s.behind) { c.font = '900 14px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.7)'; c.fillStyle = '#5dff9a'; c.strokeText('⚓ 도킹 · 판매 · 업그레이드', s.x, s.y + 34); c.fillText('⚓ 도킹 · 판매 · 업그레이드', s.x, s.y + 34); } } }
+  { const d = DOCK.distanceTo(camera.position); if (d < 140) { const s = project(DOCK, pv); if (!s.behind) { c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.7)'; c.fillStyle = '#cfe9d4'; c.strokeText('도킹 · 판매 · 업그레이드', s.x, s.y + 34); c.fillText('도킹 · 판매 · 업그레이드', s.x, s.y + 34); } } }
   // floating texts
-  for (const f of ftexts) { const s = project(f.p, pv); if (s.behind) continue; c.globalAlpha = Math.min(1, (f.life / f.max) * 2); c.font = `900 ${f.size}px sans-serif`; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; c.strokeText(f.txt, s.x, s.y); c.fillStyle = f.col; c.fillText(f.txt, s.x, s.y); } c.globalAlpha = 1;
+  for (const f of ftexts) { const s = project(f.p, pv); if (s.behind) continue; c.globalAlpha = Math.min(1, (f.life / f.max) * 2); c.font = `600 ${f.size}px ui-monospace, Menlo, monospace`; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; c.strokeText(f.txt, s.x, s.y); c.fillStyle = f.col; c.fillText(f.txt, s.x, s.y); } c.globalAlpha = 1;
   // edge arrows
   if (G.state !== 'play') return;
-  const T = []; const mt = mTarget(MISSIONS[SV.mission]); if (mt) T.push({ p: mt, col: '#ffb000', label: '임무', big: true });
-  if ((P.bat < S.bat * 0.3 || P.kg >= S.cargo * 0.92) && !(mt && mt.distanceTo(DOCK) < 1)) T.push({ p: DOCK, col: '#3fe0d0', label: '기지선', big: true });
+  const T = []; const mt = mTarget(MISSIONS[SV.mission]); if (mt) T.push({ p: mt, col: '#e9c46a', label: '임무', big: true });
+  if ((P.bat < S.bat * 0.3 || P.kg >= S.cargo * 0.92) && !(mt && mt.distanceTo(DOCK) < 1)) T.push({ p: DOCK, col: '#8fcf9b', label: '기지선', big: true });
   const near = []; for (const it of items) { if (it.col || it.locked || it.rev < G.t) continue; near.push([it.pos.distanceToSquared(P.pos), it]); } near.sort((a, b) => a[0] - b[0]);
-  for (let i = 0; i < Math.min(5, near.length); i++) T.push({ p: near[i][1].pos, col: near[i][1].tr ? '#ffd23f' : '#ff7a59' });
+  for (let i = 0; i < Math.min(5, near.length); i++) T.push({ p: near[i][1].pos, col: near[i][1].tr ? '#f0d98c' : '#e8925a' });
   const pad = 46, cx = W / 2, cy = H / 2;
   for (const t of T) { const s = project(t.p, pv); let sx = s.x, sy = s.y; const on = !s.behind && sx > pad && sx < W - pad && sy > pad && sy < H - pad;
     const dm = Math.round(t.p.distanceTo(P.pos));
-    if (on) { if (t.big) { const b = Math.sin(G.t * 4) * 5; c.fillStyle = t.col; c.beginPath(); c.moveTo(sx, sy - 16 + b); c.lineTo(sx - 9, sy - 32 + b); c.lineTo(sx + 9, sy - 32 + b); c.closePath(); c.fill(); c.font = '800 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; c.strokeText(`${t.label} ${dm}m`, sx, sy - 38 + b); c.fillText(`${t.label} ${dm}m`, sx, sy - 38 + b); } continue; }
+    if (on) { if (t.big) { const b = Math.sin(G.t * 4) * 5; c.fillStyle = t.col; c.beginPath(); c.moveTo(sx, sy - 16 + b); c.lineTo(sx - 9, sy - 32 + b); c.lineTo(sx + 9, sy - 32 + b); c.closePath(); c.fill(); c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; c.strokeText(`${t.label} ${dm}m`, sx, sy - 38 + b); c.fillText(`${t.label} ${dm}m`, sx, sy - 38 + b); } continue; }
     if (s.behind) { sx = W - sx; sy = H - sy; }
     let dx = sx - cx, dy = sy - cy; if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3) dy = 1; const k = Math.min((W / 2 - pad) / Math.max(1e-6, Math.abs(dx)), (H / 2 - pad) / Math.max(1e-6, Math.abs(dy)));
     const ax = cx + dx * k, ay = cy + dy * k, ang = Math.atan2(dy, dx);
-    c.save(); c.translate(ax, ay); c.rotate(ang); c.globalAlpha = t.big ? 0.95 : 0.55; c.fillStyle = t.col; const sz = t.big ? 15 : 8; c.beginPath(); c.moveTo(sz, 0); c.lineTo(-sz * 0.8, -sz * 0.75); c.lineTo(-sz * 0.4, 0); c.lineTo(-sz * 0.8, sz * 0.75); c.closePath(); c.fill(); c.restore(); c.globalAlpha = 1;
-    if (t.big) { const lx = ax - Math.cos(ang) * 36, ly = ay - Math.sin(ang) * 26; c.font = '800 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; const txt = `${t.label} ${dm}m`; c.strokeText(txt, lx, ly + 4); c.fillStyle = t.col; c.fillText(txt, lx, ly + 4); } }
+    c.save(); c.translate(ax, ay); c.rotate(ang); c.globalAlpha = t.big ? 0.95 : 0.55; c.fillStyle = t.col; const sz = t.big ? 12 : 7; c.beginPath(); c.moveTo(sz, 0); c.lineTo(-sz * 0.8, -sz * 0.75); c.lineTo(-sz * 0.4, 0); c.lineTo(-sz * 0.8, sz * 0.75); c.closePath(); c.fill(); c.restore(); c.globalAlpha = 1;
+    if (t.big) { const lx = ax - Math.cos(ang) * 36, ly = ay - Math.sin(ang) * 26; c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; const txt = `${t.label} ${dm}m`; c.strokeText(txt, lx, ly + 4); c.fillStyle = t.col; c.fillText(txt, lx, ly + 4); } }
 }
 
 // =====================================================================
@@ -716,7 +716,7 @@ function applyView() {
   document.body.classList.toggle('fp', on); $('cockpit').classList.toggle('hidden', !on); $('dash').classList.toggle('hidden', !on);
   camera.fov = on ? 76 : 68; resize(); G.fpTier = -1;
 }
-function toggleView() { if (G.state !== 'play') return; G.fp = !G.fp; applyView(); saveSettings(); $('sView').value = G.fp ? '1' : '0'; AU.click(); updateCamera(1); toast(G.fp ? '👁️ 1인칭 조종석 시점' : '👁️ 3인칭 추적 시점', '', 'V 키로 전환'); }
+function toggleView() { if (G.state !== 'play') return; G.fp = !G.fp; applyView(); saveSettings(); $('sView').value = G.fp ? '1' : '0'; AU.click(); updateCamera(1); toast(G.fp ? '1인칭 조종석 시점' : '3인칭 추적 시점', '', 'V 키로 전환합니다.'); }
 const LAMP = {};
 function setLamp(id, cls) { const el = LAMP[id] || (LAMP[id] = $(id)); const c = 'lamp ' + cls; if (el.className !== c) el.className = c; }
 function updateDash() {
@@ -737,13 +737,13 @@ function show(id) { $(id).classList.remove('hidden'); }
 function hide(id) { $(id).classList.add('hidden'); }
 function toast(msg, cls = '', sub = '') { const box = $('toasts'); const el = document.createElement('div'); el.className = 'toast ' + cls; el.innerHTML = esc(msg) + (sub ? `<small>${esc(sub)}</small>` : ''); box.appendChild(el);
   const life = cls === 'big' ? 4500 : cls === 'tip' ? 6500 : 3200; setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 420); }, life); while (box.children.length > 4) box.firstChild.remove(); }
-function tip(id, msg) { if (!SV || SV.tips[id]) return; SV.tips[id] = 1; toast('💡 ' + msg, 'tip'); }
+function tip(id, msg) { if (!SV || SV.tips[id]) return; SV.tips[id] = 1; toast(msg, 'tip'); }
 function switchTab(group, id) { const bar = document.querySelector(`.tabs[data-group="${group}"]`); bar.querySelectorAll('.tab').forEach((b) => { const on = b.dataset.tab === id; b.classList.toggle('on', on); $(b.dataset.tab).classList.toggle('hidden', !on); }); }
 document.querySelectorAll('.tabs').forEach((bar) => bar.addEventListener('click', (e) => { const b = e.target.closest('.tab'); if (!b) return; AU.click(); switchTab(bar.dataset.group, b.dataset.tab); if (b.dataset.tab === 'cxLife') $('cdetail').innerHTML = ''; }));
 function renderUpgrades() { $('dMoney').textContent = fmt(SV.money);
   $('ugrid').innerHTML = UP_ORDER.map((k) => { const u = UP[k], lv = SV.up[k], max = lv >= u.c.length, cost = u.c[lv];
-    return `<div class="ucard"><h4>${u.i} ${u.n}</h4><div class="pips">${u.c.map((_, i) => `<i class="${i < lv ? 'on' : ''}"></i>`).join('')}</div><p>${u.d}</p><div class="uv">${u.f(u.v[lv])}${max ? '' : ` → <b>${u.f(u.v[lv + 1])}</b>`}</div>
-    <button class="btn small ${max ? 'ghost' : 'primary'}" data-buy="${k}" ${max || SV.money < cost ? 'disabled' : ''}>${max ? '최대 레벨' : `구매 · ${fmt(cost)}`}</button></div>`; }).join(''); }
+    return `<div class="urow"><div><h4>${u.n}</h4><p>${u.d}</p></div><div class="pips">${u.c.map((_, i) => `<i class="${i < lv ? 'on' : ''}"></i>`).join('')}</div><div class="uv">${max ? `<b>${u.f(u.v[lv])}</b>` : `${u.v[lv]} → <b>${u.f(u.v[lv + 1])}</b>`}</div>
+    <button class="btn small ${max ? '' : 'buy'}" data-buy="${k}" ${max || SV.money < cost ? 'disabled' : ''}>${max ? '최대' : fmt(cost)}</button></div>`; }).join(''); }
 $('ugrid').addEventListener('click', (e) => { const b = e.target.closest('[data-buy]'); if (b && !b.disabled) buyUpgrade(b.dataset.buy); });
 function renderStats(el) { const s = ST(), t = Math.floor(s.time);
   const rows = [['수거한 쓰레기', `${fmt(s.collected)}개`], ['수거 무게', `${fmt(s.kg)}kg`], ['총 수익', fmt(s.earned)], ['바다 정화율', `${cleanPct()}%`], ['구조한 생물', `${s.rescues} / ${rescues.length}`], ['발견한 생물', `${Object.keys(SV.species).length} / ${SPECIES_ORDER.length}`],
@@ -767,10 +767,10 @@ function renderCodex() {
   const grid = $('cgrid'); grid.innerHTML = '';
   for (const sp of SPECIES_ORDER) { const has = !!SV.species[sp], d = SPECIES[sp]; const card = document.createElement('div'); card.className = 'ccard' + (has ? '' : ' lock');
     let img = ''; try { img = thumbFor(sp); } catch (e) { img = ''; }
-    card.innerHTML = `<div class="thumb">${img ? `<img alt="${esc(d.n)}" src="${img}">` : `<span>${d.i}</span>`}</div><div class="ci"><h5>${has ? esc(d.n) : '???'}</h5><small>${esc(d.hab)}</small></div>`; grid.appendChild(card);
+    card.innerHTML = `<div class="thumb">${img ? `<img alt="${esc(d.n)}" src="${img}">` : `<span>${esc(d.n[0])}</span>`}</div><div class="ci"><h5>${has ? esc(d.n) : '???'}</h5><small>${esc(d.hab)}</small></div>`; grid.appendChild(card);
     card.addEventListener('click', () => { AU.click(); $('cdetail').innerHTML = `<div class="cdetail"><h4>${has ? esc(d.n) : '미발견 생물'}</h4><div style="color:var(--muted);font-size:12px;margin-bottom:6px">서식지: ${esc(d.hab)}</div>${has ? esc(d.d) : '아직 발견하지 못했습니다. 서식지를 탐험해 보세요.'}</div>`; }); }
-  $('plist').innerHTML = POIS.map((p) => { const has = !!SV.pois[p.id]; return `<div class="pitem ${has ? '' : 'lock'}"><div class="pi">${has ? p.i : '❔'}</div><div><h5>${has ? esc(p.n) : '미발견 장소'}</h5><p>${has ? esc(p.d) : `수심 약 ${Math.round(depthOf(p.y) / 50) * 50}m 부근 · 아직 발견하지 못했습니다`}</p></div></div>`; }).join('');
-  const s = ST().types; $('tlist').innerHTML = Object.keys(TRASH).map((k) => { const n = s[k] || 0, t = TRASH[k]; return `<div class="pitem ${n ? '' : 'lock'}"><div class="pi">${n ? '♻️' : '❔'}</div><div><h5>${n ? esc(t.n) : '???'} <span style="color:var(--muted);font-size:12px;font-weight:600">${n ? `${t.kg}kg · ${t.v}` : ''}</span></h5><p>${n ? esc(t.fact) : '아직 수거하지 않은 쓰레기입니다.'}</p></div><div class="cnt">${n}</div></div>`; }).join('');
+  $('plist').innerHTML = POIS.map((p) => { const has = !!SV.pois[p.id]; return `<div class="pitem ${has ? '' : 'lock'}"><div><h5>${has ? esc(p.n) : '미발견 장소'}</h5><p>${has ? esc(p.d) : `수심 약 ${Math.round(depthOf(p.y) / 50) * 50}m 부근 · 아직 발견하지 못했습니다`}</p></div></div>`; }).join('');
+  const s = ST().types; $('tlist').innerHTML = Object.keys(TRASH).map((k) => { const n = s[k] || 0, t = TRASH[k]; return `<div class="pitem ${n ? '' : 'lock'}"><div><h5>${n ? esc(t.n) : '미수거'}${n ? `<span>${t.kg}kg · ${t.v}</span>` : ''}</h5><p>${n ? esc(t.fact) : '아직 수거하지 않은 쓰레기입니다.'}</p></div><div class="cnt">${n}</div></div>`; }).join('');
 }
 const H = {};
 const zoneName = (dm) => (dm < 60 ? '표층' : dm < 220 ? '중층' : dm < 500 ? '심층' : '심해');
@@ -785,7 +785,7 @@ function updateHUD() {
   H.hZone.textContent = zoneName(dm); H.hLimit.textContent = `한계 ${S.depth}m`; H.hDepthMark.style.left = clamp((dm / 900) * 100, 0, 100) + '%'; H.hLimitMark.style.left = clamp((S.depth / 900) * 100, 0, 100) + '%';
   H.hClean.textContent = cleanPct().toFixed(1) + '%'; H.hCleanBar.style.width = (G.clean * 100).toFixed(1) + '%';
   const m = MISSIONS[SV.mission];
-  if (m) { H.mIdx.textContent = `${SV.mission + 1}/${MISSIONS.length}`; H.mName.textContent = m.t; H.mDesc.textContent = m.d; H.mRw.textContent = `보상 ${fmt(m.rw)}`; const [c, g] = mProg(m); H.mProgRow.style.display = ''; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = m.poi || m.sp ? (c ? '완료' : '탐색 중') : `${fmt(c)} / ${fmt(g)}`; }
+  if (m) { H.mIdx.textContent = `${SV.mission + 1}/${MISSIONS.length}`; H.mName.textContent = m.t; H.mDesc.textContent = m.d; H.mRw.textContent = `+${fmt(m.rw)}`; const [c, g] = mProg(m); H.mProgRow.style.display = ''; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = m.poi || m.sp ? (c ? '완료' : '탐색 중') : `${fmt(c)} / ${fmt(g)}`; }
   else { H.mIdx.textContent = ''; H.mName.textContent = '자유 탐험'; H.mDesc.textContent = '모든 임무를 완료했습니다. 남은 쓰레기를 모두 치워 보세요!'; H.mRw.textContent = ''; H.mProgRow.style.display = 'none'; }
   if (G.alert) { H.alert.textContent = G.alert; H.alert.classList.add('on'); } else H.alert.classList.remove('on');
   const cd = G.sonarCd > 0; H.sonarInd.classList.toggle('cd', cd); H.sonarTxt.textContent = cd ? `소나 충전 중 ${G.sonarCd.toFixed(1)}s` : '소나 준비 (Q)'; H.tSonar.innerHTML = cd ? `<span>${Math.ceil(G.sonarCd)}</span>` : '소나';
@@ -806,9 +806,9 @@ function showTitle() { G.state = 'title'; unlockPointer(); hide('hud'); hide('to
   const d = loadGame(); $('bContinue').classList.toggle('hidden', !d); $('bNew').classList.toggle('primary', !d); SV = freshSave(); calcStats(); resetWorld(); G.clean = 0.6; G.coralH = -1; missionTickCoral(); SUB.root.visible = false; applyView(); }
 function missionTickCoral() { const h = Math.round(clamp(0.12 + G.clean * 1.15, 0, 1) * 50) / 50; if (h !== G.coralH) { G.coralH = h; flora.setCoralHealth(h); } }
 function startGame(d) { AU.init(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); requestLock();
-  const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽: 이동</span><span>오른쪽 드래그: 시점</span><span>빔: 수거·절단</span><span>👁️ 시점 전환</span>' : '<span><kbd>WASD</kbd> 이동</span><span><kbd>마우스</kbd> 시점</span><span><kbd>Space</kbd>/<kbd>C</kbd> 상승·하강</span><span><kbd>클릭</kbd>/<kbd>E</kbd> 빔</span><span><kbd>Q</kbd> 소나</span><span><kbd>Shift</kbd> 부스트</span><span><kbd>V</kbd> 1인칭/3인칭</span><span><kbd>M</kbd> 지도</span><span><kbd>Tab</kbd> 도감</span>';
+  const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>빔으로 수거·절단</span>' : '<span><kbd>WASD</kbd>이동</span><span><kbd>Space</kbd><kbd>C</kbd>상승·하강</span><span><kbd>클릭</kbd>빔</span><span><kbd>Q</kbd>소나</span><span><kbd>Shift</kbd>가속</span><span><kbd>V</kbd>시점</span><span><kbd>M</kbd>지도</span><span><kbd>Tab</kbd>도감</span>';
   setTimeout(() => { hint.style.opacity = 0; }, 25000);
-  if (!d) { setTimeout(() => toast('🌊 해양 정화선 푸른바다호에 오신 것을 환영합니다', 'big', '바다가 쓰레기로 죽어가고 있습니다. 잠수정으로 쓰레기를 수거해 주세요.'), 600); setTimeout(() => { const m = MISSIONS[0]; toast(`임무: ${m.t}`, 'tip', m.d); }, 4200); }
+  if (!d) { setTimeout(() => toast('해양 정화선 푸른바다호', 'big', '바다가 쓰레기로 병들고 있습니다. 잠수정으로 쓰레기를 수거해 주세요.'), 600); setTimeout(() => { const m = MISSIONS[0]; toast(`임무: ${m.t}`, 'tip', m.d); }, 4200); }
   else toast('이어서 탐험을 시작합니다', '', `바다 정화율 ${cleanPct()}%`);
   saveGame(); }
 function showWin() { G.state = 'menu'; prevState = 'play'; unlockPointer(); const s = ST(); $('winStats').innerHTML = [['수거한 쓰레기', `${fmt(s.collected)}개`], ['수거 무게', `${fmt(s.kg)}kg`], ['구조한 생물', `${s.rescues}마리`], ['발견한 생물', `${Object.keys(SV.species).length}종`], ['플레이 시간', `${Math.floor(s.time / 60)}분`], ['총 수익', fmt(s.earned)]].map((r) => `<div class="stat"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
