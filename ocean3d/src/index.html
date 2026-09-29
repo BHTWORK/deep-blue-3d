@@ -40,6 +40,11 @@ body.fp #hint{bottom:182px}
 #loading{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:#021526;font-size:15px;font-weight:700;color:#9fdcef}
 #loading i{width:42px;height:42px;border-radius:50%;border:3px solid rgba(63,224,208,.25);border-top-color:#3fe0d0;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+#loading .lhint{max-width:440px;padding:0 20px;text-align:center;font-size:13px;font-weight:600;line-height:1.7;color:#8fb4cc;opacity:0;animation:lfade .6s 7s forwards}
+#loading.err .lhint{display:none}
+#loading.err span{color:#ffb3b5;max-width:460px;text-align:center;padding:0 20px;line-height:1.6}
+#loading.err i{display:none}
+@keyframes lfade{to{opacity:1}}
 .thumb{height:92px;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 60%,#0f4a73,#04182c);font-size:40px}
 .thumb img{width:100%;height:100%;object-fit:contain}
 .ccard.lock .thumb img{filter:brightness(0) opacity(.55)}
@@ -232,7 +237,7 @@ body.touch #crosshair{opacity:.6}
 <canvas id="cockpit" class="hidden"></canvas>
 <canvas id="overlay"></canvas>
 <div id="vign"></div><div id="dmgVig"></div><div id="flash"></div>
-<div id="loading"><i></i><span>심해 세계를 생성하는 중…</span></div>
+<div id="loading"><i></i><span id="loadMsg">심해 세계를 생성하는 중…</span><p class="lhint">이 화면이 계속된다면 지금 보고 있는 앱의 파일 미리보기가 스크립트 실행을 막고 있는 것입니다.<br>파일을 Safari·Chrome 같은 브라우저로 열거나, 공유받은 게임 링크로 접속하세요.</p></div>
 
 <div id="hud" class="hidden">
   <div id="crosshair"></div>
@@ -405,6 +410,13 @@ body.touch #crosshair{opacity:.6}
 
 <div id="fade"></div>
 
+<script>
+(function () {
+  function fail(msg) { var l = document.getElementById('loading'); if (!l) return; l.classList.remove('hidden'); l.classList.add('err'); var s = document.getElementById('loadMsg'); if (s) s.textContent = msg; }
+  window.addEventListener('error', function (e) { if (!window.__game) fail('게임을 시작하지 못했습니다: ' + (e.message || '알 수 없는 오류') + ' — 최신 Chrome·Safari·Edge에서 다시 열어 주세요.'); });
+  try { var c = document.createElement('canvas'); if (!(c.getContext('webgl2') || c.getContext('webgl'))) fail('이 기기나 브라우저에서 3D 그래픽(WebGL)을 쓸 수 없습니다. 브라우저 설정에서 하드웨어 가속을 켜거나 다른 브라우저로 열어 주세요.'); } catch (e) { /* ignore */ }
+})();
+</script>
 <script>
 /*__BUNDLE__*/
 </script>
