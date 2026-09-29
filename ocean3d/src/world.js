@@ -40,11 +40,17 @@ function heightRaw(x, z) {
   h += smooth(790, 895, edge) * 520;
   return Math.min(h, -5);
 }
-export function heightAt(x, z) {
+// The wreck and the airliner rest on levelled beds cut into the slope. HGT0 keeps the seabed from before
+// the beds so item generation, which tests heights, still lays out the same items (saves refer to them by id).
+const BEDS = POIS.filter((p) => p.id === 'wreck' || p.id === 'plane');
+const HGT0 = new Float32Array(GN * GN);
+function sampleGrid(A, x, z) {
   const gx = clamp((x + WORLD.half) / CELL, 0, WORLD.N - 0.001), gz = clamp((z + WORLD.half) / CELL, 0, WORLD.N - 0.001);
   const i = Math.floor(gx), j = Math.floor(gz), fx = gx - i, fz = gz - j, k = j * GN + i;
-  return (HGT[k] * (1 - fx) + HGT[k + 1] * fx) * (1 - fz) + (HGT[k + GN] * (1 - fx) + HGT[k + GN + 1] * fx) * fz;
+  return (A[k] * (1 - fx) + A[k + 1] * fx) * (1 - fz) + (A[k + GN] * (1 - fx) + A[k + GN + 1] * fx) * fz;
 }
+export const heightAt = (x, z) => sampleGrid(HGT, x, z);
+export const heightAt0 = (x, z) => sampleGrid(HGT0, x, z);
 export function normalAt(x, z) { const e = 2; return new THREE.Vector3(heightAt(x - e, z) - heightAt(x + e, z), 2 * e, heightAt(x, z - e) - heightAt(x, z + e)).normalize(); }
 
 // ---- caustics shader injection (world-space, top-facing surfaces, fades with depth)
@@ -92,7 +98,11 @@ export function addSway(mat, amp = 1) {
 
 // ---------------------------------------------------------------- terrain
 export function buildTerrain() {
-  for (let j = 0; j < GN; j++) for (let i = 0; i < GN; i++) HGT[j * GN + i] = heightRaw(-WORLD.half + i * CELL, -WORLD.half + j * CELL);
+  for (let j = 0; j < GN; j++) for (let i = 0; i < GN; i++) HGT0[j * GN + i] = heightRaw(-WORLD.half + i * CELL, -WORLD.half + j * CELL);
+  HGT.set(HGT0);
+  for (const b of BEDS) { const lvl = heightRaw(b.x, b.z), R = b.r * 1.3;
+    for (let j = 0; j < GN; j++) for (let i = 0; i < GN; i++) { const x = -WORLD.half + i * CELL, z = -WORLD.half + j * CELL, d = Math.hypot(x - b.x, z - b.z); if (d >= R) continue;
+      const k = j * GN + i; HGT[k] = lerp(HGT[k], lvl + NZ(x * 0.07 + 3, z * 0.07) * 0.9, 1 - smooth(b.r * 0.45, R, d)); } }
   const geo = new THREE.PlaneGeometry(WORLD.size, WORLD.size, WORLD.N, WORLD.N).rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); pos.setY(k, heightAt(x, z)); }
@@ -359,31 +369,87 @@ function shipHull(L, H, W, colorFn) {
     z *= lerp(0.5, 1, (y + H / 2) / H); if (y > 0 && x > L * 0.3) y += (x - L * 0.3) * 0.12; p.setXYZ(i, x, y, z); }
   return P(g, '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], colorFn);
 }
+// one piece of a ship hull of total length L, spanning x0..x1, with the torn end at x = brokenAt
+function hullSection(L, H, W, x0, x1, colorFn, brokenAt) {
+  const len = x1 - x0, g = new THREE.BoxGeometry(len, H, W, Math.max(4, Math.round(len / 1.4)), 5, 8).translate((x0 + x1) / 2, 0, 0), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { let x = p.getX(i), y = p.getY(i), z = p.getZ(i); const bx = L * 0.2;
+    if (x > bx) z *= 1 - Math.pow((x - bx) / (L / 2 - bx), 1.6) * 0.95;
+    if (x < -L * 0.4) z *= 1 - ((-L * 0.4 - x) / (L * 0.1)) * 0.25;
+    z *= lerp(0.5, 1, (y + H / 2) / H); if (y > 0 && x > L * 0.3) y += (x - L * 0.3) * 0.12;
+    if (Math.abs(x - brokenAt) < 0.01) { x += NZ(y * 0.9 + 3, z * 0.9) * 2.4; y += NZ(z * 0.7, y * 0.7 + 5) * 0.9; }
+    p.setXYZ(i, x, y, z); }
+  g.computeVertexNormals();
+  return P(g, '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => (Math.abs(x - brokenAt) < 2.6 && NZ(y * 1.3, z * 1.3) > -0.1 ? [0.05, 0.04, 0.04] : colorFn(x, y, z)));
+}
 function colliderLine(colliders, obj, from, to, r, n) { obj.updateMatrixWorld(true); for (let k = 0; k <= n; k++) { const v = new THREE.Vector3().lerpVectors(from, to, k / n).applyMatrix4(obj.matrixWorld); colliders.push({ x: v.x, y: v.y, z: v.z, r }); } }
 export function buildSetPieces(scene, colliders) {
   const out = {}; const P0 = Object.fromEntries(POIS.map((p) => [p.id, p]));
   const metal = addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.2, side: THREE.DoubleSide }), 0.5);
-  // shipwreck
-  { const g = new THREE.Group(); const w = P0.wreck;
-    const hull = shipHull(46, 9, 11, (x, y, z) => rusty(x, y, z));
-    const house = P(new THREE.BoxGeometry(10, 5, 8), '#fff', [-8, 6.5, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => (Math.abs(y - 7) < 0.6 && Math.abs(z) > 3.9 ? [0.05, 0.05, 0.06] : rusty(x, y, z, [0.45, 0.4, 0.35])));
-    const funnel = P(new THREE.CylinderGeometry(1.4, 1.6, 6, 12), '#fff', [2, 8, 0], [0, 0, -0.35], [1, 1, 1], (x, y, z) => (Math.abs(y - 9.5) < 0.6 ? [0.5, 0.12, 0.08] : rusty(x, y, z, [0.3, 0.2, 0.16])));
-    const mast = P(new THREE.CylinderGeometry(0.3, 0.35, 12, 6), '#3a2a20', [13, 7, 0], [0, 0, -0.9]);
-    const rail = []; for (let x = -20; x < 18; x += 1.6) rail.push(P(new THREE.BoxGeometry(0.1, 1.2, 0.1), '#5a4030', [x, 5, 5.2 * (x > 9 ? 1 - (x - 9) / 14 * 0.9 : 1)]));
-    g.add(new THREE.Mesh(M(hull, house, funnel, mast, ...rail), metal));
-    const y = heightAt(w.x, w.z); g.position.set(w.x, y + 1.5, w.z); g.rotation.set(0.05, 0.6, 0.33); scene.add(g);
-    colliderLine(colliders, g, new THREE.Vector3(-20, 0, 0), new THREE.Vector3(20, 0, 0), 5.2, 8);
-    out.wreck = g; }
-  // airplane
-  { const g = new THREE.Group(); const w = P0.plane; const tint = (x, y, z) => { const n = NZ(x * 0.8, y + z * 0.8) * 0.5 + 0.5; const moss = NZ(x * 2.1 + 5, z * 2.1) > 0.35; return moss ? [0.25, 0.35, 0.18] : [0.52 * (0.8 + n * 0.3), 0.56 * (0.8 + n * 0.3), 0.6 * (0.8 + n * 0.3)]; };
-    const parts = [P(lathe([[0.2, -7], [0.7, -5.5], [1.3, -2], [1.4, 1.5], [1.2, 4], [0.9, 6], [0.4, 6.6]], 14), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], tint),
-      P(new THREE.BoxGeometry(9, 0.3, 2.4), '#fff', [4.4, -0.3, 1], [0, 0, -0.08], [1, 1, 1], tint), P(new THREE.BoxGeometry(5, 0.3, 2.4), '#fff', [-2.8, -0.3, 1], [0, 0, 0.25], [1, 1, 1], tint),
-      P(vFin([[-5.5, 1], [-7, 3.6], [-7.4, 3.6], [-7, 0.5]]), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], tint), P(new THREE.BoxGeometry(5, 0.2, 1.4), '#fff', [0, 0.4, -6.6], [0, 0, 0], [1, 1, 1], tint),
-      P(new THREE.SphereGeometry(1.0, 12, 8, 0, TAU, 0, Math.PI / 2), '#1c2a36', [0, 0.9, 2.4], [0, 0, 0], [0.9, 0.8, 1.5]),
-      P(new THREE.CylinderGeometry(1.3, 1.3, 0.05, 20), '#ffffff', [1.38, 0, -2.5], [0, 0, Math.PI / 2], [1, 1, 1], (x, y, z) => { const r = Math.hypot(y, z + 2.5); return r < 0.35 ? [0.12, 0.3, 0.6] : r < 0.8 ? [0.75, 0.15, 0.12] : [0.9, 0.9, 0.9]; }),
-      ...[0, 1, 2].map((i) => P(new THREE.BoxGeometry(0.3, 2.2, 0.08), '#2b2f33', [0, 0, 6.8], [0, 0, (i * TAU) / 3 + 0.4], [1, 1, 1], (x, y) => [0.17, 0.18, 0.2]))];
-    g.add(new THREE.Mesh(M(...parts), metal)); const y = heightAt(w.x, w.z); g.position.set(w.x, y + 0.6, w.z); g.rotation.set(-0.18, -0.9, 0.12); scene.add(g);
-    colliderLine(colliders, g, new THREE.Vector3(0, 0, -6), new THREE.Vector3(0, 0, 6), 1.8, 6); colliderLine(colliders, g, new THREE.Vector3(-4, 0, 1), new THREE.Vector3(8, 0, 1), 1.2, 5); }
+  out.sites = {};
+  // shipwreck: a cargo ship broken in two, the halves lying apart on the plain
+  { const w = P0.wreck, L = 56, H = 10, W = 12, deck = H / 2;
+    const hullCol = (x, y, z) => { if (y < -1.8) return rusty(x, y, z, [0.4, 0.12, 0.09]); if (NZ(x * 0.7 + 11, y * 0.9 + z * 0.2) > 0.38) return [0.2, 0.28, 0.19]; return rusty(x, y, z, [0.17, 0.17, 0.18]); };
+    const steel = (x, y, z) => (NZ(x * 0.9 + 4, y * 0.9 + z * 0.4) > 0.3 ? [0.19, 0.26, 0.17] : rusty(x, y, z, [0.25, 0.23, 0.2]));
+    const dark = () => [0.03, 0.03, 0.035];
+    const rails = (x0, x1, zz) => { const r = []; for (let x = x0; x <= x1; x += 1.6) for (const sd of [-1, 1]) r.push(P(new THREE.BoxGeometry(0.1, 1.1, 0.1), '#4a3a2e', [x, deck + 0.55, sd * zz(x)])); for (const sd of [-1, 1]) r.push(P(new THREE.BoxGeometry(x1 - x0, 0.08, 0.08), '#4a3a2e', [(x0 + x1) / 2, deck + 1.1, sd * zz((x0 + x1) / 2)])); return r; };
+    const halfW = (x) => { const bx = L * 0.2; let z = W / 2; if (x > bx) z *= 1 - Math.pow((x - bx) / (L / 2 - bx), 1.6) * 0.95; return z * 0.92; };
+    // stern half: superstructure, funnel, lifeboat davits, propeller and rudder
+    const stern = [hullSection(L, H, W, -28, 2, hullCol, 2),
+      P(new THREE.BoxGeometry(11, 5.5, 10.4), '#fff', [-17, deck + 2.75, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => (Math.abs(y - (deck + 3.8)) < 0.45 && Math.abs(z) > 5 ? [0.04, 0.05, 0.06] : steel(x, y, z))),
+      P(new THREE.BoxGeometry(7, 3, 12), '#fff', [-18, deck + 7, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => (Math.abs(y - (deck + 7.3)) < 0.6 && (Math.abs(z) > 5.8 || x > -14.6) ? [0.04, 0.05, 0.06] : steel(x, y, z))),
+      P(new THREE.CylinderGeometry(1.5, 1.8, 7, 14), '#fff', [-20.5, deck + 9.5, 0], [0, 0, 0.12], [1, 1, 1], (x, y, z) => (Math.abs(y - (deck + 11.8)) < 0.7 ? [0.55, 0.14, 0.08] : rusty(x, y, z, [0.2, 0.17, 0.15]))),
+      P(new THREE.CylinderGeometry(0.18, 0.22, 7, 6), '#3a2e26', [-17, deck + 11.5, 0]), P(new THREE.BoxGeometry(0.15, 0.15, 4), '#3a2e26', [-17, deck + 13.6, 0]),
+      ...[-1, 1].flatMap((sd) => [-22, -12].map((x) => P(new THREE.TorusGeometry(1.2, 0.1, 5, 10, Math.PI * 0.6), '#3a2e26', [x, deck + 5.8, sd * 5.4], [0, 0, 0], [1, 1, 1]))),
+      P(new THREE.BoxGeometry(4.5, 0.9, 7), '#fff', [-3.5, deck + 0.45, 0], [0, 0, 0], [1, 1, 1], steel), P(new THREE.BoxGeometry(4.1, 0.06, 6.6), '#000', [-3.5, deck + 0.93, 0], [0, 0, 0], [1, 1, 1], dark),
+      ...rails(-27, 1, halfW),
+      P(new THREE.CylinderGeometry(0.5, 0.5, 0.8, 10), '#6a5a48', [-28.4, -2.4, 0], [0, 0, Math.PI / 2]),
+      ...[0, 1, 2, 3].map((i) => P(new THREE.BoxGeometry(0.25, 2.4, 0.9), '#7a6448', [-28.8, -2.4, 0], [(i * Math.PI) / 2 + 0.3, 0, 0], [1, 1, 1], () => [0.48, 0.38, 0.26]).translate(0, 0, 0)),
+      P(new THREE.BoxGeometry(2.6, 4.2, 0.3), '#fff', [-29.6, -1.6, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => rusty(x, y, z))];
+    // bow half: hatches, a derrick, the forecastle and the anchor chain running down to the sand
+    const chain = []; for (let i = 0; i < 16; i++) { const t = i / 15; chain.push(P(new THREE.TorusGeometry(0.28, 0.08, 4, 8), '#3a2c22', [26 + t * 6, 1.2 - t * 6.5 + Math.sin(t * Math.PI) * -0.6, 4.6 + t * 3], [i % 2 ? Math.PI / 2 : 0, 0, 0.5])); }
+    const bow = [hullSection(L, H, W, 6, 28, hullCol, 6),
+      ...[9.5, 17.5].flatMap((x) => [P(new THREE.BoxGeometry(5, 1, 7.4), '#fff', [x, deck + 0.5, 0], [0, 0, 0], [1, 1, 1], steel), P(new THREE.BoxGeometry(4.6, 0.06, 7), '#000', [x, deck + 1.03, 0], [0, 0, 0], [1, 1, 1], dark)]),
+      P(new THREE.CylinderGeometry(0.35, 0.45, 9, 8), '#fff', [13.5, deck + 4.5, 0], [0, 0, 0], [1, 1, 1], steel), P(new THREE.CylinderGeometry(0.18, 0.22, 10, 6), '#fff', [16, deck + 5, 0], [0, 0, -0.95], [1, 1, 1], steel),
+      P(new THREE.BoxGeometry(6, 2.2, 8), '#fff', [24.5, deck + 1.1 + 1.3, 0], [0, 0, 0], [1, 1, 1], steel), P(new THREE.CylinderGeometry(0.5, 0.5, 1.6, 8), '#5a4a3a', [23, deck + 3.6, 1.6], [Math.PI / 2, 0, 0]), P(new THREE.CylinderGeometry(0.5, 0.5, 1.6, 8), '#5a4a3a', [23, deck + 3.6, -1.6], [Math.PI / 2, 0, 0]),
+      ...rails(7, 21, halfW), ...chain,
+      P(new THREE.BoxGeometry(0.3, 2.6, 0.3), '#2e2620', [32, -5.4, 7.6]), P(new THREE.TorusGeometry(0.9, 0.16, 5, 10, Math.PI), '#2e2620', [32, -6.6, 7.6], [0, 0, Math.PI])];
+    const sg = new THREE.Group(); sg.add(new THREE.Mesh(M(...stern), metal));
+    const bg = new THREE.Group(); bg.add(new THREE.Mesh(M(...bow), metal));
+    const place = (grp, dx, dz, ry, rx, rz) => { const x = w.x + dx, z = w.z + dz; grp.position.set(x, heightAt(x, z) + H * 0.32, z); grp.rotation.set(rx, ry, rz); scene.add(grp); grp.updateMatrixWorld(true); };
+    place(sg, -12, 7, 0.6, 0.02, 0.24); place(bg, 12, -9, 1.05, -0.06, -0.3);
+    colliderLine(colliders, sg, new THREE.Vector3(-26, 0, 0), new THREE.Vector3(0, 0, 0), 5.4, 7); colliderLine(colliders, sg, new THREE.Vector3(-18, deck + 4, 0), new THREE.Vector3(-18, deck + 4, 0), 5.5, 0);
+    colliderLine(colliders, bg, new THREE.Vector3(7, 0, 0), new THREE.Vector3(27, 0, 0), 4.8, 6);
+    const W2 = (grp, x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(grp.matrixWorld);
+    out.sites.wreck = { center: new THREE.Vector3(w.x, heightAt(w.x, w.z), w.z), r: 60,
+      spots: [W2(sg, -24, deck + 0.4, 2.5), W2(sg, -24, deck + 0.4, -2.5), W2(sg, -8, deck + 0.4, 3), W2(sg, -3.5, deck + 1.3, 1.5), W2(sg, -1, deck + 0.4, -3), W2(bg, 9.5, deck + 1.3, 1.8), W2(bg, 13, deck + 0.4, -3), W2(bg, 17.5, deck + 1.3, -1.5), W2(bg, 20.5, deck + 0.4, 3)],
+      leaks: [W2(sg, 1.5, 0.5, 0), W2(bg, 6.5, -0.5, 1), W2(sg, -20.5, deck + 13, 0)] };
+    out.wreck = sg; }
+  // airliner: a twin-engine propeller plane, its tail section and right wing torn off nearby
+  { const w = P0.plane;
+    const alu = (x, y, z) => { const n = NZ(x * 0.8 + 2, y * 0.9 + z * 0.6) * 0.5 + 0.5; if (NZ(x * 1.6 + 7, z * 1.6 + y) > 0.3) return [0.2, 0.29, 0.17]; const v = 0.38 + n * 0.2; return [v * 0.95, v, v * 1.04]; };
+    const body = (x, y, z) => { const r = Math.hypot(x, y) || 1; if (y / r > -0.2 && y / r < 0.12 && Math.abs(x) > 0.3) return [0.16, 0.26, 0.52]; return alu(x, y, z); };
+    const R = (z) => (z > 6 ? lerp(1.35, 0.35, (z - 6) / 3.6) : z > 0 ? 1.4 : z > -6 ? lerp(1.4, 1.05, -z / 6) : lerp(1.05, 0.4, (-z - 6) / 4.2));
+    const fus = (z0, z1) => { const prof = []; for (let z = z0; z <= z1 + 1e-6; z += 0.5) prof.push([R(z), z]); return P(lathe(prof, 18), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], body); };
+    const windows = (z0, z1) => { const r = []; for (let z = z0; z <= z1; z += 1.15) for (const sd of [-1, 1]) r.push(P(new THREE.BoxGeometry(0.06, 0.42, 0.55), '#0a1016', [sd * R(z) * 0.985, 0.45, z])); return r; };
+    const wing = (sd, len) => { const g = new THREE.BoxGeometry(len, 0.34, 3.4, 8, 1, 2); const q = g.attributes.position; for (let i = 0; i < q.count; i++) { const x = q.getX(i), t = (x + len / 2) / len; q.setZ(i, q.getZ(i) * (1 - t * 0.5) - t * 0.6); q.setY(i, q.getY(i) * (1 - t * 0.5) + t * 0.7); } g.translate(sd * len / 2, 0, 0); if (sd < 0) g.scale(1, 1, 1); return P(g, '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], alu); };
+    const engine = (x, bent) => [P(new THREE.CylinderGeometry(0.72, 0.62, 3.6, 14), '#fff', [x, -0.1, 1.2], [Math.PI / 2, 0, 0], [1, 1, 1], alu), P(new THREE.SphereGeometry(0.42, 10, 8), '#3a3e44', [x, -0.1, 3.1]),
+      ...[0, 1, 2].map((i) => P(new THREE.BoxGeometry(0.22, 2.3, 0.06), '#2b2f33', [x, -0.1, 3.25], [bent && i === 1 ? 0.7 : 0, 0, (i * TAU) / 3 + 0.3], [1, 1, 1], () => [0.17, 0.18, 0.2]).translate(0, 0, 0))];
+    const cockpit = [-0.45, 0.45].map((xx) => P(new THREE.BoxGeometry(0.62, 0.38, 0.06), '#0a1016', [xx, 0.78, 7.55], [-0.5, xx * 0.6, 0]));
+    const front = [fus(-3.5, 9.6), ...windows(-2.8, 5), ...cockpit, wing(1, 11), ...engine(4.3, false), P(new THREE.CircleGeometry(1.4, 18), '#050608', [0, 0, -3.49], [0, Math.PI, 0])];
+    const tail = [fus(-10.2, -4), ...windows(-5.6, -4.4), P(vFin([[-6.5, 1.0], [-9.4, 3.8], [-10.2, 3.8], [-10.1, 0.6]]), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], alu),
+      P(new THREE.BoxGeometry(7, 0.18, 1.8), '#fff', [0, 0.3, -9.3], [0, 0, 0], [1, 1, 1], alu), P(new THREE.CircleGeometry(1.1, 16), '#050608', [0, 0, -3.99], [0, 0, 0])];
+    const rwing = [wing(-1, 11), ...engine(-4.3, true)];
+    const fg = new THREE.Group(); fg.add(new THREE.Mesh(M(...front), metal));
+    const tg = new THREE.Group(); tg.add(new THREE.Mesh(M(...tail), metal));
+    const rg = new THREE.Group(); rg.add(new THREE.Mesh(M(...rwing), metal));
+    const put = (grp, dx, dz, lift, ry, rx, rz) => { const x = w.x + dx, z = w.z + dz; grp.position.set(x, heightAt(x, z) + lift, z); grp.rotation.set(rx, ry, rz); scene.add(grp); grp.updateMatrixWorld(true); };
+    put(fg, 0, 0, 0.9, -0.9, -0.08, 0.16); put(tg, -9, -7, 0.7, -0.4, 0.05, -0.5); put(rg, 5, -9, 0.4, -1.6, 0, 0.1);
+    colliderLine(colliders, fg, new THREE.Vector3(0, 0, -3), new THREE.Vector3(0, 0, 9), 1.7, 6); colliderLine(colliders, fg, new THREE.Vector3(1.5, 0, -0.5), new THREE.Vector3(10.5, 0.5, -1), 1.1, 5);
+    colliderLine(colliders, tg, new THREE.Vector3(0, 0, -10), new THREE.Vector3(0, 0, -4), 1.3, 3); colliderLine(colliders, rg, new THREE.Vector3(-1.5, 0, -0.5), new THREE.Vector3(-10.5, 0.5, -1), 1.1, 5);
+    const W2 = (grp, x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(grp.matrixWorld);
+    out.sites.plane = { center: new THREE.Vector3(w.x, heightAt(w.x, w.z), w.z), r: 48,
+      spots: [W2(fg, 3, 0.55, -0.6), W2(fg, 7.5, 0.9, -1.2), W2(fg, 0, -0.9, -4.6), W2(fg, 0.8, -0.9, -6), W2(tg, 0, -0.6, -3), W2(rg, -5.5, 0.6, -1)],
+      leaks: [W2(fg, 4.3, 0.2, -1.2), W2(rg, -4.3, 0.2, -1.2)] }; }
   // whale fall
   { const g = new THREE.Group(); const w = P0.whalefall; const parts = [];
     const spine = (t) => new THREE.Vector3(-10 + t * 20, 0.6 + Math.sin(t * 3) * 0.4, Math.sin(t * 2.4) * 1.5);

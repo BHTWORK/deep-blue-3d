@@ -82,6 +82,15 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 #hudMission .mg .arr{flex:none;width:16px;height:16px;fill:var(--accent);transition:transform .15s linear}
 #hudMission .mt .num{color:var(--mute);font-size:11px}
 #hudMission .bar i{background:var(--accent)}
+#hudSite{padding:7px 12px;display:flex;flex-direction:column;gap:5px}
+#hudSite .mt{display:flex;align-items:baseline;gap:7px;font-size:12px}
+#hudSite .stag{flex:none;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;color:#0b1116;background:var(--warn)}
+#hudSite .mn{flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hudSite .num{font-family:var(--mono);font-size:11px;color:var(--mute)}
+#hudSite .bar i{background:var(--warn)}
+#hudSite .sd{font-size:11px;color:var(--mute)}
+#hudSite.done .stag,#hudSite.done .bar i{background:var(--ok)}
+#hudSite.done .sd{color:var(--ok)}
 
 #hudRight{position:absolute;right:var(--hr);top:var(--hy);width:172px;display:flex;flex-direction:column;align-items:stretch;gap:6px}
 .mapbox{padding:5px;display:flex;flex-direction:column;gap:5px}
@@ -281,6 +290,11 @@ body.fp #vign,body.fp #sonarInd,body.fp #hudStats{display:none}
       <div class="md" id="mDesc"></div>
       <div class="bar" id="mProgRow"><i id="mBar"></i></div>
       <div class="mg" id="mGuide"><svg class="arr" id="mArrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 20 20.5 12 15.8 4 20.5z"/></svg><span id="mGuideTxt"></span></div>
+    </div>
+    <div id="hudSite" class="glass hidden">
+      <div class="mt"><span class="stag">정화 현장</span><span class="mn" id="sName"></span><span class="num" id="sProg"></span></div>
+      <div class="bar"><i id="sBar"></i></div>
+      <div class="sd" id="sState"></div>
     </div>
   </div>
   <div id="hudRight">

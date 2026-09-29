@@ -115,6 +115,28 @@ export function buildTrashGeos() {
   cont.push(P(new THREE.BoxGeometry(0.06, 2.4, 0.06), '#555555', [3.62, 0, 0.5]), P(new THREE.BoxGeometry(0.06, 2.4, 0.06), '#555555', [3.62, 0, -0.5]));
   G.container = M(...cont);
   G.net = displace(new THREE.IcosahedronGeometry(1.5, 1), 0.35, 1.5, 4);
+  // debris from the shipwreck and the crashed airliner
+  const moss = (x, y, z, f = 1.4) => NZ(x * f + 9, z * f + y) > 0.45;
+  const wood = (x, y, z) => { if (moss(x, y, z)) return [0.22, 0.32, 0.18]; const n = NZ(x * 3 + 1, y * 3 + z * 2) * 0.5 + 0.5, gap = Math.abs((((y + 0.425) / 0.2125) % 1) - 0.5) > 0.42, k = gap ? 0.4 : 0.8 + n * 0.35; return [0.46 * k, 0.31 * k, 0.17 * k]; };
+  G.crate = M(P(new THREE.BoxGeometry(1.3, 0.85, 0.9, 6, 8, 4), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], wood),
+    ...[-1, 1].flatMap((sd) => [P(new THREE.BoxGeometry(0.12, 0.93, 0.05), '#4a3219', [sd * 0.58, 0, 0.46]), P(new THREE.BoxGeometry(0.12, 0.93, 0.05), '#4a3219', [sd * 0.58, 0, -0.46])]),
+    P(new THREE.BoxGeometry(1.36, 0.12, 0.05), '#4a3219', [0, 0, 0.46], [0, 0, 0.62]), P(new THREE.BoxGeometry(1.36, 0.12, 0.05), '#4a3219', [0, 0, -0.46], [0, 0, -0.62]),
+    P(new THREE.BoxGeometry(1.25, 0.05, 0.26), '#fff', [0.12, 0.47, 0.26], [0.06, 0.3, 0.05], [1, 1, 1], wood));
+  const orange = (x, y, z) => (Math.abs(Math.abs(z) - 0.16) < 0.035 ? [0.82, 0.84, 0.82] : moss(x, y, z, 2.2) ? [0.45, 0.3, 0.1] : [1, 0.36, 0.04]);
+  G.vest = M(P(new THREE.BoxGeometry(0.34, 0.15, 0.7, 2, 1, 6), '#fff', [0.19, 0, 0], [0, 0, 0.06], [1, 1, 1], orange), P(new THREE.BoxGeometry(0.34, 0.15, 0.7, 2, 1, 6), '#fff', [-0.19, 0, 0], [0, 0, -0.06], [1, 1, 1], orange),
+    P(new THREE.TorusGeometry(0.2, 0.07, 6, 12, Math.PI), '#fff', [0, 0.02, 0.35], [Math.PI / 2, 0, 0], [1, 1, 1], () => [1, 0.36, 0.04]),
+    P(new THREE.BoxGeometry(0.78, 0.03, 0.05), '#161616', [0, 0.09, -0.06]), P(new THREE.BoxGeometry(0.09, 0.05, 0.08), '#2a2a2a', [0, 0.1, -0.06]));
+  const alu = (x, y, z) => { if (moss(x, y, z, 1.8)) return [0.24, 0.34, 0.2]; if (Math.abs(x + 0.14) < 0.07) return [0.16, 0.26, 0.52]; if (Math.abs(x - 0.13) < 0.1 && Math.abs((((z + 1) / 0.5) % 1) - 0.5) < 0.2) return [0.04, 0.05, 0.07]; const v = 0.45 + (NZ(x * 3, z * 3 + y) * 0.5 + 0.5) * 0.2; return [v * 0.95, v, v * 1.04]; };
+  const skin = new THREE.CylinderGeometry(1.4, 1.4, 2, 24, 16, true, -0.55, 1.1).translate(0, 0, -1.4).rotateX(-Math.PI / 2);
+  G.panel = M(displace(P(skin, '#fff', [0, 0.12, 0], [0, 0, 0], [1, 1, 1], alu), 0.05, 2.2, 5), P(new THREE.BoxGeometry(0.05, 0.12, 2), '#6a6e74', [0.45, -0.02, 0]), P(new THREE.BoxGeometry(0.05, 0.12, 2), '#6a6e74', [-0.45, -0.02, 0]));
+  const fab = (x, y, z) => { if (moss(x, y, z, 2)) return [0.2, 0.3, 0.18]; const n = NZ(x * 4 + 2, y * 4 + z * 3) * 0.5 + 0.5; return [0.1 + 0.05 * n, 0.15 + 0.06 * n, 0.36 + 0.12 * n]; };
+  G.seat = M(P(new THREE.BoxGeometry(0.5, 0.14, 0.5, 2, 1, 2), '#fff', [0, 0, 0.02], [0, 0, 0], [1, 1, 1], fab), P(new THREE.BoxGeometry(0.5, 0.75, 0.12, 2, 3, 1), '#fff', [0, 0.36, -0.26], [-0.22, 0, 0], [1, 1, 1], fab),
+    P(new THREE.BoxGeometry(0.44, 0.16, 0.13), '#e4e4dc', [0, 0.7, -0.34], [-0.22, 0, 0]), ...[-1, 1].map((sd) => P(new THREE.BoxGeometry(0.05, 0.05, 0.42), '#34373c', [sd * 0.28, 0.15, 0])),
+    ...[-1, 1].flatMap((sd) => [P(new THREE.BoxGeometry(0.04, 0.3, 0.04), '#6a6e74', [sd * 0.2, -0.2, 0.18]), P(new THREE.BoxGeometry(0.04, 0.3, 0.04), '#6a6e74', [sd * 0.2, -0.2, -0.18]), P(new THREE.BoxGeometry(0.04, 0.04, 0.46), '#6a6e74', [sd * 0.2, -0.35, 0])]),
+    P(new THREE.BoxGeometry(0.34, 0.02, 0.05), '#1b1b1b', [0.06, 0.08, 0.1], [0, 0.4, 0])).translate(0, 0.1, 0);
+  const shell = (x, y, z) => (moss(x, y, z, 2.4) ? [0.42, 0.52, 0.38] : Math.abs(Math.sin(x * 18)) > 0.9 ? [0.78, 0.78, 0.78] : [1, 1, 1]); // tinted per bag by instance colour
+  G.luggage = M(P(new THREE.BoxGeometry(0.72, 0.5, 0.28, 12, 4, 2), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], shell), P(new THREE.BoxGeometry(0.73, 0.51, 0.02), '#2a2a2e'),
+    P(new THREE.TorusGeometry(0.08, 0.018, 4, 10, Math.PI), '#1c1c1c', [0, 0.25, 0]), ...[-1, 1].flatMap((sd) => [0.1, -0.1].map((zz) => P(new THREE.CylinderGeometry(0.04, 0.04, 0.03, 8), '#151515', [sd * 0.3, -0.27, zz], [Math.PI / 2, 0, 0]))));
   return G;
 }
 
