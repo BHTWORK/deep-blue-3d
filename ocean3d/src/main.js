@@ -728,14 +728,14 @@ function drawOverlayIn(c, W, H) {
 const inCockpit = () => G.fp && G.state !== 'title';
 const CK = new CockpitUI($('ckdyn'));
 function redrawCockpit() { if (!inCockpit() || !G.ck) return; drawCockpit($('cockpit'), G.ck, Math.min(devicePixelRatio || 1, 2), G.fpTier < 0 ? 0 : G.fpTier); }
-// HUD lives inside the visible viewport: the canopy glass above the console in first person, the screen in third person
+// HUD lives inside the visible viewport: the canopy glass above the instrument row in first person, the screen in third person
 function layoutHUD() {
   const st = document.documentElement.style, W = G.VW, H = G.VH, ins = 12; let x0 = 0, y0 = 0, x1 = W, y1 = H;
   if (inCockpit() && G.ck) ({ x0, y0, x1, y1 } = G.ck.glass);
   st.setProperty('--hx', `${x0 + ins}px`); st.setProperty('--hy', `${y0 + ins}px`); st.setProperty('--hr', `${W - x1 + ins}px`); st.setProperty('--hb', `${H - y1 + ins}px`);
   st.setProperty('--ppy', inCockpit() && G.ck ? `${G.ck.ppY}px` : '50%');
-  // touch buttons sit on the console in first person, inside the screen edge otherwise
-  st.setProperty('--tr', inCockpit() ? '14px' : `${W - x1 + ins}px`); st.setProperty('--tb', inCockpit() ? '12px' : `${H - y1 + ins}px`);
+  // touch buttons sit in the bottom-right corner (beside the right stick on tablets), inside the screen edge otherwise
+  st.setProperty('--tr', inCockpit() && G.ck ? `${G.ck.touchR}px` : `${W - x1 + ins}px`); st.setProperty('--tb', inCockpit() ? '12px' : `${H - y1 + ins}px`);
   G.win = { x: x0 + ins, y: y0 + ins, w: x1 - x0 - ins * 2, h: y1 - y0 - ins * 2 };
 }
 function applyView() {
@@ -931,7 +931,6 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 // LOOP
 // =====================================================================
 function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; const pr = Math.min(devicePixelRatio || 1, q === 2 ? 1.75 : q === 1 ? 1.25 : 0.85);
-  // in first person the scene only has to cover the glass above the console desk
   const L = G.ck = inCockpit() ? cockpitLayout(G.VW, G.VH, IN.touch) : null, vp = G.vp = L ? L.view : { x: 0, y: 0, w: G.VW, h: G.VH };
   renderer.setPixelRatio(pr); renderer.setSize(vp.w, vp.h, false); Object.assign(canvas.style, { left: vp.x + 'px', top: vp.y + 'px', width: vp.w + 'px', height: vp.h + 'px' });
   composer.setPixelRatio(pr); composer.setSize(vp.w, vp.h); bloom.enabled = q > 0; bloom.strength = q === 2 ? 0.55 : 0.45;
