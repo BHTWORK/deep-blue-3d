@@ -197,7 +197,7 @@ function genSiteItems() {
   for (const id in defs) { const D = defs[id], ps = pieces.sites[id]; const s = { id, n: D.n, c: ps.center.clone(), r: ps.r, leaks: ps.leaks, ids: [], total: 0, left: 0 };
     s.depth = Math.ceil(-s.c.y) - 2; s.c.y += 6; SITES.push(s); SITE[id] = s;
     for (const p of ps.spots) { const t = wpick(D.deck); addItem(t, p.x, p.y + TRASH[t].r * 0.45, p.z).deck = true; }
-    for (let k = 0, g = 0; k < D.cnt && g < 200; g++) { const [x, z] = polar(ps.center.x, ps.center.z, D.ring[0], D.ring[1]); floorItem(wpick(D.floor), x, z); k++; } }
+    for (let k = 0; k < D.cnt; k++) { const [x, z] = polar(ps.center.x, ps.center.z, D.ring[0], D.ring[1]); floorItem(wpick(D.floor), x, z); } }
   for (const it of items) { if (it.locked) continue;
     for (const s of SITES) if (Math.hypot(it.pos.x - s.c.x, it.pos.z - s.c.z) < s.r && it.pos.y < s.c.y + 34) { it.site = s.id; s.ids.push(it.id); if (it.id < first) retype(it, s.id); if (!it.deck) unstick(it); } }
   for (const s of SITES) s.total = s.left = s.ids.length;
