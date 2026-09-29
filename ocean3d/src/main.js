@@ -431,7 +431,7 @@ function writeFish() {
 function nearestRescue() { let best = null, bd = 1e18; for (const r of rescues) { if (r.freed) continue; const d = r.pos.distanceToSquared(P.pos); if (d < bd) { bd = d; best = r; } } return best ? best.pos : null; }
 const MISSIONS = [
   { t: '첫 수거', d: '쓰레기 5개를 수거하세요. 가까이 다가가거나 조준 후 트랙터 빔(클릭/E)으로 끌어오세요.', goal: 5, p: () => ST().collected, rw: 60, kind: 'trash' },
-  { t: '기지선 귀환', d: '수면의 기지선 뒤쪽 초록 고리(도킹 지점)로 돌아가 수거물을 판매하세요.', goal: 1, p: () => ST().sells, rw: 60, tg: () => DOCK, tgl: '기지선 도킹 지점' },
+  { t: '기지선 귀환', d: '기지선 뒤쪽 초록 고리나 그 아래 빛기둥에 들어가세요. 수거물이 자동으로 판매되고 상점이 열립니다.', goal: 1, p: () => ST().sells, rw: 60, tg: () => DOCK, tgl: '기지선 도킹 지점' },
   { t: '장비 강화', d: '기지선에서 업그레이드를 하나 구매하세요.', goal: 1, p: () => ST().upgrades, rw: 100, tg: () => DOCK, tgl: '기지선' },
   { t: '무지개 산호초', d: '기지선 동쪽의 산호초를 찾아가세요.', poi: 'reef', rw: 120 },
   { t: '구조 요청', d: '폐그물에 얽힌 바다생물을 찾아 빔을 비춰 그물을 끊어 주세요.', goal: 1, p: () => ST().rescues, rw: 150, tg: nearestRescue, tgl: '구조 대상' },
@@ -538,9 +538,12 @@ function updatePlayer(dt) {
   if (P.bat < S.bat * 0.25 && P.alive) { if (P.bat < S.bat * 0.1) setAlert('에너지 부족 · 기지선으로 귀환', 2); if (!G.lowWarned) { G.lowWarned = true; toast('에너지 25% 남음', 'bad', '기지선으로 돌아갈 준비를 하세요.'); } if (P.bat < S.bat * 0.1) { G.alarmT -= dt; if (G.alarmT <= 0) { AU.alarm(); G.alarmT = 2; } } }
   P.inv = Math.max(0, P.inv - dt); P.dmgT = Math.max(0, P.dmgT - dt);
   if (P.hull < S.hull * 0.35 && Math.random() < dt * 6) bubble(P.pos.x + rnd(-1, 1), P.pos.y + 0.8, P.pos.z + rnd(-1, 1));
-  const dd = P.pos.distanceTo(DOCK); if (dd > 16) P.canDock = true; if (P.canDock && dd < 6.5 && P.alive) { P.canDock = false; openDock(); }
+  // entering the dock zone sells the cargo and opens the shop; leaving it re-arms, so every visit opens it again
+  if (!inDockZone(1.5)) P.canDock = true; if (P.canDock && P.alive && inDockZone(0)) { P.canDock = false; openDock(); }
   exploreAt(P.pos.x, P.pos.z, Math.max(70, S.light * 1.1));
 }
+// the green ring and the light column under it, from the surface down to the bottom of the beam
+function inDockZone(m) { return Math.hypot(P.pos.x - DOCK.x, P.pos.z - DOCK.z) < 6 + m && P.pos.y < 1.5 + m && P.pos.y > DOCK.y - 30 - m; }
 const angDelta = (a, b) => ((((a - b + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
 function updateCamera(dt) {
   if (G.fp) { // cockpit view: eye just behind the front viewport
@@ -657,7 +660,7 @@ function openDock() {
 function sellCargo() { const groups = {}; let base = 0; for (const id of P.cargo) { const it = items[id]; const k = it.key; if (!groups[k]) groups[k] = { n: itemName(it), c: 0, v: 0 }; groups[k].c++; groups[k].v += it.v; base += it.v; }
   const bonus = Math.round(base * 0.5 * G.clean), total = base + bonus; if (P.cargo.length) { SV.money += total; ST().earned += total; ST().sells++; AU.sell(); } P.cargo = []; P.kg = 0; return { groups, base, bonus, total }; }
 function buyUpgrade(k) { const lv = SV.up[k], cost = UP[k].c[lv]; if (cost === undefined || SV.money < cost) return; SV.money -= cost; SV.up[k]++; ST().upgrades++; calcStats(); P.bat = S.bat; P.hull = S.hull; AU.upgrade(); renderUpgrades(); $('dMoney').textContent = fmt(SV.money); saveGame(); }
-function launch() { hide('dock'); G.state = 'play'; P.vel.set(0, -4, -3); P.canDock = false; AU.click(); requestLock(); const m = MISSIONS[SV.mission]; if (m && G.t - G.lastMTip > 60) { G.lastMTip = G.t; toast(`임무: ${m.t}`, 'tip', m.d); } }
+function launch() { hide('dock'); G.state = 'play'; tv1.set(P.pos.x - DOCK.x, 0, P.pos.z - DOCK.z); if (tv1.lengthSq() < 1) tv1.set(0, 0, -1); tv1.normalize().multiplyScalar(9); P.vel.set(tv1.x, -2, tv1.z); P.canDock = false; AU.click(); requestLock(); const m = MISSIONS[SV.mission]; if (m && G.t - G.lastMTip > 60) { G.lastMTip = G.t; toast(`임무: ${m.t}`, 'tip', m.d); } }
 function fail(kind) {
   if (G.state !== 'play') return; G.state = 'fail'; unlockPointer(); AU.fail();
   const frac = kind === 'battery' ? 0.5 : 1; const cargo = P.cargo.slice().sort(() => Math.random() - 0.5); const nLost = Math.ceil(cargo.length * frac); const lost = cargo.slice(0, nLost); let lkg = 0;
