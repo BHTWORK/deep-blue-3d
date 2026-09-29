@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#021526">
+<meta name="description" content="3D 심해를 탐험하며 쓰레기를 수거하고 죽어가는 바다를 되살리는 잠수정 탐험 게임">
+<title>딥 블루 3D : 바다 청소부</title>
+<style>
+:root{
+  --panel:rgba(5,24,42,.74);--panel-b:rgba(120,210,255,.2);--txt:#e8f6ff;--muted:#8fb4cc;
+  --accent:#3fe0d0;--accent2:#ffd23f;--danger:#ff5a5f;--good:#5dff9a;--hull:#7cc4ff;--cargo:#ffb347;
+  --font:"Pretendard","Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic","맑은 고딕",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#021526;color:var(--txt);font-family:var(--font);-webkit-user-select:none;user-select:none;touch-action:none;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+canvas#overlay{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:4}
+#crosshair{position:fixed;left:50%;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;pointer-events:none;z-index:4;opacity:.85}
+#crosshair::before,#crosshair::after{content:'';position:absolute;background:rgba(255,255,255,.85);box-shadow:0 0 4px rgba(0,0,0,.6)}
+#crosshair::before{left:12px;top:3px;width:2px;height:20px;clip-path:polygon(0 0,100% 0,100% 30%,0 30%,0 70%,100% 70%,100% 100%,0 100%)}
+#crosshair::after{top:12px;left:3px;height:2px;width:20px;clip-path:polygon(0 0,30% 0,30% 100%,0 100%,0 0,70% 0,100% 0,100% 100%,70% 100%)}
+#lockHint{position:fixed;left:50%;top:58%;transform:translateX(-50%);padding:8px 14px;font-size:13px;font-weight:700;z-index:6;pointer-events:none}
+#dmgVig{position:fixed;inset:0;pointer-events:none;z-index:3;opacity:0;background:radial-gradient(ellipse at center,rgba(255,0,0,0) 45%,rgba(255,30,30,.55) 100%);transition:opacity .15s}
+#flash{position:fixed;inset:0;pointer-events:none;z-index:3;opacity:0}
+#vign{position:fixed;inset:0;pointer-events:none;z-index:3;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 55%,rgba(0,4,10,.5) 100%)}
+#loading{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:#021526;font-size:15px;font-weight:700;color:#9fdcef}
+#loading i{width:42px;height:42px;border-radius:50%;border:3px solid rgba(63,224,208,.25);border-top-color:#3fe0d0;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.thumb{height:92px;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 60%,#0f4a73,#04182c);font-size:40px}
+.thumb img{width:100%;height:100%;object-fit:contain}
+.ccard.lock .thumb img{filter:brightness(0) opacity(.55)}
+.hidden{display:none!important}
+button{font-family:var(--font)}
+.panel{background:var(--panel);border:1px solid var(--panel-b);border-radius:14px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 10px 30px rgba(0,0,0,.35)}
+/* ---------- HUD ---------- */
+#hud{position:fixed;inset:0;pointer-events:none;z-index:5}
+#hudStats{position:absolute;left:12px;top:12px;width:258px;padding:12px 14px}
+.money{display:flex;align-items:center;gap:8px;font-size:21px;font-weight:800;color:var(--accent2);text-shadow:0 0 12px rgba(255,210,63,.35);font-variant-numeric:tabular-nums}
+.coin{width:18px;height:18px;border-radius:50%;flex:none;background:radial-gradient(circle at 35% 35%,#fff6c4,#ffd23f 45%,#b87c00);box-shadow:0 0 8px rgba(255,210,63,.6)}
+.row{display:grid;grid-template-columns:40px 1fr 78px;align-items:center;gap:8px;margin:6px 0;font-size:12px}
+.lbl{color:var(--muted);font-weight:700}
+.bar{height:9px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden;position:relative}
+.bar i{display:block;height:100%;width:100%;border-radius:6px;background:var(--c,var(--accent));box-shadow:0 0 10px var(--c,var(--accent));transition:width .12s linear}
+.val{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.depth{display:flex;align-items:flex-end;justify-content:space-between;margin-top:10px;gap:10px}
+.depth b{font-size:34px;line-height:1;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-1px}
+.depth small{font-size:15px;color:var(--muted);margin-left:2px}
+.dinfo{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-size:11px;color:var(--muted);font-weight:700}
+.chip{padding:2px 8px;border-radius:20px;background:rgba(63,224,208,.14);color:var(--accent);border:1px solid rgba(63,224,208,.3)}
+.dgauge{position:relative;height:6px;border-radius:4px;margin-top:8px;background:linear-gradient(90deg,#2aa7d8,#115a8c 30%,#0a2c52 60%,#050d1c);overflow:visible}
+.dgauge i{position:absolute;top:-3px;width:4px;height:12px;border-radius:2px;background:#fff;box-shadow:0 0 8px #fff;transform:translateX(-2px)}
+.dgauge em{position:absolute;top:-4px;width:2px;height:14px;background:var(--danger);box-shadow:0 0 6px var(--danger)}
+.warn .bar i{animation:pulse .5s ease-in-out infinite alternate}
+@keyframes pulse{from{opacity:1}to{opacity:.35}}
+#hudRight{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.mapbox{padding:8px;width:238px}
+#minimap{display:block;width:220px;height:124px;border-radius:9px;background:#020a14}
+.clean{display:flex;justify-content:space-between;align-items:baseline;margin:7px 2px 4px;font-size:12px;color:var(--muted);font-weight:700}
+.clean b{color:var(--good);font-size:15px;font-variant-numeric:tabular-nums}
+.cleanbar i{--c:var(--good)}
+.btnrow{display:flex;gap:6px;pointer-events:auto}
+.ibtn{width:44px;height:40px;border-radius:11px;border:1px solid var(--panel-b);background:var(--panel);color:#fff;font-size:18px;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center}
+.ibtn:hover{background:rgba(63,224,208,.2)}
+.ibtn .k{font-size:9px;color:var(--muted);margin-left:2px}
+#hudMission{position:absolute;left:12px;top:250px;width:258px;padding:11px 14px;transition:opacity .3s}
+#hudMission .mt{font-size:11px;color:var(--accent2);font-weight:800;letter-spacing:.5px;display:flex;justify-content:space-between}
+#hudMission .mn{font-size:15px;font-weight:800;margin:4px 0 3px}
+#hudMission .md{font-size:12px;color:#bcd6e6;line-height:1.45}
+#hudMission .mp{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:11px;font-weight:700;color:var(--muted)}
+#hudMission .mp .bar{flex:1}
+#hudMission .mp .bar i{--c:var(--accent2)}
+#toasts{position:absolute;left:50%;top:14px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;width:min(520px,70vw)}
+.toast{padding:10px 18px;border-radius:12px;font-size:14px;font-weight:700;text-align:center;background:rgba(4,22,40,.86);border:1px solid var(--panel-b);box-shadow:0 8px 24px rgba(0,0,0,.4);animation:tin .35s ease-out;max-width:100%}
+.toast.big{font-size:17px;padding:13px 24px;border-color:rgba(255,210,63,.5);background:linear-gradient(180deg,rgba(40,32,6,.9),rgba(4,22,40,.9))}
+.toast.good{border-color:rgba(93,255,154,.5)}
+.toast.bad{border-color:rgba(255,90,95,.6);background:rgba(50,8,14,.86)}
+.toast.tip{border-color:rgba(63,224,208,.5)}
+.toast small{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-top:3px}
+.toast.out{animation:tout .4s ease-in forwards}
+@keyframes tin{from{opacity:0;transform:translateY(-12px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes tout{to{opacity:0;transform:translateY(-10px)}}
+#alert{position:absolute;left:50%;top:32%;transform:translate(-50%,-50%);font-size:22px;font-weight:900;color:var(--danger);text-shadow:0 0 18px rgba(255,60,60,.7),0 2px 0 #000;letter-spacing:1px;white-space:nowrap;opacity:0;transition:opacity .2s}
+#alert.on{opacity:1;animation:blink .8s ease-in-out infinite}
+@keyframes blink{50%{opacity:.35}}
+#hint{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);padding:9px 16px;font-size:12px;color:#cfe6f3;white-space:nowrap;transition:opacity 1s}
+#hint kbd{display:inline-block;padding:1px 6px;margin:0 2px;border-radius:5px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);font:700 11px var(--font);color:#fff}
+#hint span{margin:0 7px}
+#sonarInd{position:absolute;right:14px;bottom:16px;padding:8px 12px;font-size:12px;font-weight:800;display:flex;align-items:center;gap:8px}
+#sonarInd .ring{width:14px;height:14px;border-radius:50%;border:2px solid var(--accent);box-shadow:0 0 8px var(--accent)}
+#sonarInd.cd{color:var(--muted)}
+#sonarInd.cd .ring{border-color:#456;box-shadow:none}
+/* ---------- touch ---------- */
+#touch{position:fixed;inset:0;z-index:6;pointer-events:none}
+#joyZone{position:absolute;left:0;top:90px;bottom:0;width:45%;pointer-events:auto}
+#lookZone{position:absolute;right:0;top:90px;bottom:0;width:55%;pointer-events:auto}
+#joy{position:absolute;width:128px;height:128px;margin:-64px 0 0 -64px;border-radius:50%;border:2px solid rgba(255,255,255,.22);background:radial-gradient(circle,rgba(63,224,208,.1),rgba(255,255,255,.03));pointer-events:none;opacity:0;transition:opacity .15s}
+#joy.on{opacity:1}
+#joyKnob{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:radial-gradient(circle at 35% 35%,rgba(255,255,255,.55),rgba(63,224,208,.4));box-shadow:0 0 16px rgba(63,224,208,.5)}
+.tbtn{position:absolute;pointer-events:auto;border-radius:50%;border:2px solid rgba(255,255,255,.25);background:rgba(5,24,42,.55);color:#fff;font:800 14px var(--font);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;flex-direction:column;touch-action:none}
+.tbtn.on{background:rgba(63,224,208,.45);border-color:var(--accent);box-shadow:0 0 18px rgba(63,224,208,.6)}
+.tbtn small{font-size:9px;color:var(--muted)}
+#tBeam{right:18px;bottom:20px;width:88px;height:88px;font-size:16px}
+#tSonar{right:116px;bottom:16px;width:62px;height:62px}
+#tBoost{right:186px;bottom:16px;width:62px;height:62px}
+#tUp{right:258px;bottom:86px;width:56px;height:56px}
+#tDown{right:258px;bottom:18px;width:56px;height:56px}
+body.touch #crosshair{opacity:.6}
+/* ---------- screens & modals ---------- */
+.modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(1,8,16,.55);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);z-index:20;padding:12px}
+.box{width:min(780px,96vw);max-height:92vh;overflow:auto;padding:20px 22px;position:relative}
+.box.narrow{width:min(440px,94vw)}
+.box::-webkit-scrollbar{width:8px}.box::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:4px}
+.mhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
+.mhead h2{font-size:22px;font-weight:900;letter-spacing:-.3px}
+.sub{font-size:13px;color:var(--muted);margin-top:3px}
+.money.big{font-size:24px}
+.x{position:absolute;right:12px;top:12px;width:34px;height:34px;border-radius:9px;border:1px solid var(--panel-b);background:rgba(255,255,255,.05);color:#fff;font-size:18px;cursor:pointer}
+.tabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:10px;flex-wrap:wrap}
+.tab{padding:8px 14px;border-radius:9px;border:1px solid transparent;background:transparent;color:var(--muted);font-weight:800;font-size:14px;cursor:pointer}
+.tab.on{background:rgba(63,224,208,.14);color:var(--accent);border-color:rgba(63,224,208,.35)}
+.mfoot{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;flex-wrap:wrap}
+.btn{appearance:none;border:1px solid rgba(120,220,255,.35);background:linear-gradient(180deg,rgba(63,224,208,.2),rgba(63,224,208,.06));color:#e8fbff;font:800 15px var(--font);padding:12px 22px;border-radius:12px;cursor:pointer;transition:transform .12s,box-shadow .2s,background .2s}
+.btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 0 22px rgba(63,224,208,.3)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn.primary{background:linear-gradient(180deg,#46eedd,#16a0b4);color:#01222a;border-color:transparent}
+.btn.gold{background:linear-gradient(180deg,#ffe07a,#e0a800);color:#2a1d00;border-color:transparent}
+.btn.ghost{background:transparent}
+.btn.small{padding:8px 12px;font-size:13px;border-radius:9px}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+#title{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;background:radial-gradient(ellipse at 50% 45%,rgba(2,21,38,0) 0%,rgba(1,10,20,.55) 75%)}
+#title h1{font-size:clamp(40px,8vw,92px);font-weight:900;letter-spacing:-2px;line-height:1;background:linear-gradient(180deg,#ffffff 0%,#9ff4ff 45%,#2fb8e6 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 30px rgba(63,224,208,.45))}
+#title .kicker{font-size:13px;letter-spacing:8px;color:var(--accent);font-weight:800;margin-bottom:14px}
+#title .tag{font-size:clamp(13px,2vw,17px);color:#cde8f5;margin:16px 0 30px;max-width:560px;line-height:1.6}
+#title .menu{display:flex;flex-direction:column;gap:10px;width:min(300px,80vw)}
+#title .menu .btn{width:100%}
+#title .foot{position:absolute;bottom:14px;font-size:11px;color:rgba(200,230,245,.5)}
+.bubblebg{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+/* dock */
+.receipt{width:100%;border-collapse:collapse;font-size:14px}
+.receipt td{padding:7px 6px;border-bottom:1px dashed rgba(255,255,255,.08)}
+.receipt td:last-child{text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
+.receipt .tot td{border-bottom:none;font-size:17px;color:var(--accent2);padding-top:12px}
+.receipt .bonus td{color:var(--good)}
+.empty{padding:26px;text-align:center;color:var(--muted);font-size:14px;line-height:1.6}
+.ugrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.ucard{padding:12px 13px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:6px}
+.ucard h4{font-size:15px;display:flex;align-items:center;gap:7px}
+.ucard p{font-size:12px;color:var(--muted);line-height:1.4}
+.ucard .uv{font-size:13px;font-weight:700;color:#d8f4ff}
+.ucard .uv b{color:var(--good)}
+.pips{display:flex;gap:3px}
+.pips i{width:100%;height:5px;border-radius:3px;background:rgba(255,255,255,.12)}
+.pips i.on{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.ucard .btn{margin-top:auto}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.stat{padding:12px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07)}
+.stat span{display:block;font-size:11px;color:var(--muted);font-weight:700}
+.stat b{font-size:20px;font-variant-numeric:tabular-nums}
+/* codex */
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.ccard{border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);overflow:hidden;cursor:pointer;transition:border-color .2s}
+.ccard:hover{border-color:rgba(63,224,208,.5)}
+.ccard .ci{padding:8px 10px}
+.ccard h5{font-size:14px}
+.ccard small{font-size:11px;color:var(--muted)}
+.ccard.lock h5{color:#6c8799}
+.cdetail{margin-top:12px;padding:14px;border-radius:12px;background:rgba(63,224,208,.07);border:1px solid rgba(63,224,208,.25);font-size:14px;line-height:1.6}
+.cdetail h4{font-size:17px;margin-bottom:4px}
+.plist{display:flex;flex-direction:column;gap:8px}
+.pitem{display:flex;gap:12px;align-items:center;padding:11px 13px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08)}
+.pitem .pi{font-size:24px;width:34px;text-align:center}
+.pitem h5{font-size:15px}
+.pitem p{font-size:12px;color:var(--muted);line-height:1.45}
+.pitem.lock{opacity:.5}
+.tlist .pitem .cnt{margin-left:auto;font-weight:900;font-size:18px;color:var(--good);font-variant-numeric:tabular-nums}
+/* map */
+#bigmap{display:block;width:100%;border-radius:10px;background:#010812;image-rendering:auto}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12px;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:50%;display:inline-block}
+/* settings */
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:14px;font-weight:700}
+.setrow input[type=range]{width:160px;accent-color:var(--accent)}
+.setrow select{background:#08243d;color:#fff;border:1px solid var(--panel-b);border-radius:8px;padding:6px 8px;font:700 13px var(--font)}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;font-size:14px;align-items:center}
+.keys kbd{display:inline-block;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);font:800 12px var(--font);margin-right:3px}
+.center{text-align:center}
+.bigico{font-size:52px;margin:6px 0 10px}
+.lead{font-size:15px;line-height:1.65;color:#d5ecf7}
+.losses{margin:14px 0;padding:12px;border-radius:12px;background:rgba(255,90,95,.08);border:1px solid rgba(255,90,95,.3);font-size:14px;line-height:1.7}
+#fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:40;transition:opacity .6s}
+#fade.on{opacity:1}
+@media (max-width:760px),(max-height:520px){
+  #hudStats{width:196px;padding:8px 10px;left:8px;top:8px}
+  .money{font-size:16px}
+  .row{grid-template-columns:32px 1fr 60px;gap:6px;margin:4px 0;font-size:10px}
+  .depth b{font-size:24px}
+  .dinfo{font-size:9px}
+  #hudMission{top:auto;bottom:10px;left:8px;width:210px;padding:8px 10px}
+  #hudMission .md{display:none}
+  #hudMission .mn{font-size:13px}
+  .mapbox{width:156px;padding:6px}
+  #minimap{width:144px;height:81px}
+  #hudRight{right:8px;top:8px}
+  .ibtn{width:38px;height:34px;font-size:15px}
+  #hint,#sonarInd{display:none}
+  .toast{font-size:12px;padding:8px 12px}
+  #alert{font-size:16px}
+  body.touch #hudMission{display:none}
+}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<canvas id="overlay"></canvas>
+<div id="vign"></div><div id="dmgVig"></div><div id="flash"></div>
+<div id="loading"><i></i><span>심해 세계를 생성하는 중…</span></div>
+
+<div id="hud" class="hidden">
+  <div id="crosshair"></div>
+  <div id="lockHint" class="panel hidden">🖱️ 화면을 클릭하면 마우스로 시점을 조작합니다 (드래그도 가능)</div>
+  <div id="hudStats" class="panel">
+    <div class="money"><span class="coin"></span><b id="hMoney">0</b></div>
+    <div class="row" id="rBat"><span class="lbl">에너지</span><div class="bar"><i id="hBat" style="--c:var(--accent)"></i></div><span class="val" id="hBatV">100</span></div>
+    <div class="row" id="rHull"><span class="lbl">선체</span><div class="bar"><i id="hHull" style="--c:var(--hull)"></i></div><span class="val" id="hHullV">100</span></div>
+    <div class="row" id="rCargo"><span class="lbl">화물</span><div class="bar"><i id="hCargo" style="--c:var(--cargo)"></i></div><span class="val" id="hCargoV">0/25kg</span></div>
+    <div class="depth"><div><b id="hDepth">0</b><small>m</small></div><div class="dinfo"><span class="chip" id="hZone">표층</span><span id="hLimit">한계 250m</span></div></div>
+    <div class="dgauge"><em id="hLimitMark"></em><i id="hDepthMark"></i></div>
+  </div>
+  <div id="hudRight">
+    <div class="panel mapbox">
+      <canvas id="minimap" width="440" height="248"></canvas>
+      <div class="clean"><span>바다 정화율</span><b id="hClean">0%</b></div>
+      <div class="bar cleanbar"><i id="hCleanBar" style="width:0%"></i></div>
+    </div>
+    <div class="btnrow">
+      <button class="ibtn" id="bMap" title="지도 (M)" aria-label="지도">🗺️</button>
+      <button class="ibtn" id="bCodex" title="도감 (Tab)" aria-label="도감">📖</button>
+      <button class="ibtn" id="bPause" title="일시정지 (Esc)" aria-label="일시정지">⏸</button>
+    </div>
+  </div>
+  <div id="hudMission" class="panel">
+    <div class="mt"><span>🎯 임무 <span id="mIdx"></span></span><span id="mRw"></span></div>
+    <div class="mn" id="mName"></div>
+    <div class="md" id="mDesc"></div>
+    <div class="mp" id="mProgRow"><div class="bar"><i id="mBar"></i></div><span id="mProg"></span></div>
+  </div>
+  <div id="toasts"></div>
+  <div id="alert"></div>
+  <div id="hint" class="panel"></div>
+  <div id="sonarInd" class="panel"><span class="ring"></span><span id="sonarTxt">소나 준비 (Q)</span></div>
+</div>
+
+<div id="touch" class="hidden">
+  <div id="joyZone"></div>
+  <div id="lookZone"></div>
+  <div id="joy"><div id="joyKnob"></div></div>
+  <button id="tBeam" class="tbtn">빔<small>수거·절단</small></button>
+  <button id="tSonar" class="tbtn">소나</button>
+  <button id="tBoost" class="tbtn">부스트</button>
+  <button id="tUp" class="tbtn">▲<small>상승</small></button>
+  <button id="tDown" class="tbtn">▼<small>하강</small></button>
+</div>
+
+<div id="title">
+  <div class="kicker">DEEP BLUE 3D · OCEAN CLEANER</div>
+  <h1>딥 블루 3D</h1>
+  <div class="tag">쓰레기로 병들어 가는 바다. 작은 잠수정 한 척으로 심연까지 내려가<br>쓰레기를 수거하고, 그물에 걸린 생명을 구하고, 바다를 되살리세요.</div>
+  <div class="menu">
+    <button class="btn primary" id="bContinue">이어하기</button>
+    <button class="btn" id="bNew">새 게임</button>
+    <button class="btn ghost" id="bHelpT">조작법</button>
+    <button class="btn ghost" id="bSetT">설정</button>
+  </div>
+  <div class="foot">WebGL(Three.js) · WebAudio로 만든 단일 HTML 파일 3D 게임 · 오프라인 동작 · 진행 상황은 브라우저에 자동 저장됩니다</div>
+</div>
+
+<div id="dock" class="modal hidden"><div class="panel box">
+  <div class="mhead">
+    <div><h2>⚓ 기지선 푸른바다호</h2><p class="sub" id="dSubtitle">에너지 충전 · 선체 수리 완료</p></div>
+    <div class="money big"><span class="coin"></span><b id="dMoney">0</b></div>
+  </div>
+  <div class="tabs" data-group="dock">
+    <button class="tab on" data-tab="dSell">정산</button>
+    <button class="tab" data-tab="dUp">업그레이드</button>
+    <button class="tab" data-tab="dStat">기록</button>
+  </div>
+  <div id="dSell" class="tabc"></div>
+  <div id="dUp" class="tabc hidden"><div class="ugrid" id="ugrid"></div></div>
+  <div id="dStat" class="tabc hidden"></div>
+  <div class="mfoot"><button class="btn primary" id="bLaunch">출항하기 ▶</button></div>
+</div></div>
+
+<div id="codex" class="modal hidden"><div class="panel box">
+  <button class="x" data-close="codex" aria-label="닫기">✕</button>
+  <div class="mhead"><div><h2>📖 해양 도감</h2><p class="sub" id="cxSub"></p></div></div>
+  <div class="tabs" data-group="codex">
+    <button class="tab on" data-tab="cxLife">해양생물</button>
+    <button class="tab" data-tab="cxPlace">장소</button>
+    <button class="tab" data-tab="cxTrash">쓰레기 기록</button>
+  </div>
+  <div id="cxLife" class="tabc"><div class="cgrid" id="cgrid"></div><div id="cdetail"></div></div>
+  <div id="cxPlace" class="tabc hidden"><div class="plist" id="plist"></div></div>
+  <div id="cxTrash" class="tabc hidden"><div class="plist tlist" id="tlist"></div></div>
+</div></div>
+
+<div id="mapm" class="modal hidden"><div class="panel box" style="width:min(820px,96vw)">
+  <button class="x" data-close="mapm" aria-label="닫기">✕</button>
+  <div class="mhead"><div><h2>🗺️ 해역 지도</h2><p class="sub" id="mapSub"></p></div></div>
+  <canvas id="bigmap" width="900" height="900" style="max-width:min(100%,74vh);margin:0 auto"></canvas>
+  <div class="legend">
+    <span><i style="background:#ffd23f"></i>잠수정</span><span><i style="background:#3fe0d0"></i>기지선</span>
+    <span><i style="background:#ff7a59"></i>탐지된 쓰레기</span><span><i style="background:#ff4fa3"></i>구조 대상</span>
+    <span><i style="background:#fff"></i>발견한 장소</span><span><i style="background:#ffb000"></i>임무 목표</span>
+  </div>
+</div></div>
+
+<div id="pause" class="modal hidden"><div class="panel box narrow center">
+  <h2 style="margin-bottom:16px">일시정지</h2>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <button class="btn primary" id="bResume">계속하기</button>
+    <button class="btn" id="bHelpP">조작법</button>
+    <button class="btn" id="bSetP">설정</button>
+    <button class="btn ghost" id="bQuit">저장 후 타이틀로</button>
+  </div>
+</div></div>
+
+<div id="settings" class="modal hidden"><div class="panel box narrow">
+  <button class="x" data-close="settings" aria-label="닫기">✕</button>
+  <div class="mhead"><h2>⚙️ 설정</h2></div>
+  <div class="setrow"><span>전체 볼륨</span><input type="range" id="sMaster" min="0" max="100" value="80"></div>
+  <div class="setrow"><span>음악</span><input type="range" id="sMusic" min="0" max="100" value="60"></div>
+  <div class="setrow"><span>효과음</span><input type="range" id="sSfx" min="0" max="100" value="90"></div>
+  <div class="setrow"><span>그래픽 품질</span><select id="sQuality"><option value="2">높음</option><option value="1">보통</option><option value="0">낮음</option></select></div>
+  <div class="setrow"><span>마우스 감도</span><input type="range" id="sSens" min="30" max="250" value="100"></div>
+  <div class="setrow"><span>화면 흔들림</span><select id="sShake"><option value="1">켜기</option><option value="0">끄기</option></select></div>
+  <div class="mfoot"><button class="btn small ghost" id="bReset" style="border-color:rgba(255,90,95,.5);color:#ffb3b5">저장 데이터 삭제</button><button class="btn small primary" data-close="settings">확인</button></div>
+</div></div>
+
+<div id="help" class="modal hidden"><div class="panel box narrow">
+  <button class="x" data-close="help" aria-label="닫기">✕</button>
+  <div class="mhead"><h2>🎮 조작법</h2></div>
+  <div class="keys">
+    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>이동 — 바라보는 방향으로 전진</span>
+    <span><kbd>마우스</kbd></span><span>시점·조준 (화면 클릭 시 마우스 고정, Esc로 해제)</span>
+    <span><kbd>Space</kbd> <kbd>C</kbd></span><span>상승 · 하강</span>
+    <span><kbd>클릭</kbd><kbd>E</kbd></span><span>트랙터 빔: 조준점의 쓰레기 끌어오기 · 그물 절단</span>
+    <span><kbd>Shift</kbd></span><span>부스트 (에너지 추가 소모)</span>
+    <span><kbd>Q</kbd><kbd>우클릭</kbd></span><span>소나 핑: 주변 쓰레기 탐지 · 상어 퇴치</span>
+    <span><kbd>M</kbd></span><span>지도</span>
+    <span><kbd>Tab</kbd></span><span>해양 도감</span>
+    <span><kbd>P</kbd></span><span>일시정지</span>
+    <span><kbd>🎮</kbd></span><span>게임패드: 왼쪽 스틱 이동 · 오른쪽 스틱 시점 · RT/A 빔 · X 소나 · LB 부스트 · RB/LT 상승·하강</span>
+  </div>
+  <p class="sub" style="margin-top:14px;line-height:1.6">화물칸이 차면 수면의 기지선 뒤쪽 도킹 지점(초록 빛기둥과 고리)으로 돌아가 판매하세요. 판매 수익으로 잠수정을 강화하면 더 깊은 바다로 갈 수 있습니다. 에너지나 선체가 0이 되면 긴급 구조되며 화물 일부를 잃습니다.</p>
+</div></div>
+
+<div id="fail" class="modal hidden"><div class="panel box narrow center">
+  <div class="bigico" id="failIco">🆘</div>
+  <h2 id="failTitle">긴급 구조</h2>
+  <p class="lead" id="failText" style="margin-top:8px"></p>
+  <div class="losses" id="failLoss"></div>
+  <button class="btn primary" id="bRespawn">기지선에서 재출항</button>
+</div></div>
+
+<div id="win" class="modal hidden"><div class="panel box narrow center">
+  <div class="bigico">🐋</div>
+  <h2>바다가 되살아났습니다!</h2>
+  <p class="lead" style="margin-top:10px">당신의 끈기 덕분에 산호는 다시 빛깔을 되찾고, 물고기 떼가 돌아왔습니다. 멀리서 혹등고래의 노래가 들려옵니다.</p>
+  <div class="stats" id="winStats" style="margin:16px 0"></div>
+  <button class="btn gold" id="bWinGo">계속 탐험하기</button>
+</div></div>
+
+<div id="confirm" class="modal hidden"><div class="panel box narrow center">
+  <h2 id="cfTitle">확인</h2>
+  <p class="lead" id="cfText" style="margin:10px 0 18px"></p>
+  <div style="display:flex;gap:10px;justify-content:center"><button class="btn ghost" id="cfNo">취소</button><button class="btn primary" id="cfYes">확인</button></div>
+</div></div>
+
+<div id="fade"></div>
+
+<script>
+/*__BUNDLE__*/
+</script>
+</body>
+</html>

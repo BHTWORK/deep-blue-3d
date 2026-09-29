@@ -1,0 +1,14 @@
+{
+  "name": "ocean-cleanup-3d",
+  "private": true,
+  "version": "1.0.0",
+  "description": "딥 블루 3D: 바다 청소부 — single-file Three.js game build",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.0",
+    "three": "0.170.0"
+  }
+}
