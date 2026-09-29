@@ -116,7 +116,8 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 body.fp #vign,body.fp #sonarInd,body.fp #hudStats{display:none}
 
 /* ---------- touch ---------- */
-#touch{position:fixed;inset:0;z-index:6;pointer-events:none}
+/* below #hud (z 5): HUD buttons take their taps, the drag zones get everything else */
+#touch{position:fixed;inset:0;z-index:4;pointer-events:none}
 #joyZone{position:absolute;left:0;top:var(--hy);bottom:0;width:45%;pointer-events:auto}
 #lookZone{position:absolute;right:0;top:90px;bottom:0;width:55%;pointer-events:auto}
 #joy{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;border:1px solid var(--line2);pointer-events:none;opacity:0;transition:opacity .15s}
