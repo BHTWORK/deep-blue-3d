@@ -195,7 +195,7 @@ function placeOn(x, z, sink = 0) { return heightAt(x, z) - sink; }
 const REEF = [[60, 245, -120, 160, 5], [-40, 120, 150, 250, 2], [10, 170, -250, -140, 2], [-60, 30, 40, 120, 1], [180, 280, 170, 260, 1.5], [-240, -120, 160, 240, 1]];
 // Most reef growth clusters into coral heads with sand between them; the rest is scattered across the patch.
 let HEADS = null;
-function reefPoint(minY = -78) {
+export function reefPoint(minY = -78) {
   const patch = () => { for (let k = 0; k < 30; k++) { const p = wpick(REEF.map((r) => [r, r[4]])), x = rr(p[0], p[1]), z = rr(p[2], p[3]); if (Math.hypot(x - 3, z + 19) < 30) continue; const y = heightAt(x, z); if (y < -75 || y > -5) continue; return [x, z]; } return null; };
   if (!HEADS) { HEADS = []; for (let i = 0; i < 400 && HEADS.length < 90; i++) { const p = patch(); if (p) HEADS.push([p[0], p[1], rr(4, 11)]); } }
   for (let k = 0; k < 30; k++) {
@@ -267,7 +267,7 @@ export function buildFlora(scene, colliders) {
   return out;
 }
 let SRr = () => rr(0, 1);
-// small reef dwellers on the sand, bioluminescent corals in the deep, and a sunken ruin on the shelf slope
+// small reef dwellers on the sand and bioluminescent corals in the deep
 function reefLife(scene, out, colliders) {
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color();
   const shelfPoint = (maxD, minY) => { for (let k = 0; k < 30; k++) { const a = rr(0, TAU), d = rr(20, maxD), x = Math.cos(a) * d, z = Math.sin(a) * d; if (Math.hypot(x - 3, z + 19) < 25) continue; const y = heightAt(x, z); if (y > minY && y < -3) return [x, y, z]; } return null; };
@@ -294,22 +294,6 @@ function reefLife(scene, out, colliders) {
     for (let i = 0; i < 1200 && k < 120; i++) { const x = rr(-860, 860), z = rr(-860, 860), y = heightAt(x, z); if (y > -250 || y < -840) continue; const s = rr(1.2, 3.2); q.setFromEuler(e.set(rr(-0.2, 0.2), rr(0, TAU), rr(-0.2, 0.2))); m4.compose(v.set(x, y - 0.2, z), q, sc.set(s, s, s));
       sm.setMatrixAt(k, m4); tm.setMatrixAt(k, m4); tm.setColorAt(k, col.set(rpick(['#4df3ff', '#ff4fd8', '#7cff6b', '#6f8bff'])).multiplyScalar(2.2)); k++; }
     for (const im of [sm, tm]) { im.count = k; im.frustumCulled = false; scene.add(im); } out.deepMeshes = [sm, tm]; }
-  // sunken ruin: a colonnade on a stepped platform, a few columns toppled, amphorae strewn about
-  { const rx = -120, rz = -260, base = heightAt(rx, rz), stone = (x, y, z) => { const n = NZ(x * 0.8 + 5, z * 0.8 + y) * 0.5 + 0.5; const t = 0.62 + n * 0.25; return [t * 1.02, t * 0.98, t * 0.9]; };
-    const g = new THREE.Group(); g.position.set(rx, base - 0.6, rz); g.rotation.y = 0.35;
-    const mt = addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), 0.5), add = (geo) => { const m = new THREE.Mesh(geo, mt); g.add(m); return m; };
-    add(displace(P(new THREE.BoxGeometry(26, 1.2, 16, 8, 1, 6), '#fff', [0, 0.6, 0], [0, 0, 0], [1, 1, 1], stone), 0.25, 0.8, 2));
-    add(displace(P(new THREE.BoxGeometry(22, 1, 12, 8, 1, 4), '#fff', [0, 1.7, 0], [0, 0, 0], [1, 1, 1], stone), 0.2, 0.8, 3));
-    const r = lcg(71), col3 = (x, z, h, tilt) => { add(displace(M(P(new THREE.CylinderGeometry(0.75, 0.85, h, 12, 4), '#fff', [0, h / 2, 0], [0, 0, 0], [1, 1, 1], stone), P(new THREE.BoxGeometry(2, 0.5, 2), '#fff', [0, 0.25, 0], [0, 0, 0], [1, 1, 1], stone), P(new THREE.BoxGeometry(1.9, 0.5, 1.9), '#fff', [0, h, 0], [0, 0, 0], [1, 1, 1], stone)), 0.08, 2, x).translate(0, 0, 0).rotateZ(tilt).translate(x, 2.2, z)); };
-    for (let i = 0; i < 5; i++) for (const side of [-1, 1]) { const x = -8 + i * 4, z = side * 4.5, broken = r() < 0.35; if (broken && r() < 0.5) continue; col3(x, z, broken ? 2 + r() * 3 : 7.5, broken ? rr(-0.15, 0.15) : 0); }
-    add(displace(P(new THREE.BoxGeometry(18, 1.2, 2.2, 6, 1, 1), '#fff', [-2, 10.4, 4.5], [0, 0, 0.04], [1, 1, 1], stone), 0.12, 1, 4));
-    for (const [x, z, a] of [[10, 7, 0.4], [-11, -8, 1.9], [4, -9, 2.7]]) add(displace(P(new THREE.CylinderGeometry(0.75, 0.8, 7, 12, 4).rotateZ(Math.PI / 2), '#fff', [x, 1.9, z], [0, a, 0], [1, 1, 1], stone), 0.1, 2, x));
-    const amph = []; for (let i = 0; i < 14; i++) { const a = r() * TAU, d = 9 + r() * 10, h = 1.1 + r() * 0.5; amph.push(P(new THREE.LatheGeometry([[0.01, 0], [0.25, 0.1], [0.42, 0.5], [0.38, 0.85], [0.14, 1.05], [0.12, 1.3], [0.2, 1.36]].map(([rr0, y]) => new THREE.Vector2(rr0, y * h)), 12), '#fff', [Math.cos(a) * d, 1.2, Math.sin(a) * d], [r() < 0.5 ? Math.PI / 2 - 0.2 : 0, r() * TAU, 0], [1, 1, 1], () => [0.72, 0.42, 0.26])); }
-    add(M(...amph));
-    scene.add(g); g.updateMatrixWorld(true);
-    for (let i = 0; i < 5; i++) for (const side of [-1, 1]) colliders.push({ ...(() => { const w = new THREE.Vector3(-8 + i * 4, 5, side * 4.5).applyMatrix4(g.matrixWorld); return { x: w.x, y: w.y, z: w.z }; })(), r: 1.4 });
-    colliders.push({ x: rx, y: base + 1, z: rz, r: 6 });
-    out.ruin = new THREE.Vector3(rx, base + 4, rz); }
 }
 function mergeUV(geos) { // merge keeping uv
   const pos = [], uv = [], nrm = []; for (const g0 of geos) { const g = g0.index ? g0.toNonIndexed() : g0; pos.push(...g.attributes.position.array); uv.push(...g.attributes.uv.array); nrm.push(...g.attributes.normal.array); }

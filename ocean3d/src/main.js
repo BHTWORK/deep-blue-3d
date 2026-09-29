@@ -9,7 +9,7 @@ import { TRASH, TREASURE, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS } from './d
 import { AU, Music } from './audio.js';
 import { MAT, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO } from './models.js';
 import { drawCockpit, cockpitLayout, CockpitUI } from './cockpit.js';
-import { WORLD, heightAt, normalAt, U, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBaseShip, buildDockRing, gradTex } from './world.js';
+import { WORLD, heightAt, normalAt, reefPoint, U, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBaseShip, buildDockRing, gradTex } from './world.js';
 
 const V3 = THREE.Vector3, UPV = new V3(0, 1, 0), ZERO = new V3();
 const OPV = new V3(), tv1 = new V3(), tv2 = new V3(), tv3 = new V3(), tm = new THREE.Matrix4(), tq = new THREE.Quaternion(), ts = new V3(1, 1, 1);
@@ -145,6 +145,7 @@ const T_SLOPE = [['bottle', 3], ['can', 3], ['glass', 3], ['tire', 2], ['cart', 
 const T_PLAIN = [['tire', 2.5], ['cart', 1.5], ['ewaste', 2.5], ['drum', 1.6], ['scrap', 2.5], ['battery', 2], ['glass', 1.5], ['can', 1.2]];
 const T_DEEP = [['drum', 3], ['scrap', 2.5], ['ewaste', 2], ['battery', 2], ['tire', 1]];
 const T_MID = [['bag', 3], ['bottle', 2], ['mask', 1.5], ['cup', 1.5]];
+const T_REEF = [['bag', 3], ['bottle', 3], ['can', 3], ['cup', 2], ['mask', 2], ['rope', 1.5], ['glass', 1], ['tire', 0.4]];
 function addItem(type, x, y, z, o = {}) {
   const tr = !!o.tr, D = tr ? TREASURE[type] : TRASH[type];
   const it = { id: items.length, type, key: tr ? 'T_' + type : type, pos: new V3(x, y, z), home: new V3(x, y, z), orig: new V3(x, y, z), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rr(-0.5, 0.5), rr(0, TAU), rr(-0.5, 0.5))), r: D.r, kg: D.kg, v: D.v, tr,
@@ -170,10 +171,10 @@ function genItems() {
   n(24, () => { const x = rr(-860, -640), z = rr(-330, 330); if (heightAt(x, z) > -600) return false; return floorItem(wpick(T_DEEP), x, z); });
   n(20, () => { const x = rr(650, 860), z = rr(-330, 330); if (heightAt(x, z) > -450) return false; return floorItem(wpick(T_DEEP), x, z); });
   n(5, () => { const [x, z] = polar(POI.cship.x, POI.cship.z, 15, 60); return floorItem('container', x, z); });
+  n(45, () => { const p = reefPoint(-70); return p ? floorItem(wpick(T_REEF), p[0], p[2]) : false; }); // litter caught among the coral heads
+  // a few rare finds hidden in the big wrecks; the sea is about the rubbish, not the loot
   const T = (type, x, z) => floorItem(type, x, z, { tr: true });
-  T('chest', POI.wreck.x + 12, POI.wreck.z + 6); T('coin', POI.wreck.x - 18, POI.wreck.z - 4); T('compass', POI.wreck.x + 4, POI.wreck.z - 14); T('idol', POI.plane.x + 6, POI.plane.z - 8);
-  T('pearl', 205, 95); T('vase', -210, 120); T('pearl', POI.whalefall.x + 6, POI.whalefall.z + 3); T('chest', POI.trench.x + 10, POI.trench.z - 12); T('idol', POI.vents.x + 20, POI.vents.z + 18);
-  T('coin', POI.cship.x - 20, POI.cship.z + 22); T('vase', POI.cship.x + 26, POI.cship.z - 18); T('compass', -420, -250); T('coin', 232, 468); T('vase', 520, -140); T('pearl', -300, 525); T('idol', -560, -380);
+  T('chest', POI.wreck.x + 12, POI.wreck.z + 6); T('idol', POI.plane.x + 6, POI.plane.z - 8); T('coin', POI.cship.x - 20, POI.cship.z + 22); T('chest', POI.trench.x + 10, POI.trench.z - 12);
 }
 const rescues = [];
 function genRescues() {
@@ -229,21 +230,22 @@ function genCreatures() {
   [[-520, 250, 150, -340, -170], [470, -330, 150, -340, -170], [-380, -300, 150, -320, -170], [380, 330, 150, -320, -170], [0, -480, 150, -330, -170], [-600, -520, 150, -340, -180]].forEach((z) => addSchool('lantern', Z(...z), 22, 16));
   // small colourful reef fish that hug the coral heads (ambient: not a codex species)
   const REEFC = ['#ffd23f', '#3fa7ff', '#ff7b54', '#9b5de5', '#c5e063', '#ff5d8f', '#00f5d4', '#f15bb5'];
-  [[150, 20, 70], [120, -60, 60], [200, 90, 60], [60, 200, 60], [90, -200, 60], [230, 210, 50], [-180, 200, 50], [-20, 80, 40], [180, -20, 50], [100, 120, 50], [30, -150, 50], [210, -90, 50]].forEach(([x, z, rad], i) => {
-    addSchool('reef', Z(x, z, rad, -70, -3), 18 + (i % 3) * 6, 10, { rad: 2.6, hug: [1.5, 5], col: REEFC[i % REEFC.length] }); });
+  [[150, 20, 70], [120, -60, 60], [200, 90, 60], [60, 200, 60], [90, -200, 60], [230, 210, 50], [-180, 200, 50], [-20, 80, 40], [180, -20, 50], [100, 120, 50], [30, -150, 50], [210, -90, 50],
+    [140, 40, 40], [170, -40, 40], [80, 20, 40], [40, 230, 50], [130, -230, 50], [240, 140, 40], [-200, 180, 40], [0, 60, 40]].forEach(([x, z, rad], i) => {
+    addSchool('reef', Z(x, z, rad, -70, -3), 18 + (i % 3) * 6, 14, { rad: 2.6, hug: [1.5, 5], col: REEFC[i % REEFC.length] }); });
   flora.anems.forEach((a) => { for (let k = 0; k < 2; k++) addC('clownfish', Z(a.x, a.z, 3, a.y - 1, a.y + 2), { at: a.clone().add(new V3(rr(-1, 1), 0.8, rr(-1, 1))), need: k ? rr(0.1, 0.5) : 0, extra: { home: a.clone().add(new V3(0, 0.8, 0)) } }); });
   for (let i = 0; i < 32; i++) addC('tang', i < 20 ? Z(150, 20, 90, -60, -8) : Z(rpick([60, 90, 200]), rpick([-200, 200, 120]), 60, -60, -8), { need: i < 10 ? 0 : rr(0.1, 0.8) });
-  for (let i = 0; i < 4; i++) addC('turtle', Z(0, 0, 360, -70, -3), { need: i < 2 ? 0 : rr(0.2, 0.6) });
-  for (let i = 0; i < 10; i++) { const x = rr(-230, -80), z = rr(-150, 130), y = heightAt(x, z) + rr(4, 12); addC('seahorse', Z(x, z, 2, y - 2, y + 2), { at: new V3(x, y, z), need: i < 5 ? 0 : rr(0.1, 0.7) }); }
-  for (let i = 0; i < 18; i++) { const [x, z] = polar(0, 0, 20, 420); addC('crab', Z(x, z, 40, -1000, 0), { at: new V3(x, heightAt(x, z) + 0.2, z), need: i < 10 ? 0 : rr(0.1, 0.7) }); }
-  for (let i = 0; i < 46; i++) { const [x, z] = polar(0, 0, 110, 620); addC('jelly', Z(x, z, 40, -300, -12), { extra: { hue: rpick([190, 280, 320, 30, 170]) } }); }
-  for (let i = 0; i < 4; i++) addC('manta', i % 2 ? Z(300, 250, 200, -160, -15) : Z(-300, -250, 200, -160, -15), { need: i < 2 ? 0 : rr(0.25, 0.6) });
+  for (let i = 0; i < 10; i++) addC('turtle', i < 6 ? Z(0, 0, 360, -70, -3) : Z(150, 20, 150, -60, -4), { need: i < 3 ? 0 : rr(0.15, 0.8) });
+  for (let i = 0; i < 22; i++) { const x = rr(-230, -80), z = rr(-150, 130), y = heightAt(x, z) + rr(4, 12); addC('seahorse', Z(x, z, 2, y - 2, y + 2), { at: new V3(x, y, z), need: i < 8 ? 0 : rr(0.1, 0.7) }); }
+  for (let i = 0; i < 40; i++) { const [x, z] = polar(0, 0, 20, 420); addC('crab', Z(x, z, 40, -1000, 0), { at: new V3(x, heightAt(x, z) + 0.2, z), need: i < 16 ? 0 : rr(0.1, 0.7) }); }
+  for (let i = 0; i < 56; i++) { const [x, z] = polar(0, 0, 110, 620); addC('jelly', Z(x, z, 40, -300, -12), { extra: { hue: rpick([190, 280, 320, 30, 170]) } }); }
+  for (let i = 0; i < 8; i++) addC('manta', [Z(300, 250, 200, -160, -15), Z(-300, -250, 200, -160, -15), Z(150, 20, 160, -70, -10), Z(-150, 200, 180, -120, -12)][i % 4], { need: i < 2 ? 0 : rr(0.2, 0.7) });
   [[-330, 0, 120, -250, -40], [330, 60, 120, -250, -40], [-500, 260, 150, -330, -150], [480, -300, 150, -330, -150], [100, 340, 120, -150, -30]].forEach((z) => addC('shark', Z(...z)));
-  for (let i = 0; i < 2; i++) addC('whale', Z(0, 0, 600, -100, -8), { need: i ? 0.45 : 0 });
-  for (let i = 0; i < 7; i++) addC('dolphin', Z(260, 240, 220, -25, -2), { need: i < 3 ? 0 : rr(0.15, 0.7), extra: { jumpCd: rr(3, 12) } });
+  for (let i = 0; i < 4; i++) addC('whale', Z(0, 0, 600, -100, -8), { need: [0, 0.35, 0.55, 0.75][i] });
+  for (let i = 0; i < 14; i++) addC('dolphin', i < 8 ? Z(260, 240, 220, -25, -2) : Z(-200, -250, 200, -25, -2), { need: i < 4 ? 0 : rr(0.15, 0.75), extra: { jumpCd: rr(3, 12) } });
   for (const [ax, az] of [[-560, 180], [520, -260], [-720, -40], [740, 60], [-400, 480], [420, 420], [-600, -300]]) { const x = ax + rr(-30, 30), z = az + rr(-30, 30); addC('angler', Z(x, z, 60, -900, -280), { at: new V3(x, heightAt(x, z) + rr(3, 9), z) }); }
-  for (let i = 0; i < 6; i++) { const [x, z] = polar(0, 0, 260, 560); if (heightAt(x, z) < -380) { i--; continue; } addC('octopus', Z(x, z, 30, -1000, 0), { at: new V3(x, heightAt(x, z) + 0.3, z), need: i < 3 ? 0 : rr(0.2, 0.6), extra: { col: rpick(['#c0553a', '#b8462e', '#d06a40']) } }); }
-  for (let i = 0; i < 5; i++) addC('dumbo', i < 3 ? Z(-760, 60, 90, -860, -600) : Z(760, 60, 90, -660, -480));
+  for (let i = 0; i < 12; i++) { const [x, z] = polar(0, 0, 200, 560); if (heightAt(x, z) < -380) { i--; continue; } addC('octopus', Z(x, z, 30, -1000, 0), { at: new V3(x, heightAt(x, z) + 0.3, z), need: i < 3 ? 0 : rr(0.2, 0.6), extra: { col: rpick(['#c0553a', '#b8462e', '#d06a40']) } }); }
+  for (let i = 0; i < 8; i++) addC('dumbo', i < 5 ? Z(-760, 60, 90, -860, -600) : Z(760, 60, 90, -660, -480));
   addC('squid', Z(-770, 80, 90, -840, -640));
   for (const sp of FISH_KINDS) { const cnt = sp === 'clownfish' || sp === 'tang' ? creatures.filter((c) => c.sp === sp).length : schools.filter((s) => s.sp === sp).reduce((s, sc) => s + sc.m.length, 0);
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: sp === 'sardine' ? 0.5 : 0.1, side: THREE.DoubleSide });
