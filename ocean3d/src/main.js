@@ -127,7 +127,7 @@ class FX {
     const g = this.pts.geometry; g.attributes.position.needsUpdate = true; g.attributes.aCol.needsUpdate = true; g.attributes.aSize.needsUpdate = true; g.attributes.aShape.needsUpdate = true;
   }
 }
-const FXA = new FX(1600, THREE.AdditiveBlending), FXN = new FX(1800, THREE.NormalBlending);
+const FXA = new FX(1800, THREE.AdditiveBlending), FXN = new FX(2600, THREE.NormalBlending);
 const PT = { BUB: 0, SPARK: 1, SMOKE: 2, INK: 3, SAND: 4, TOX: 5, SPLASH: 6, BLIP: 7 };
 const bubble = (x, y, z, vx = 0, vy = 1, vz = 0, s = 0.12) => FXN.emit(PT.BUB, x, y, z, vx, vy, vz, rnd(2, 4), s, 0.85, 0.95, 1, 0.7, 1);
 function burst(p, n, r, g, b, spd = 6, size = 0.25) { for (let i = 0; i < n; i++) { tv3.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize().multiplyScalar(spd * rnd(0.3, 1)); FXA.emit(PT.SPARK, p.x, p.y, p.z, tv3.x, tv3.y, tv3.z, rnd(0.4, 1), size, r, g, b, 1); } }
@@ -246,7 +246,7 @@ const creatures = [], schools = [];
 const CDEF = { clownfish: { r: 0.3, spd: 2 }, tang: { r: 0.4, spd: 3 }, turtle: { r: 1.2, spd: 3 }, seahorse: { r: 0.4, spd: 0.6 }, crab: { r: 0.4, spd: 1.2 }, jelly: { r: 0.9, spd: 0.6 }, manta: { r: 2.5, spd: 4 },
   dolphin: { r: 1.3, spd: 9 }, shark: { r: 1.8, spd: 6.5 }, whale: { r: 6, spd: 3 }, octopus: { r: 0.8, spd: 1 }, angler: { r: 0.8, spd: 1 }, dumbo: { r: 0.6, spd: 1.2 }, squid: { r: 3, spd: 3 } };
 const SMALL = { clownfish: 1, tang: 1 };
-const FISH_KINDS = ['sardine', 'lantern', 'clownfish', 'tang', 'reef', 'butter', 'angel', 'parrot', 'idol', 'barra', 'snapper', 'grouper', 'puffer'];
+const FISH_KINDS = ['sardine', 'lantern', 'clownfish', 'tang', 'reef', 'butter', 'angel', 'parrot', 'idol', 'barra', 'snapper', 'grouper', 'puffer', 'hagfish', 'shrimp'];
 const FISHIM = {};
 function Z(cx, cz, rad, y0, y1) { return { cx, cz, rad, y0, y1 }; }
 function zonePoint(z, r = 1, out = new V3()) { for (let k = 0; k < 20; k++) { const a = rr(0, TAU), d = Math.sqrt(SR.r()) * z.rad, x = z.cx + Math.cos(a) * d, zz = z.cz + Math.sin(a) * d; const fl = heightAt(x, zz) + r + 1.5; const lo = Math.max(fl, z.y0), hi = Math.min(-r - 0.8, z.y1); if (hi > lo) return out.set(x, rr(lo, hi), zz); } return out.set(z.cx, Math.max(heightAt(z.cx, z.cz) + r + 2, z.y0), z.cz); }
@@ -302,6 +302,10 @@ function genCreatures() {
   for (let i = 0; i < 12; i++) { const [x, z] = polar(0, 0, 200, 560); if (heightAt(x, z) < -380) { i--; continue; } addC('octopus', Z(x, z, 30, -1000, 0), { at: new V3(x, heightAt(x, z) + 0.3, z), need: i < 3 ? 0 : rr(0.2, 0.6), extra: { col: rpick(['#c0553a', '#b8462e', '#d06a40']) } }); }
   for (let i = 0; i < 8; i++) addC('dumbo', i < 5 ? Z(-760, 60, 90, -860, -600) : Z(760, 60, 90, -660, -480));
   addC('squid', Z(-770, 80, 90, -840, -640));
+  // hagfish and crabs picking at the whale fall; vent shrimp swarming the chimney bases
+  { const wf = POI.whalefall, c = Math.cos(0.4), s = Math.sin(0.4); for (let k = 0; k < 3; k++) { const t = k / 2, lx = 4 - t * 12; addSchool('hagfish', Z(wf.x + lx * c, wf.z - lx * s, 5, -900, -3), 6, 0, { rad: 2.2, hug: [0.3, 1.5], scale: 1.2, spd: 0.8 }); }
+    for (let i = 0; i < 10; i++) { const lx = rr(-10, 9), lz = rr(-4, 4), x = wf.x + lx * c + lz * s, z = wf.z - lx * s + lz * c; addC('crab', Z(x, z, 6, -1000, 0), { at: new V3(x, heightAt(x, z) + 0.2, z) }); } }
+  for (const v of pieces.vents.slice(0, 5)) addSchool('shrimp', Z(v.x, v.z, 4, -1000, -3), 40, 0, { rad: 2.4, hug: [0.8, 4], scale: 1.3, spd: 0.7 });
   // fish that move in once a cleanup site is clean: the wreck and the airliner become artificial reefs
   const site = (id, sp, n, o) => { const ps = pieces.sites[id]; addSchool(sp, Z(ps.center.x, ps.center.z, ps.r * 0.6, -900, -3), n, 0, { scale: 1.3, site: id, ...o }); };
   site('wreck', 'snapper', 30, { rad: 5, hug: [9, 16] }); site('wreck', 'reef', 22, { rad: 3, hug: [9, 15], col: '#ffd23f' }); site('wreck', 'barra', 10, { rad: 5, hug: [13, 22], spd: 2 });
@@ -626,6 +630,14 @@ function updateSonar(dt) { G.sonarCd = Math.max(0, G.sonarCd - dt); const s = G.
   for (const c of creatures) { if (c.sp !== 'shark' && c.sp !== 'angler') continue; const d = c.pos.distanceToSquared(s.p); if (d >= a && d < b && s.r < s.max * 0.9) { c.state = 2; c.fleeT = 5; c.cd = 12; } }
   for (const p of POIS) { const d = (p.x - s.p.x) ** 2 + (p.y - s.p.y) ** 2 + (p.z - s.p.z) ** 2; if (d >= a && d < b) p.pinged = true; }
   if (s.r > s.max) { if (s.n > 0) toast(`소나: 쓰레기 ${s.n}개 탐지`, '', '화면과 지도에 표시됩니다.'); else toast('소나: 주변에 쓰레기가 없습니다', ''); G.sonar = null; sonarMesh.visible = false; } }
+// black smoke pouring from the vent chimneys (hot orange at the mouth) and the trench lander's blinking beacon
+function updateVents(dt) {
+  const cp = camera.position;
+  for (const v of pieces.smokers) { if ((cp.x - v.x) ** 2 + (cp.z - v.z) ** 2 > 190 * 190) continue;
+    if (Math.random() < dt * 16 * v.k) FXN.emit(PT.SMOKE, v.x + rnd(-0.3, 0.3) * v.k, v.top + 0.2, v.z + rnd(-0.3, 0.3) * v.k, rnd(-0.35, 0.35), rnd(3, 5) * (0.6 + 0.4 * v.k), rnd(-0.35, 0.35), rnd(4, 6) * (0.5 + 0.5 * v.k), rnd(0.5, 0.9) * (0.5 + 0.5 * v.k), 0.018, 0.017, 0.02, 0.92);
+    if (Math.random() < dt * 9 * v.k) FXA.emit(PT.SPARK, v.x + rnd(-0.25, 0.25), v.top + 0.15, v.z + rnd(-0.25, 0.25), rnd(-0.3, 0.3), rnd(2, 4), rnd(-0.3, 0.3), rnd(0.35, 0.7), rnd(0.25, 0.55) * v.k, 1, 0.42, 0.1, 1); }
+  const b = pieces.beacon, on = Math.sin(G.t * 3.2) > 0.55; b.mesh.visible = on; if (on && b.pos.distanceToSquared(cp) < 160 * 160) G.glowSrc.push([b.pos, 0xff3b30, 6]);
+}
 function updateHazards(dt) { for (const v of pieces.vents) { if (Math.hypot(P.pos.x - v.x, P.pos.z - v.z) < 2.6 && P.pos.y > v.top - 1 && P.pos.y < v.top + 22) { damage(9 * dt, '열수', true); setAlert('열수 분출 · 고온 주의', 2); } } }
 
 // =====================================================================
@@ -770,6 +782,7 @@ function updateEnv(dt) {
   snow.visible = cy < 0.2; // marine snow only below the waterline
   // distance culling: reef growth only near the shelf reefs, glowing corals only in the deep
   { const reef = Math.hypot(camera.position.x - 90, camera.position.z - 30) < 560 && cy > -260; for (const m of flora.reefMeshes) m.visible = reef; for (const m of flora.deepMeshes) m.visible = cy < -140; }
+  for (const f of pieces.far) f.o.visible = (camera.position.x - f.x) ** 2 + (camera.position.z - f.z) ** 2 < 420 * 420;
   const su = snow.material.uniforms; su.uCam.value.copy(camera.position); su.uLP.value.copy(P.nose); su.uLD.value.copy(P.fwd); su.uLR.value = S.light || 50; su.uAmb.value = hemi.intensity * 0.5 + 0.1; su.uPR.value = renderer.getPixelRatio();
   // god rays follow the camera near the surface
   const ra = rays.userData; ra.mat.opacity = 0.05 * day * (1 - smooth(10, 140, dep)) * (0.6 + 0.4 * cv); rays.visible = ra.mat.opacity > 0.003 && cy < 0;
@@ -1023,7 +1036,10 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => { IN.keys[e.code] = false; });
 addEventListener('blur', () => { IN.keys = {}; IN.lmb = false; IN.tBeam = IN.tBoost = IN.tUp = IN.tDown = false; });
-document.addEventListener('visibilitychange', () => { if (document.hidden) { saveGame(); if (G.state === 'play') togglePause(); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { saveGame(); AU.suspend(); if (G.state === 'play') togglePause(); } else AU.resume(); });
+// browsers only let audio restart from a user gesture, and iOS reports 'interrupted' after a tab or app switch: retry on every gesture
+for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) addEventListener(ev, () => AU.init(), { capture: true, passive: true });
+addEventListener('pageshow', () => AU.resume()); addEventListener('focus', () => AU.resume());
 canvas.addEventListener('mousedown', (e) => { AU.init(); if (IN.touch || G.state !== 'play') return; if (!IN.locked) { requestLock(); IN.drag = true; IN.lx = e.clientX; IN.ly = e.clientY; if (e.button === 0 && e.shiftKey) IN.lmb = true; return; } if (e.button === 0) IN.lmb = true; else if (e.button === 2) doSonar(); });
 addEventListener('mousemove', (e) => { if (IN.locked) { IN.mdx += e.movementX; IN.mdy += e.movementY; } else if (IN.drag) { IN.mdx += e.clientX - IN.lx; IN.mdy += e.clientY - IN.ly; IN.lx = e.clientX; IN.ly = e.clientY; } });
 addEventListener('mouseup', (e) => { if (e.button === 0) IN.lmb = false; IN.drag = false; });
@@ -1062,7 +1078,7 @@ function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; 
 addEventListener('resize', resize);
 function update(dt) {
   G.dayT = (G.dayT + dt / 600) % 1; G.alert = ''; G.alertPri = 0; ST().time += dt;
-  updatePlayer(dt); updateItems(dt); updateSites(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
+  updatePlayer(dt); updateItems(dt); updateSites(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
   for (const c of creatures) updateCreature(c, dt); for (const s of schools) updateSchool(s, dt);
   updateCamera(dt);
   G.shake *= Math.pow(0.02, dt); if (G.shake < 0.01) G.shake = 0; G.flash = Math.max(0, G.flash - dt * 1.4);
@@ -1101,6 +1117,6 @@ genItems(); genRescues(); genSiteItems(); buildItemMeshes(); genCreatures(); bui
 G.poll = items.length;
 loadSettings(); resize(); showTitle();
 function simulate(sec) { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) { const dt = 1 / 30; G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); FXA.update(dt); FXN.update(dt); } writeFish(); }
-window.__game = { SITES, siteTick, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
+window.__game = { AU, SITES, siteTick, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
 $('loading').classList.add('hidden');
 requestAnimationFrame((t) => { last = t; frame(t); });

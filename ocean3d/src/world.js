@@ -42,7 +42,7 @@ function heightRaw(x, z) {
 }
 // The wreck and the airliner rest on levelled beds cut into the slope. HGT0 keeps the seabed from before
 // the beds so item generation, which tests heights, still lays out the same items (saves refer to them by id).
-const BEDS = POIS.filter((p) => p.id === 'wreck' || p.id === 'plane');
+const BEDS = POIS.filter((p) => p.id === 'wreck' || p.id === 'plane' || p.id === 'whalefall');
 const HGT0 = new Float32Array(GN * GN);
 function sampleGrid(A, x, z) {
   const gx = clamp((x + WORLD.half) / CELL, 0, WORLD.N - 0.001), gz = clamp((z + WORLD.half) / CELL, 0, WORLD.N - 0.001);
@@ -381,7 +381,7 @@ function hullSection(L, H, W, x0, x1, colorFn, brokenAt) {
   g.computeVertexNormals();
   return P(g, '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => (Math.abs(x - brokenAt) < 2.6 && NZ(y * 1.3, z * 1.3) > -0.1 ? [0.05, 0.04, 0.04] : colorFn(x, y, z)));
 }
-function colliderLine(colliders, obj, from, to, r, n) { obj.updateMatrixWorld(true); for (let k = 0; k <= n; k++) { const v = new THREE.Vector3().lerpVectors(from, to, k / n).applyMatrix4(obj.matrixWorld); colliders.push({ x: v.x, y: v.y, z: v.z, r }); } }
+function colliderLine(colliders, obj, from, to, r, n) { obj.updateMatrixWorld(true); for (let k = 0; k <= n; k++) { const v = new THREE.Vector3().lerpVectors(from, to, n ? k / n : 0).applyMatrix4(obj.matrixWorld); colliders.push({ x: v.x, y: v.y, z: v.z, r }); } }
 export function buildSetPieces(scene, colliders) {
   const out = {}; const P0 = Object.fromEntries(POIS.map((p) => [p.id, p]));
   const metal = addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.2, side: THREE.DoubleSide }), 0.5);
@@ -450,15 +450,52 @@ export function buildSetPieces(scene, colliders) {
     out.sites.plane = { center: new THREE.Vector3(w.x, heightAt(w.x, w.z), w.z), r: 48,
       spots: [W2(fg, 3, 0.55, -0.6), W2(fg, 7.5, 0.9, -1.2), W2(fg, 0, -0.9, -4.6), W2(fg, 0.8, -0.9, -6), W2(tg, 0, -0.6, -3), W2(rg, -5.5, 0.6, -1)],
       leaks: [W2(fg, 4.3, 0.2, -1.2), W2(rg, -4.3, 0.2, -1.2)] }; }
-  // whale fall
-  { const g = new THREE.Group(); const w = P0.whalefall; const parts = [];
-    const spine = (t) => new THREE.Vector3(-10 + t * 20, 0.6 + Math.sin(t * 3) * 0.4, Math.sin(t * 2.4) * 1.5);
-    for (let i = 0; i < 30; i++) { const t = i / 29, p = spine(t), s = lerp(0.25, 0.6, t); parts.push(P(new THREE.BoxGeometry(s * 1.2, s, s), '#e6dcc4', [p.x, p.y, p.z]), P(new THREE.BoxGeometry(0.08, s * 1.5, 0.08), '#e6dcc4', [p.x, p.y + s, p.z])); }
-    for (let i = 0; i < 12; i++) { const t = 0.45 + i * 0.038, p = spine(t); for (const sd of [1, -1]) { if ((i * 7 + sd) % 5 === 0) continue; parts.push(P(new THREE.TorusGeometry(2.4 - i * 0.05, 0.1, 5, 12, Math.PI * 0.62), '#ddd2b8', [p.x, p.y - 0.1, p.z], [0, sd > 0 ? 0 : Math.PI, -Math.PI * 0.62])); } }
-    parts.push(P(new THREE.SphereGeometry(1.6, 12, 8), '#e6dcc4', [11.4, 0.8, 0], [0, 0, 0], [1.8, 0.6, 1]), P(new THREE.TorusGeometry(4, 0.22, 6, 16, 0.9), '#ddd2b8', [11, 0.2, 1.1], [Math.PI / 2, 0, -0.45]), P(new THREE.TorusGeometry(4, 0.22, 6, 16, 0.9), '#ddd2b8', [11, 0.2, -1.1], [Math.PI / 2, 0, -0.45]));
-    for (let i = 0; i < 26; i++) parts.push(P(new THREE.CircleGeometry(rr(0.5, 2.2), 10), SRr() < 0.6 ? '#f2f2e8' : '#ffa060', [rr(-12, 14), 0.05, rr(-4, 4)], [-Math.PI / 2, 0, 0]));
-    g.add(new THREE.Mesh(M(...parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, emissive: 0x201810, emissiveIntensity: 0.3 })));
-    const y = heightAt(w.x, w.z); g.position.set(w.x, y - 0.4, w.z); g.rotation.y = 0.4; scene.add(g); }
+  // whale fall: a humpback skeleton on the sediment, grazed by bone-eating worms, with bacterial mats around it
+  out.far = [];
+  const matMesh = (patches, y0) => { const parts = patches.map(([x, z, r, col], i) => { const g = new THREE.CircleGeometry(r, 18).rotateX(-Math.PI / 2), q = g.attributes.position;
+      for (let k = 1; k < q.count; k++) { const px = q.getX(k), pz = q.getZ(k), f = 1 + NZ(px * 0.9 + i * 5, pz * 0.9) * 0.35; q.setX(k, px * f); q.setZ(k, pz * f); }
+      return P(g, col, [x, y0 + 0.02 + i * 0.002, z], [0, 0, 0], [1, 1, 1], (px, py, pz, c) => { const n = NZ(px * 3 + i, pz * 3) * 0.12; return [c.r + n, c.g + n, c.b + n]; }); });
+    return new THREE.Mesh(M(...parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); };
+  { const w = P0.whalefall; const g = new THREE.Group(); const parts = [];
+    const bone = (x, y, z) => { const n = NZ(x * 1.3 + 4, y * 1.3 + z * 1.1) * 0.5 + 0.5; return NZ(x * 0.5 + 7, z * 0.5 + y) > 0.3 ? [0.3 + 0.14 * n, 0.25 + 0.12 * n, 0.17 + 0.08 * n] : [0.56 + 0.08 * n, 0.53 + 0.07 * n, 0.45 + 0.06 * n]; };
+    const B = (geo, pos, rot, scl) => parts.push(P(geo, '#fff', pos, rot || [0, 0, 0], scl || [1, 1, 1], bone));
+    const tube = (pts, r) => B(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map((q) => new THREE.Vector3(...q))), 14, r, 6), [0, 0, 0]);
+    // vertebral column from the skull (x = 4) to the tail tip (x = -11), with a gentle S in the sediment
+    const NV = 44, vpos = [];
+    for (let i = 0; i < NV; i++) { const t = i / (NV - 1), x = 4 - t * 15, z = Math.sin(t * 3.2) * 0.9, sz = lerp(0.42, 0.1, Math.pow(t, 0.9)), y = sz * 0.9; vpos.push([x, y, z, sz]);
+      B(new THREE.CylinderGeometry(sz, sz, sz * 0.8, 10), [x, y, z], [0, 0, Math.PI / 2]);
+      if (t < 0.8) B(new THREE.BoxGeometry(sz * 0.35, sz * (t < 0.55 ? 2.2 : 1.2), sz * 0.25), [x - sz * 0.25, y + sz * (t < 0.55 ? 1.5 : 1), z], [0, 0, 0.3]);
+      if (t > 0.15 && t < 0.62) for (const sd of [-1, 1]) B(new THREE.BoxGeometry(sz * 0.5, sz * 0.18, sz * 2.2), [x, y, z + sd * sz * 1.5]); }
+    // ribs splayed out on both sides where the carcass collapsed; a few have fallen flat
+    for (let i = 0; i < 13; i++) { const [x, y, z] = vpos[5 + i], L = 1.9 + Math.sin((i / 12) * Math.PI) * 1.1;
+      for (const sd of [-1, 1]) { if ((i * 5 + (sd > 0 ? 1 : 0)) % 7 === 0) continue; const fl = (i * 3 + (sd > 0 ? 2 : 0)) % 5 === 0, dx = fl ? rr(-1.2, 1.2) : -0.3;
+        tube([[x, y + 0.1, z + sd * 0.3], [x - 0.1, y + (fl ? 0.1 : 0.55), z + sd * (0.3 + L * 0.35)], [x - 0.2 + dx * 0.5, fl ? 0.1 : y * 0.5 + 0.25, z + sd * (0.3 + L * 0.75)], [x + dx, 0.1, z + sd * (0.3 + L)]], 0.07 + 0.03 * Math.sin((i / 12) * Math.PI)); } }
+    // skull: a broad wedge tapering to the rostrum, the cranium domed at the back
+    const sk = new THREE.BoxGeometry(5.4, 0.8, 2.8, 12, 2, 6), sp = sk.attributes.position;
+    for (let k = 0; k < sp.count; k++) { const x = sp.getX(k), y = sp.getY(k), z = sp.getZ(k), t = clamp((x + 2.7) / 5.4, 0, 1); sp.setXYZ(k, x, y * lerp(1.3, 0.35, t) + (y > 0 ? Math.cos((z / 1.4) * 1.2) * 0.15 : 0), z * lerp(1, 0.22, Math.pow(t, 1.3))); }
+    B(sk, [7.1, 0.5, 0.1], [0, 0.04, 0.06]); B(new THREE.SphereGeometry(1, 14, 10), [4.9, 0.75, 0.1], [0, 0, 0], [1.15, 0.8, 1.4]);
+    for (const sd of [-1, 1]) B(new THREE.SphereGeometry(0.28, 8, 6), [4.2, 0.5, 0.1 + sd * 0.35]); // occipital condyles
+    // lower jawbones lying apart beside the skull
+    for (const sd of [-1, 1]) tube([[4.3, 0.22, sd * 1.1], [6.4, 0.22, sd * (2.2 + (sd > 0 ? 0.4 : 0))], [8.6, 0.18, sd * 2.1], [10.2, 0.15, sd * 1.3]], 0.19);
+    // flippers: shoulder blade, arm bones and the long rows of finger bones, one on each side
+    for (const sd of [-1, 1]) { const bx = sd > 0 ? 1.8 : 2.4, bz = sd * (sd > 0 ? 2.6 : 3.2), ang = sd > 0 ? 0.5 : -0.2;
+      const f = (u, v) => [bx - Math.sin(ang) * v, 0.15, bz + sd * Math.cos(ang) * u + Math.sin(ang) * v]; // u runs out along the flipper, v across it
+      B(new THREE.CircleGeometry(1.1, 10, 0, Math.PI * 0.8), [bx + 0.6, 0.35, bz - sd * 1.3], [-Math.PI / 2 + 0.25 * sd, 0, ang]);
+      tube([f(0, 0), f(0.9, 0.05)], 0.17); tube([f(0.95, -0.12), f(2.3, -0.1)], 0.11); tube([f(0.95, 0.14), f(2.3, 0.16)], 0.1);
+      for (let d = 0; d < 4; d++) for (let j = 0; j < 5 - (d === 0 ? 1 : 0); j++) { const [px, , pz] = f(2.5 + j * 0.42, -0.2 + d * 0.13); B(new THREE.CylinderGeometry(0.05, 0.06, 0.34, 6), [px, 0.12, pz], [Math.PI / 2, 0, ang + (sd < 0 ? Math.PI : 0)]); } }
+    g.add(new THREE.Mesh(M(...parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 })));
+    // bacterial mats (white Beggiatoa, yellow sulphur bacteria) where the carcass rotted into the sediment
+    const pt = []; for (let i = 0; i < 30; i++) { const t = rr(-0.1, 1.1), x = 4 - t * 15 + rr(-1.5, 1.5), z = rr(-3.2, 3.2); pt.push([x, z, rr(0.4, 1.4), SRr() < 0.6 ? '#9d9a90' : SRr() < 0.5 ? '#a8862c' : '#9a5424']); }
+    g.add(matMesh(pt, 0));
+    // bone-eating worms: tiny red plumes crowding the bones
+    const wg = M(P(new THREE.CylinderGeometry(0.012, 0.016, 0.14, 4).translate(0, 0.07, 0), '#d8c8b8'), P(new THREE.SphereGeometry(0.045, 6, 4), '#e0304a', [0, 0.15, 0], [0, 0, 0], [1, 1.4, 1]));
+    const worms = new THREE.InstancedMesh(wg, addSway(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x2a0008, emissiveIntensity: 0.6 }), 0.05), 420); const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(); let wn = 0;
+    for (let i = 0; i < 420; i++) { const [x, y, z, sz] = vpos[Math.floor(Math.pow(SRr(), 1.3) * 34)]; const a = rr(-1.2, 1.2); q.setFromEuler(new THREE.Euler(a * 0.5, 0, a)); const sc = rr(0.7, 1.5);
+      m4.compose(new THREE.Vector3(x + rr(-sz, sz) * 0.6, y + Math.cos(a) * sz * 0.95, z + Math.sin(a) * sz * 0.95 * 1.2), q, new THREE.Vector3(sc, sc, sc)); worms.setMatrixAt(wn++, m4); }
+    worms.count = wn; g.add(worms);
+    const y = heightAt(w.x, w.z); g.position.set(w.x, y - 0.05, w.z); g.rotation.y = 0.4; scene.add(g); g.updateMatrixWorld(true);
+    colliderLine(colliders, g, new THREE.Vector3(6.5, 0.5, 0.1), new THREE.Vector3(6.5, 0.5, 0.1), 1.6, 0); colliderLine(colliders, g, new THREE.Vector3(3, 0.3, 0), new THREE.Vector3(-6, 0.3, 0), 0.6, 4);
+    out.far.push({ o: g, x: w.x, z: w.z }); out.whale = g; }
   // container ship
   { const w = P0.cship; const cols = ['#b8392b', '#2d6fb0', '#2e8b57', '#d9822b', '#7d4ba0', '#6d7880', '#c0a030', '#1f8a86'];
     const hullCol = (x, y, z) => (y < -1.5 ? rusty(x, y, z, [0.45, 0.12, 0.1]) : rusty(x, y, z, [0.13, 0.18, 0.28]));
@@ -470,21 +507,67 @@ export function buildSetPieces(scene, colliders) {
     const a = half(false); a.position.set(w.x + 6, y + 3, w.z - 6); a.rotation.set(0.04, 1.3, 0.18); scene.add(a);
     const b = half(true); b.position.set(w.x - 4, y + 3, w.z + 8); b.rotation.set(-0.08, 1.1, -0.22); scene.add(b);
     colliderLine(colliders, a, new THREE.Vector3(0, 0, 0), new THREE.Vector3(40, 0, 0), 6.5, 8); colliderLine(colliders, b, new THREE.Vector3(0, 0, 0), new THREE.Vector3(-42, 0, 0), 6.5, 8); }
-  // hydrothermal vents
-  { out.vents = []; const w = P0.vents; const ventMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+  // hydrothermal vents: black-smoker chimneys on mineral mounds, ringed by tube worms, mussels, white crabs and bacterial mats
+  { out.vents = []; out.smokers = []; const w = P0.vents; const ventMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
     const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ff7a2a').multiplyScalar(2.5), fog: false });
+    const crust = (i) => (px, py, pz) => { const n = NZ(px * 1.6 + i * 3, py * 0.9 + pz * 1.6), m = NZ(px * 4 + 2, py * 3 - pz * 4); if (m > 0.5) return [0.8, 0.74, 0.3]; if (n > 0.35) return [0.5, 0.25, 0.09]; if (n < -0.45) return [0.66, 0.64, 0.6]; return [0.12, 0.1, 0.11]; };
+    const chimney = (i, h, r0) => { const prof = []; for (let k = 0; k <= 14; k++) { const t = k / 14; prof.push(new THREE.Vector2(Math.max(0.22, lerp(r0, r0 * 0.28, Math.pow(t, 0.7)) + NZ(i * 3 + k * 0.9, 1) * r0 * 0.25), t * h)); } return new THREE.LatheGeometry(prof, 12); };
+    const glowTop = (x, y, z, r) => { const t = new THREE.Mesh(new THREE.CircleGeometry(r, 12).rotateX(-Math.PI / 2), glowMat); t.position.set(x, y + 0.02, z); scene.add(t); };
     const wormG = M(P(new THREE.CylinderGeometry(0.05, 0.06, 1, 5).translate(0, 0.5, 0), '#e6ddcc'), P(new THREE.SphereGeometry(0.1, 6, 5), '#d8243c', [0, 1.02, 0], [0, 0, 0], [1, 1.5, 1]));
-    const wormMat = addSway(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x220000, emissiveIntensity: 0.5 }), 0.12);
-    const worms = new THREE.InstancedMesh(wormG, wormMat, 600); let wn = 0; const m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
-    for (let i = 0; i < 7; i++) { const x = w.x + rr(-45, 45), z = w.z + rr(-45, 45), y = heightAt(x, z), h = rr(10, 22);
-      const prof = []; for (let k = 0; k <= 10; k++) { const t = k / 10; prof.push([lerp(2.4, 0.5, t) + (NZ(i * 3 + k * 0.7, 1) * 0.5), t * h]); }
-      const geo = P(new THREE.LatheGeometry(prof.map(([r, yy]) => new THREE.Vector2(Math.max(0.2, r), yy)), 12), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], (px, py, pz) => { const n = NZ(px * 2 + i, py * 0.8 + pz * 2); return n > 0.3 ? [0.55, 0.3, 0.12] : n < -0.35 ? [0.7, 0.62, 0.2] : [0.16, 0.13, 0.14]; });
-      const m = new THREE.Mesh(geo, ventMat); m.position.set(x, y - 1, z); scene.add(m);
-      const top = new THREE.Mesh(new THREE.CircleGeometry(0.5, 12).rotateX(-Math.PI / 2), glowMat); top.position.set(x, y - 1 + h + 0.02, z); scene.add(top);
-      out.vents.push({ x, y: y - 1, z, top: y - 1 + h });
+    const worms = new THREE.InstancedMesh(wormG, addSway(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x220000, emissiveIntensity: 0.5 }), 0.12), 600);
+    const musG = P(new THREE.SphereGeometry(0.12, 6, 4), '#1d1a1c', [0, 0.03, 0], [0, 0, 0], [1, 0.5, 1.9], (x, y, z) => (y > 0.05 ? [0.16, 0.14, 0.12] : [0.07, 0.06, 0.07]));
+    const mussels = new THREE.InstancedMesh(musG, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.1 }), 900);
+    const crabParts = [P(new THREE.SphereGeometry(0.16, 8, 6), '#f2eee4', [0, 0.1, 0], [0, 0, 0], [1.1, 0.5, 0.9])];
+    for (const sd of [-1, 1]) { for (let l = 0; l < 3; l++) crabParts.push(P(new THREE.BoxGeometry(0.28, 0.025, 0.025), '#e8e2d4', [sd * 0.22, 0.06, -0.08 + l * 0.08], [0, sd * (0.3 - l * 0.3), sd * -0.5]));
+      crabParts.push(P(new THREE.BoxGeometry(0.06, 0.05, 0.22), '#f5f0e6', [sd * 0.1, 0.1, 0.22], [0, sd * 0.3, 0]), P(new THREE.SphereGeometry(0.035, 5, 4), '#f5f0e6', [sd * 0.14, 0.1, 0.33])); }
+    const crabs = new THREE.InstancedMesh(M(...crabParts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 }), 160);
+    let wn = 0, mn = 0, cn = 0; const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), V = (x, y, z) => new THREE.Vector3(x, y, z); const pt = [];
+    for (let i = 0; i < 7; i++) { const x = w.x + rr(-45, 45), z = w.z + rr(-45, 45), y = heightAt(x, z), h = rr(10, 22), r0 = rr(1.9, 2.8);
+      const parts = [P(chimney(i, h, r0), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], crust(i)), P(new THREE.SphereGeometry(r0 * 2.6, 14, 6, 0, TAU, 0, Math.PI / 2), '#fff', [0, -0.5, 0], [0, 0, 0], [1, 0.35, 1], crust(i + 9))];
+      for (let f = 0; f < 3; f++) { const fy = h * rr(0.25, 0.75), fr = lerp(r0, r0 * 0.28, Math.pow(fy / h, 0.7)) + rr(0.5, 1.1); parts.push(P(new THREE.CylinderGeometry(fr, fr * 0.75, 0.35, 10), '#fff', [rr(-0.2, 0.2), fy, rr(-0.2, 0.2)], [rr(-0.12, 0.12), 0, rr(-0.12, 0.12)], [1, 1, 1], crust(i + 5))); }
+      for (let k = 0; k < 3; k++) { const a = rr(0, TAU), d = r0 * rr(0.9, 1.4), hs = h * rr(0.25, 0.5); parts.push(P(chimney(i * 7 + k, hs, r0 * 0.45), '#fff', [Math.cos(a) * d, 0, Math.sin(a) * d], [0, 0, 0], [1, 1, 1], crust(i + k)));
+        glowTop(x + Math.cos(a) * d, y - 1 + hs, z + Math.sin(a) * d, 0.2); out.smokers.push({ x: x + Math.cos(a) * d, z: z + Math.sin(a) * d, top: y - 1 + hs, k: 0.35 }); }
+      const m = new THREE.Mesh(M(...parts), ventMat); m.position.set(x, y - 1, z); scene.add(m); out.far.push({ o: m, x, z });
+      glowTop(x, y - 1 + h, z, 0.5); out.vents.push({ x, y: y - 1, z, top: y - 1 + h }); out.smokers.push({ x, z, top: y - 1 + h, k: 1 });
       colliders.push({ x, y: y + h * 0.25, z, r: 2.2 }, { x, y: y + h * 0.6, z, r: 1.4 });
-      for (let k = 0; k < 70; k++) { const a = rr(0, TAU), d = rr(2, 9), wx = x + Math.cos(a) * d, wz = z + Math.sin(a) * d; q.setFromEuler(new THREE.Euler(rr(-0.2, 0.2), 0, rr(-0.2, 0.2))); const s = rr(0.8, 2.2); m4.compose(new THREE.Vector3(wx, heightAt(wx, wz) - 0.1, wz), q, new THREE.Vector3(s, s * rr(0.8, 1.6), s)); if (wn < 600) worms.setMatrixAt(wn++, m4); } }
-    worms.count = wn; worms.frustumCulled = false; scene.add(worms); }
+      for (let k = 0; k < 70; k++) { const a = rr(0, TAU), d = rr(r0 + 1, 9), wx = x + Math.cos(a) * d, wz = z + Math.sin(a) * d; q.setFromEuler(new THREE.Euler(rr(-0.2, 0.2), 0, rr(-0.2, 0.2))); const s = rr(0.8, 2.2); m4.compose(V(wx, heightAt(wx, wz) - 0.1, wz), q, V(s, s * rr(0.8, 1.6), s)); if (wn < 600) worms.setMatrixAt(wn++, m4); }
+      for (let c = 0; c < 4; c++) { const a = rr(0, TAU), d = rr(r0 + 2, 11), cx = x + Math.cos(a) * d, cz = z + Math.sin(a) * d; // mussel beds in clumps
+        for (let k = 0; k < 30; k++) { const mx = cx + rr(-1.3, 1.3), mz = cz + rr(-1.3, 1.3); q.setFromEuler(new THREE.Euler(rr(-0.4, 0.4), rr(0, TAU), rr(-0.4, 0.4))); const s = rr(0.7, 1.3); m4.compose(V(mx, heightAt(mx, mz) + 0.02, mz), q, V(s, s, s)); if (mn < 900) mussels.setMatrixAt(mn++, m4); } }
+      for (let k = 0; k < 22; k++) { const a = rr(0, TAU), d = rr(r0 * 0.9, r0 * 2.6), cx = x + Math.cos(a) * d, cz = z + Math.sin(a) * d; q.setFromEuler(new THREE.Euler(0, rr(0, TAU), 0)); const s = rr(0.8, 1.4);
+        m4.compose(V(cx, Math.max(heightAt(cx, cz), y - 1 + r0 * 0.9 * Math.max(0, 1 - (d / (r0 * 2.6)) ** 2) - 0.5), cz), q, V(s, s, s)); if (cn < 160) crabs.setMatrixAt(cn++, m4); }
+      for (let k = 0; k < 3; k++) { const a = rr(0, TAU), d = rr(r0 * 2.2, 12); pt.push([x - w.x + Math.cos(a) * d, z - w.z + Math.sin(a) * d, rr(0.8, 2), SRr() < 0.5 ? '#a19e94' : '#a08428']); } }
+    for (const im of [worms, mussels, crabs]) scene.add(im); worms.count = wn; mussels.count = mn; crabs.count = cn;
+    const mats = matMesh(pt.map(([px, pz, r, c]) => [px, pz, r, c]), 0); mats.position.set(w.x, 0, w.z); scene.add(mats);
+    // the mats follow the seabed: bake each patch onto its own floor height
+    { const gp = mats.geometry.attributes.position; for (let k = 0; k < gp.count; k++) gp.setY(k, heightAt(gp.getX(k) + w.x, gp.getZ(k) + w.z) + 0.04); mats.geometry.computeBoundingSphere(); } }
+  // the trench floor: a research lander left by an earlier expedition (its beacon blinks), glass sponges, sea lilies and sea pigs
+  { const w = P0.trench, cx = w.x, cz = w.z, y0 = heightAt(cx, cz), V = (x, y, z) => new THREE.Vector3(x, y, z), m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
+    const lx = cx + 6, lz = cz - 4, ly = heightAt(lx, lz); const L = new THREE.Group(); const lp = [];
+    for (let k = 0; k < 3; k++) { const a = (k / 3) * TAU; lp.push(P(new THREE.CylinderGeometry(0.07, 0.07, 3.2, 6), '#7d8288', [Math.cos(a) * 1.2, 1.4, Math.sin(a) * 1.2], [Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35]), P(new THREE.CylinderGeometry(0.35, 0.4, 0.1, 10), '#8a8e94', [Math.cos(a) * 1.75, 0.05, Math.sin(a) * 1.75])); }
+    lp.push(P(new THREE.TorusGeometry(1.0, 0.07, 6, 18), '#7d8288', [0, 2.6, 0], [Math.PI / 2, 0, 0]), P(new THREE.BoxGeometry(1.8, 0.7, 1.8), '#f2c230', [0, 3.2, 0], [0, 0.3, 0], [1, 1, 1], (x, y, z) => (NZ(x * 3, z * 3 + y) > 0.45 ? [0.4, 0.36, 0.2] : [0.7, 0.5, 0.06])),
+      P(new THREE.CylinderGeometry(0.28, 0.28, 1.5, 12), '#6d737a', [0, 1.9, 0]), P(new THREE.SphereGeometry(0.2, 10, 8), '#1a2430', [0.45, 2.4, 0.2]), P(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 5), '#7d8288', [0, 3.95, 0]),
+      P(new THREE.BoxGeometry(0.5, 0.3, 0.02), '#d5d9de', [0, 3.2, 0.92], [0, 0.3, 0]));
+    L.add(new THREE.Mesh(M(...lp), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.3 })));
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color('#ff3b30').multiplyScalar(3), fog: false })); beacon.position.set(0, 4.45, 0); L.add(beacon);
+    L.position.set(lx, ly, lz); scene.add(L); colliders.push({ x: lx, y: ly + 2.2, z: lz, r: 2.2 }); out.beacon = { pos: V(lx, ly + 4.45, lz), mesh: beacon }; out.far.push({ o: L, x: lx, z: lz });
+    const spot = (n, fn) => { let k = 0, g = 0; while (k < n && g++ < n * 20) { const a = rr(0, TAU), d = Math.sqrt(SRr()) * 85 + 4, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d, y = heightAt(x, z); if (y > y0 + 25 || Math.hypot(x - lx, z - lz) < 4) continue; fn(x, y, z); k++; } };
+    // glass sponges: pale lattice vases
+    const sg = new THREE.LatheGeometry([[0.05, 0], [0.16, 0.1], [0.24, 0.5], [0.28, 1.0], [0.3, 1.35], [0.36, 1.5], [0.33, 1.52]].map(([r, y]) => new THREE.Vector2(r, y)), 14);
+    const sponges = new THREE.InstancedMesh(P(sg, '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => { const a = Math.atan2(z, x); return Math.sin(a * 7 + y * 9) * Math.sin(a * 7 - y * 9) > 0.55 ? [0.7, 0.69, 0.62] : [0.4, 0.42, 0.4]; }),
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, transparent: true, opacity: 0.85, side: THREE.DoubleSide, emissive: 0x0e1616, emissiveIntensity: 0.6 }), 26); let n = 0;
+    spot(26, (x, y, z) => { q.setFromEuler(new THREE.Euler(rr(-0.1, 0.1), rr(0, TAU), rr(-0.1, 0.1))); const s = rr(0.7, 1.4); m4.compose(V(x, y - 0.05, z), q, V(s, s * rr(0.9, 1.3), s)); sponges.setMatrixAt(n++, m4); }); sponges.count = n;
+    // sea lilies: a long stalk and a crown of feathery arms
+    const lil = [P(new THREE.CylinderGeometry(0.02, 0.03, 1.3, 5).translate(0, 0.65, 0), '#d8c9a0'), P(new THREE.SphereGeometry(0.07, 6, 5), '#e8b070', [0, 1.33, 0])];
+    for (let k = 0; k < 5; k++) { const a = (k / 5) * TAU; lil.push(P(new THREE.BoxGeometry(0.03, 0.42, 0.06), '#f0c080', [Math.cos(a) * 0.16, 1.5, Math.sin(a) * 0.16], [Math.sin(a) * 0.7, 0, -Math.cos(a) * 0.7])); }
+    const lilies = new THREE.InstancedMesh(M(...lil), addSway(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, emissive: 0x1a1006, emissiveIntensity: 0.5 }), 0.3), 40); n = 0;
+    spot(40, (x, y, z) => { q.setFromEuler(new THREE.Euler(0, rr(0, TAU), 0)); const s = rr(0.8, 1.5); m4.compose(V(x, y - 0.05, z), q, V(s, s, s)); lilies.setMatrixAt(n++, m4); }); lilies.count = n;
+    // sea pigs: plump pink sea cucumbers walking on tube feet
+    const pig = [P(new THREE.SphereGeometry(0.2, 10, 8), '#e39aa4', [0, 0.16, 0], [0, 0, 0], [0.8, 0.55, 1.6], (x, y, z) => (y > 0.2 ? [0.95, 0.68, 0.72] : [0.82, 0.5, 0.56]))];
+    for (let k = 0; k < 3; k++) for (const sd of [-1, 1]) pig.push(P(new THREE.CylinderGeometry(0.02, 0.025, 0.12, 4), '#d88c96', [sd * 0.13, 0.05, -0.18 + k * 0.18], [0, 0, sd * 0.3]));
+    for (const sd of [-1, 1]) pig.push(P(new THREE.CylinderGeometry(0.012, 0.02, 0.18, 4), '#f0b0b8', [sd * 0.06, 0.34, 0.12], [0.5, 0, sd * 0.35]));
+    const pigs = new THREE.InstancedMesh(M(...pig), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, transparent: true, opacity: 0.92 }), 50); n = 0;
+    spot(50, (x, y, z) => { q.setFromEuler(new THREE.Euler(0, rr(0, TAU), 0)); const s = rr(0.9, 1.6); m4.compose(V(x, y, z), q, V(s, s, s)); pigs.setMatrixAt(n++, m4); }); pigs.count = n;
+    for (const im of [sponges, lilies, pigs]) { im.computeBoundingSphere(); scene.add(im); out.far.push({ o: im, x: cx, z: cz }); } }
   return out;
 }
 

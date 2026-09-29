@@ -7,7 +7,7 @@ export const midiF=m=>440*Math.pow(2,(m-69)/12);
 export const AU={
   ctx:null,ready:false,vol:{master:0.8,music:0.6,sfx:0.9},
   init(){
-    if(this.ctx){if(this.ctx.state==='suspended')this.ctx.resume();return;}
+    if(this.ctx){this.resume();return;}
     const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
     try{
       const c=this.ctx=new AC();
@@ -27,6 +27,11 @@ export const AU={
       Music.start();
     }catch(e){console.warn('audio init failed',e);}
   },
+  // hidden tab: stop the graph; resume() restarts it (also after iOS reports 'interrupted')
+  suspend(){if(this.ctx&&this.ctx.state==='running')this.ctx.suspend().catch(()=>{});},
+  resume(){const c=this.ctx;if(!c||c.state==='running'||c.state==='closed'||document.hidden)return;
+    try{const p=c.resume();if(p&&p.catch)p.catch(()=>{});}catch(e){}
+    try{const b=c.createBuffer(1,1,22050),s=c.createBufferSource();s.buffer=b;s.connect(c.destination);s.start(0);}catch(e){}}, // a silent blip inside the gesture unlocks WebKit
   setVol(){if(!this.ready)return;const t=this.ctx.currentTime;this.master.gain.setTargetAtTime(this.vol.master,t,0.05);this.sfx.gain.setTargetAtTime(this.vol.sfx,t,0.05);this.mus.gain.setTargetAtTime(this.vol.music*0.55,t,0.05);},
   impulse(sec,decay){const c=this.ctx,len=c.sampleRate*sec|0,b=c.createBuffer(2,len,c.sampleRate);for(let ch=0;ch<2;ch++){const d=b.getChannelData(ch);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay);}return b;},
   mkNoise(sec,brown){const c=this.ctx,len=c.sampleRate*sec|0,b=c.createBuffer(1,len,c.sampleRate),d=b.getChannelData(0);let last=0;for(let i=0;i<len;i++){const w=Math.random()*2-1;if(brown){last=(last+0.02*w)/1.02;d[i]=last*3.5;}else d[i]=w;}return b;},

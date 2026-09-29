@@ -144,7 +144,7 @@ export function buildTrashGeos() {
 export function fishGeo(kind) {
   // [length, height, width] in metres; +z is the head, +y the back
   const [L, H, W] = { sardine: [0.45, 0.13, 0.09], lantern: [0.4, 0.12, 0.08], clownfish: [0.4, 0.2, 0.12], tang: [0.55, 0.34, 0.08], reef: [0.34, 0.2, 0.07],
-    butter: [0.4, 0.36, 0.06], angel: [0.42, 0.46, 0.06], parrot: [0.85, 0.32, 0.18], idol: [0.34, 0.4, 0.05], barra: [1.4, 0.16, 0.13], snapper: [0.5, 0.16, 0.09], grouper: [1.15, 0.44, 0.34], puffer: [0.4, 0.33, 0.33] }[kind];
+    butter: [0.4, 0.36, 0.06], angel: [0.42, 0.46, 0.06], parrot: [0.85, 0.32, 0.18], idol: [0.34, 0.4, 0.05], barra: [1.4, 0.16, 0.13], snapper: [0.5, 0.16, 0.09], grouper: [1.15, 0.44, 0.34], puffer: [0.4, 0.33, 0.33], hagfish: [0.75, 0.07, 0.08], shrimp: [0.11, 0.04, 0.035] }[kind];
   const cfn = {
     sardine: (x, y) => (y > 0.01 ? [0.17, 0.33, 0.5] : [0.85, 0.9, 0.93]),
     lantern: (x, y) => (y > 0 ? [0.08, 0.1, 0.14] : [0.2, 0.24, 0.3]),
@@ -158,6 +158,8 @@ export function fishGeo(kind) {
     barra: (x, y, z) => { const bar = Math.sin(z * 24) > 0.72 && y > -H * 0.05; return y > H * 0.12 ? (bar ? [0.24, 0.3, 0.36] : [0.44, 0.52, 0.6]) : [0.86, 0.9, 0.92]; },
     snapper: (x, y, z) => (Math.abs(y) < H * 0.09 || z < -L * 0.4 ? [1, 0.84, 0.1] : y > 0 ? [0.55, 0.66, 0.82] : [0.92, 0.94, 0.96]),
     grouper: (x, y, z) => { const spot = Math.sin(z * 30) * Math.sin(y * 34) * Math.sin(x * 30 + 1) > 0.3; return spot ? [0.86, 0.76, 0.56] : y > 0 ? [0.36, 0.26, 0.18] : [0.5, 0.38, 0.26]; },
+    hagfish: (x, y) => (y > 0 ? [0.6, 0.45, 0.48] : [0.74, 0.6, 0.6]),
+    shrimp: (x, y, z) => (z > 0.03 ? [1, 0.75, 0.62] : [0.95, 0.9, 0.86]),
     puffer: (x, y, z) => { const spot = Math.sin(z * 42) * Math.sin(x * 42) > 0.45 && y > -H * 0.1; return spot ? [0.22, 0.17, 0.1] : y < -H * 0.15 ? [0.96, 0.94, 0.86] : [0.82, 0.7, 0.46]; },
   }[kind];
   const tall = kind === 'butter' || kind === 'angel' || kind === 'idol';
