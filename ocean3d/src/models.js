@@ -128,21 +128,36 @@ export function buildTrashGeos() {
 
 // ---------------------------------------------------------------- small fish (instanced)
 export function fishGeo(kind) {
-  const L = { sardine: 0.45, lantern: 0.4, clownfish: 0.4, tang: 0.55, reef: 0.34 }[kind];
-  const H = { sardine: 0.13, lantern: 0.12, clownfish: 0.2, tang: 0.34, reef: 0.2 }[kind];
-  const W = { sardine: 0.09, lantern: 0.08, clownfish: 0.12, tang: 0.08, reef: 0.07 }[kind];
+  // [length, height, width] in metres; +z is the head, +y the back
+  const [L, H, W] = { sardine: [0.45, 0.13, 0.09], lantern: [0.4, 0.12, 0.08], clownfish: [0.4, 0.2, 0.12], tang: [0.55, 0.34, 0.08], reef: [0.34, 0.2, 0.07],
+    butter: [0.4, 0.36, 0.06], angel: [0.42, 0.46, 0.06], parrot: [0.85, 0.32, 0.18], idol: [0.34, 0.4, 0.05], barra: [1.4, 0.16, 0.13], snapper: [0.5, 0.16, 0.09], grouper: [1.15, 0.44, 0.34], puffer: [0.4, 0.33, 0.33] }[kind];
   const cfn = {
     sardine: (x, y) => (y > 0.01 ? [0.17, 0.33, 0.5] : [0.85, 0.9, 0.93]),
     lantern: (x, y) => (y > 0 ? [0.08, 0.1, 0.14] : [0.2, 0.24, 0.3]),
     clownfish: (x, y, z) => { const zz = z / L; const band = [0.22, -0.02, -0.28].some((b) => Math.abs(zz - b) < 0.05); const edge = [0.22, -0.02, -0.28].some((b) => Math.abs(zz - b) < 0.075); return band ? [1, 1, 1] : edge ? [0.05, 0.05, 0.05] : [1, 0.45, 0.07]; },
     reef: (x, y) => (y > 0.03 ? [0.78, 0.78, 0.8] : [1, 1, 1]), // tinted per fish by instance colour
     tang: (x, y, z) => (z < -L * 0.42 ? [1, 0.82, 0.2] : y > H * 0.1 && z < L * 0.1 && z > -L * 0.3 ? [0.05, 0.08, 0.2] : [0.12, 0.38, 0.9]),
+    butter: (x, y, z) => { const zz = z / L; if (zz > 0.18 && zz < 0.28) return [0.05, 0.05, 0.05]; if (zz >= 0.28) return [0.97, 0.96, 0.92]; if (y > H * 0.28 && zz < 0.05) return [0.1, 0.1, 0.1]; return [1, 0.82, 0.08]; },
+    angel: (x, y, z) => { const zz = z / L; if (zz > 0.26) return [0.95, 0.88, 0.35]; if (zz < -0.45) return [1, 0.8, 0.15]; return Math.sin(y * 62 + zz * 5) > 0.3 ? [1, 0.84, 0.18] : [0.1, 0.16, 0.5]; },
+    parrot: (x, y, z) => { const zz = z / L; if (zz > 0.34) return [0.3, 0.62, 0.95]; if (Math.abs(Math.sin(z * 24 + y * 18)) > 0.9) return [0.98, 0.5, 0.62]; return y < -H * 0.2 ? [0.5, 0.9, 0.8] : [0.12, 0.76, 0.66]; },
+    idol: (x, y, z) => { const zz = z / L; if ((zz > 0.04 && zz < 0.22) || zz < -0.34) return [0.05, 0.05, 0.05]; if (zz >= 0.22) return [0.98, 0.96, 0.9]; return y > H * 0.2 ? [1, 0.86, 0.25] : [0.98, 0.94, 0.8]; },
+    barra: (x, y, z) => { const bar = Math.sin(z * 24) > 0.72 && y > -H * 0.05; return y > H * 0.12 ? (bar ? [0.24, 0.3, 0.36] : [0.44, 0.52, 0.6]) : [0.86, 0.9, 0.92]; },
+    snapper: (x, y, z) => (Math.abs(y) < H * 0.09 || z < -L * 0.4 ? [1, 0.84, 0.1] : y > 0 ? [0.55, 0.66, 0.82] : [0.92, 0.94, 0.96]),
+    grouper: (x, y, z) => { const spot = Math.sin(z * 30) * Math.sin(y * 34) * Math.sin(x * 30 + 1) > 0.3; return spot ? [0.86, 0.76, 0.56] : y > 0 ? [0.36, 0.26, 0.18] : [0.5, 0.38, 0.26]; },
+    puffer: (x, y, z) => { const spot = Math.sin(z * 42) * Math.sin(x * 42) > 0.45 && y > -H * 0.1; return spot ? [0.22, 0.17, 0.1] : y < -H * 0.15 ? [0.96, 0.94, 0.86] : [0.82, 0.7, 0.46]; },
   }[kind];
-  const body = P(new THREE.SphereGeometry(0.5, 12, 8), '#fff', [0, 0, 0], [0, 0, 0], [W, H, L], cfn);
+  const tall = kind === 'butter' || kind === 'angel' || kind === 'idol';
+  const fine = ['butter', 'angel', 'parrot', 'idol', 'grouper', 'puffer', 'barra'].includes(kind); // patterned bodies need more vertices to carry the colours
+  const body = P(new THREE.SphereGeometry(0.5, fine ? 20 : 12, fine ? 14 : 8), '#fff', [0, 0, 0], [0, 0, 0], [W, H, L], cfn);
   const tail = P(vFin([[-L * 0.42, 0], [-L * 0.72, H * 0.55], [-L * 0.66, 0], [-L * 0.72, -H * 0.55]]), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => cfn(x, y, -L * 0.6));
-  const dorsal = P(vFin([[L * 0.15, H * 0.42], [-L * 0.1, H * 0.8], [-L * 0.3, H * 0.3]]), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => cfn(x, y, z));
-  const eyes = [P(new THREE.SphereGeometry(Math.max(0.02, H * 0.12), 6, 4), '#050505', [W * 0.42, H * 0.08, L * 0.32]), P(new THREE.SphereGeometry(Math.max(0.02, H * 0.12), 6, 4), '#050505', [-W * 0.42, H * 0.08, L * 0.32])];
-  return M(body, tail, dorsal, ...eyes);
+  const dorsalPts = kind === 'idol' ? [[L * 0.12, H * 0.4], [-L * 0.45, H * 1.35], [-L * 0.2, H * 0.36]] : kind === 'angel' ? [[L * 0.12, H * 0.42], [-L * 0.45, H * 1.0], [-L * 0.36, H * 0.3]]
+    : kind === 'parrot' || kind === 'grouper' ? [[L * 0.28, H * 0.4], [0, H * 0.6], [-L * 0.32, H * 0.45], [-L * 0.36, H * 0.28]] : [[L * 0.15, H * 0.42], [-L * 0.1, H * 0.8], [-L * 0.3, H * 0.3]];
+  const dorsal = P(vFin(dorsalPts), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => cfn(x, y, z));
+  const parts = [body, tail, dorsal];
+  if (tall) parts.push(P(vFin([[L * 0.05, -H * 0.4], [-L * (kind === 'angel' ? 0.45 : 0.2), -H * (kind === 'angel' ? 1.0 : 0.75)], [-L * 0.32, -H * 0.3]]), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => cfn(x, y, z)));
+  const er = Math.max(0.02, H * (kind === 'puffer' ? 0.16 : 0.12));
+  parts.push(P(new THREE.SphereGeometry(er, 6, 4), '#050505', [W * 0.42, H * 0.08, L * 0.32]), P(new THREE.SphereGeometry(er, 6, 4), '#050505', [-W * 0.42, H * 0.08, L * 0.32]));
+  return M(...parts);
 }
 export function lanternDotsGeo() {
   const g = []; for (let i = 0; i < 4; i++) g.push(P(new THREE.SphereGeometry(0.025, 5, 4), '#fff', [0.045, -0.035, 0.12 - i * 0.08]), P(new THREE.SphereGeometry(0.025, 5, 4), '#fff', [-0.045, -0.035, 0.12 - i * 0.08]));

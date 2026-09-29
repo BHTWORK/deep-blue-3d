@@ -209,7 +209,7 @@ const creatures = [], schools = [];
 const CDEF = { clownfish: { r: 0.3, spd: 2 }, tang: { r: 0.4, spd: 3 }, turtle: { r: 1.2, spd: 3 }, seahorse: { r: 0.4, spd: 0.6 }, crab: { r: 0.4, spd: 1.2 }, jelly: { r: 0.9, spd: 0.6 }, manta: { r: 2.5, spd: 4 },
   dolphin: { r: 1.3, spd: 9 }, shark: { r: 1.8, spd: 6.5 }, whale: { r: 6, spd: 3 }, octopus: { r: 0.8, spd: 1 }, angler: { r: 0.8, spd: 1 }, dumbo: { r: 0.6, spd: 1.2 }, squid: { r: 3, spd: 3 } };
 const SMALL = { clownfish: 1, tang: 1 };
-const FISH_KINDS = ['sardine', 'lantern', 'clownfish', 'tang', 'reef'];
+const FISH_KINDS = ['sardine', 'lantern', 'clownfish', 'tang', 'reef', 'butter', 'angel', 'parrot', 'idol', 'barra', 'snapper', 'grouper', 'puffer'];
 const FISHIM = {};
 function Z(cx, cz, rad, y0, y1) { return { cx, cz, rad, y0, y1 }; }
 function zonePoint(z, r = 1, out = new V3()) { for (let k = 0; k < 20; k++) { const a = rr(0, TAU), d = Math.sqrt(SR.r()) * z.rad, x = z.cx + Math.cos(a) * d, zz = z.cz + Math.sin(a) * d; const fl = heightAt(x, zz) + r + 1.5; const lo = Math.max(fl, z.y0), hi = Math.min(-r - 0.8, z.y1); if (hi > lo) return out.set(x, rr(lo, hi), zz); } return out.set(z.cx, Math.max(heightAt(z.cx, z.cz) + r + 2, z.y0), z.cz); }
@@ -219,7 +219,7 @@ function addC(sp, z, o = {}) {
   if (!SMALL[sp]) { const b = BUILD[sp](e); e.model = b; e.root = b.root; e.root.position.copy(e.pos); e.root.scale.setScalar(0.001); e.root.visible = false; scene.add(e.root); }
   creatures.push(e); return e;
 }
-function addSchool(sp, z, n, extra, o = {}) { const c = zonePoint(z, 3); const s = { sp, z, pos: c.clone(), vel: new V3(), tgt: c.clone(), timer: 0, m: [], rad: o.rad || (sp === 'sardine' ? 5 : 4.5), hug: o.hug, col: o.col };
+function addSchool(sp, z, n, extra, o = {}) { const c = zonePoint(z, 3); const s = { sp, z, pos: c.clone(), vel: new V3(), tgt: c.clone(), timer: 0, m: [], rad: o.rad || (sp === 'sardine' ? 5 : 4.5), hug: o.hug, col: o.col, scale: o.scale || 1, spd: o.spd, amb: o.amb };
   if (s.hug) { c.y = heightAt(c.x, c.z) + rr(s.hug[0], s.hug[1]); s.pos.copy(c); s.tgt.copy(c); }
   for (let i = 0; i < n + extra; i++) { const o = new V3(rr(-1, 1), rr(-0.5, 0.5), rr(-1, 1)).multiplyScalar(s.rad); s.m.push({ o, pos: c.clone().add(o), vel: new V3(), need: i < n ? 0 : rr(0.08, 0.85), a: 0 }); }
   schools.push(s); }
@@ -233,6 +233,24 @@ function genCreatures() {
   [[150, 20, 70], [120, -60, 60], [200, 90, 60], [60, 200, 60], [90, -200, 60], [230, 210, 50], [-180, 200, 50], [-20, 80, 40], [180, -20, 50], [100, 120, 50], [30, -150, 50], [210, -90, 50],
     [140, 40, 40], [170, -40, 40], [80, 20, 40], [40, 230, 50], [130, -230, 50], [240, 140, 40], [-200, 180, 40], [0, 60, 40]].forEach(([x, z, rad], i) => {
     addSchool('reef', Z(x, z, rad, -70, -3), 18 + (i % 3) * 6, 14, { rad: 2.6, hug: [1.5, 5], col: REEFC[i % REEFC.length] }); });
+  // more reef and open-water species (ambient, not codex entries), several right around the base ship so fish are easy to find
+  const R = (sp, spots, n, extra, o) => spots.forEach(([x, z], i) => addSchool(sp, Z(x, z, o.zone || 35, -75, -3), typeof n === 'function' ? n(i) : n, extra, { scale: 1.3, ...o }));
+  R('butter', [[70, -30], [120, 40], [180, -80], [210, 60], [150, 120], [40, 190], [90, -190], [-20, 80], [230, 210], [-170, 200], [25, 15]], (i) => 4 + (i % 3) * 2, 2, { rad: 1.8, hug: [1, 4] });
+  R('angel', [[100, 0], [160, -20], [200, 120], [60, 220], [120, -220], [-30, 60], [250, 180], [140, 80], [-15, 25]], (i) => 2 + (i % 2), 1, { rad: 1.2, hug: [1.5, 5] });
+  R('parrot', [[130, -50], [190, 20], [90, 90], [20, 210], [60, -170], [220, -100], [-190, 190], [40, -30]], (i) => 2 + (i % 3), 1, { rad: 2, hug: [1, 3] });
+  R('idol', [[110, 60], [170, 140], [80, -110], [-40, 100], [210, -40], [100, 200], [10, -55]], (i) => 3 + (i % 3), 2, { rad: 1.5, hug: [2, 5] });
+  R('puffer', [[125, 10], [175, 70], [70, 160], [50, -130], [200, 190], [-10, 50], [150, -100], [230, 20], [30, -10]], (i) => 1 + (i % 2), 0, { rad: 0.8, hug: [1, 3], zone: 20 });
+  R('grouper', [[100, -80], [200, 0], [40, 220], [140, -230], [-200, 220], [260, 120], [55, 40]], 1, 0, { rad: 0.5, hug: [1, 3], zone: 25 });
+  R('snapper', [[30, 30], [110, -10], [200, 80], [70, 210], [100, -210], [-160, 60], [-80, -80], [-20, -60]], (i) => 18 + (i % 3) * 6, 10, { rad: 4, hug: [3, 9] });
+  addSchool('barra', Z(0, 0, 160, -60, -12), 12, 4, { rad: 5, spd: 2 }); addSchool('barra', Z(250, -250, 140, -60, -12), 14, 4, { rad: 5, spd: 2 });
+  addSchool('barra', Z(-250, 250, 140, -60, -12), 10, 4, { rad: 5, spd: 2 }); addSchool('barra', Z(300, 300, 140, -60, -12), 12, 4, { rad: 5, spd: 2 });
+  // companions that follow the sub within a depth band [min, max] metres
+  const home = Z(0, 0, 60, -40, -4);
+  addSchool('snapper', home, 26, 0, { rad: 4, hug: [3, 8], scale: 1.35, amb: [0, 80] }); addSchool('reef', home, 22, 0, { rad: 2.6, hug: [1.5, 5], col: '#ffd23f', scale: 1.35, amb: [0, 80] });
+  addSchool('butter', home, 8, 0, { rad: 1.8, hug: [1, 4], scale: 1.35, amb: [0, 80] }); addSchool('parrot', home, 3, 0, { rad: 2, hug: [1, 3], scale: 1.3, amb: [0, 70] });
+  addSchool('reef', home, 20, 0, { rad: 2.6, hug: [1.5, 6], col: '#3fa7ff', scale: 1.35, amb: [0, 80] });
+  addSchool('sardine', home, 34, 0, { rad: 5, scale: 1.2, amb: [30, 260] }); addSchool('barra', home, 12, 0, { rad: 5, spd: 2, amb: [50, 300] });
+  addSchool('lantern', home, 26, 0, { rad: 4.5, amb: [220, 900] }); addSchool('lantern', home, 20, 0, { rad: 4.5, amb: [300, 900] });
   flora.anems.forEach((a) => { for (let k = 0; k < 2; k++) addC('clownfish', Z(a.x, a.z, 3, a.y - 1, a.y + 2), { at: a.clone().add(new V3(rr(-1, 1), 0.8, rr(-1, 1))), need: k ? rr(0.1, 0.5) : 0, extra: { home: a.clone().add(new V3(0, 0.8, 0)) } }); });
   for (let i = 0; i < 32; i++) addC('tang', i < 20 ? Z(150, 20, 90, -60, -8) : Z(rpick([60, 90, 200]), rpick([-200, 200, 120]), 60, -60, -8), { need: i < 10 ? 0 : rr(0.1, 0.8) });
   for (let i = 0; i < 10; i++) addC('turtle', i < 6 ? Z(0, 0, 360, -70, -3) : Z(150, 20, 150, -60, -4), { need: i < 3 ? 0 : rr(0.15, 0.8) });
@@ -248,7 +266,7 @@ function genCreatures() {
   for (let i = 0; i < 8; i++) addC('dumbo', i < 5 ? Z(-760, 60, 90, -860, -600) : Z(760, 60, 90, -660, -480));
   addC('squid', Z(-770, 80, 90, -840, -640));
   for (const sp of FISH_KINDS) { const cnt = sp === 'clownfish' || sp === 'tang' ? creatures.filter((c) => c.sp === sp).length : schools.filter((s) => s.sp === sp).reduce((s, sc) => s + sc.m.length, 0);
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: sp === 'sardine' ? 0.5 : 0.1, side: THREE.DoubleSide });
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: sp === 'sardine' ? 0.5 : sp === 'barra' || sp === 'snapper' ? 0.35 : 0.1, side: THREE.DoubleSide });
     mat.onBeforeCompile = (sh) => { sh.uniforms.uTime = U.time; sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n float fph = float(gl_InstanceID)*1.7; float tk = smoothstep(0.05, -0.3, position.z); transformed.x += sin(uTime*11.0 + fph + position.z*14.0) * tk * 0.09;'); };
     mat.customProgramCacheKey = () => 'fishwiggle';
     const im = new THREE.InstancedMesh(fishGeo(sp), mat, Math.max(1, cnt)); im.frustumCulled = false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(im); FISHIM[sp] = { im, n: 0 }; }
@@ -322,19 +340,36 @@ function updateCreature(e, dt) {
   if (e.root && e.root.visible) { e.root.position.copy(e.pos); e.root.quaternion.copy(e.q); const s = e.a * (e.sp === 'whale' ? 1 : 1); e.root.scale.setScalar(Math.max(0.001, s)); e.model.anim(e.t, e, dc < 70); }
   if (e.sp === 'jelly' && e.root.visible) G.glowSrc.push([e.pos, e.model.glow.getHex(), 3]);
 }
+// Ambient schools keep company with the sub inside their depth band: once left behind they fade out
+// and reappear ahead of it, so there are always fish in view.
+function ambientSpot(s, out, near, far, ahead) {
+  const a = P.yaw + (ahead ? rnd(-1.1, 1.1) : rnd(0, TAU)), d = rnd(near, far), x = P.pos.x + Math.sin(a) * d, z = P.pos.z + Math.cos(a) * d, fl = heightAt(x, z);
+  const y = s.hug ? fl + rnd(s.hug[0], s.hug[1]) : clamp(P.pos.y + rnd(-6, 6), fl + 4, -2);
+  return out.set(x, Math.min(-2, y), z);
+}
+function updateAmbient(s) {
+  const dep = -P.pos.y; s.on = dep >= s.amb[0] && dep <= s.amb[1] && P.pos.y < -1.5;
+  if (s.on && (!s.was || Math.hypot(s.pos.x - P.pos.x, s.pos.z - P.pos.z) > 70)) {
+    ambientSpot(s, s.pos, 22, 38, true); s.tgt.copy(s.pos); s.timer = 0.5;
+    for (const m of s.m) { m.pos.copy(s.pos).add(m.o); m.vel.set(0, 0, 0); m.a = 0; }
+  }
+  s.was = s.on;
+}
 function updateSchool(s, dt) {
+  if (s.amb) updateAmbient(s);
   const near = s.pos.distanceTo(camera.position) < 320; if (!near && G.state !== 'title') return;
-  s.timer -= dt; if (s.timer <= 0 || s.pos.distanceToSquared(s.tgt) < 25) { zonePoint(s.z, 4, s.tgt); if (s.hug) s.tgt.y = Math.min(-2, heightAt(s.tgt.x, s.tgt.z) + rnd(s.hug[0], s.hug[1])); s.timer = rnd(6, 12); }
-  tv3.subVectors(s.pos, P.pos); const dp = tv3.length() || 1; let spd = s.sp === 'sardine' ? 4 : s.hug ? 1.6 : 2.5;
-  if (dp < 18 && G.state === 'play') { s.tgt.copy(s.pos).addScaledVector(tv3, 30 / dp); s.tgt.y = clamp(s.tgt.y, heightAt(s.tgt.x, s.tgt.z) + 4, -2); spd *= 2.3; s.timer = 1.5; }
+  s.timer -= dt; if (s.timer <= 0 || s.pos.distanceToSquared(s.tgt) < 25) { if (s.amb) ambientSpot(s, s.tgt, 10, 32, false); else zonePoint(s.z, 4, s.tgt); if (s.hug && !s.amb) s.tgt.y = Math.min(-2, heightAt(s.tgt.x, s.tgt.z) + rnd(s.hug[0], s.hug[1])); s.timer = rnd(6, 12); }
+  tv3.subVectors(s.pos, P.pos); const dp = tv3.length() || 1; let spd = s.spd || (s.sp === 'sardine' ? 4 : s.hug ? 1.6 : 2.5);
+  // reef fish let the sub come close before darting off
+  if (dp < (s.hug ? 8 : 18) && G.state === 'play') { s.tgt.copy(s.pos).addScaledVector(tv3, 30 / dp); s.tgt.y = clamp(s.tgt.y, heightAt(s.tgt.x, s.tgt.z) + 4, -2); spd *= 2.3; s.timer = 1.5; }
   tv1.subVectors(s.tgt, s.pos); tv1.multiplyScalar(spd / (tv1.length() || 1)).sub(s.vel).multiplyScalar(Math.min(1, 1.1 * dt)); s.vel.add(tv1);
   const fl = heightAt(s.pos.x + s.vel.x, s.pos.z + s.vel.z) + (s.hug ? 1.5 : 5); if (s.pos.y < fl) s.vel.y += (fl - s.pos.y) * dt * 3;
   s.pos.addScaledVector(s.vel, dt); if (s.pos.y > -2) s.pos.y = -2;
   const rot = G.t * 0.3, c = Math.cos(rot), si = Math.sin(rot);
-  for (const m of s.m) { m.a += ((G.clean >= m.need ? 1 : 0) - m.a) * Math.min(1, dt * 0.7);
+  for (const m of s.m) { m.a += ((s.on !== false && G.clean >= m.need ? 1 : 0) - m.a) * Math.min(1, dt * 0.7);
     const tx = s.pos.x + m.o.x * c - m.o.z * si * 0.3 + Math.sin(G.t * 0.8 + m.o.y * 5) * 0.4, ty = s.pos.y + m.o.y + Math.cos(G.t * 0.9 + m.o.x) * 0.25, tz = s.pos.z + m.o.z * c + m.o.x * si * 0.3;
     const kk = Math.min(1, dt * 2.4); m.vel.x += ((tx - m.pos.x) * 1.8 - m.vel.x) * kk; m.vel.y += ((ty - m.pos.y) * 1.8 - m.vel.y) * kk; m.vel.z += ((tz - m.pos.z) * 1.8 - m.vel.z) * kk;
-    tv2.subVectors(m.pos, P.pos); const d2 = tv2.lengthSq(); if (d2 < 49 && G.state === 'play') { const d = Math.sqrt(d2) || 1; m.vel.addScaledVector(tv2, 60 * dt / d); }
+    tv2.subVectors(m.pos, P.pos); const d2 = tv2.lengthSq(); if (d2 < (s.hug ? 12 : 49) && G.state === 'play') { const d = Math.sqrt(d2) || 1; m.vel.addScaledVector(tv2, 60 * dt / d); }
     const sp = m.vel.length(), mx = spd * 3.2; if (sp > mx) m.vel.multiplyScalar(mx / sp);
     m.pos.addScaledVector(m.vel, dt); if (m.pos.y > -1) m.pos.y = -1; const f = heightAt(m.pos.x, m.pos.z) + 0.5; if (m.pos.y < f) m.pos.y = f; }
 }
@@ -342,7 +377,7 @@ function writeFish() {
   for (const k in FISHIM) if (FISHIM[k].im) FISHIM[k].n = 0;
   const dots = FISHIM.lanternDots; let dn = 0;
   for (const s of schools) { const R = FISHIM[s.sp]; const vis = s.pos.distanceTo(camera.position) < 200;
-    for (const m of s.m) { const i = R.n++; if (!vis || m.a < 0.02) { tm.makeScale(0, 0, 0); } else { tv3.copy(m.vel).add(s.vel); fishMatrix(m.pos, tv3, m.a, tm); } R.im.setMatrixAt(i, tm); if (s.sp === 'lantern') dots.setMatrixAt(dn++, tm); } }
+    for (const m of s.m) { const i = R.n++; if (!vis || m.a < 0.02) { tm.makeScale(0, 0, 0); } else { tv3.copy(m.vel).add(s.vel); fishMatrix(m.pos, tv3, m.a * s.scale, tm); } R.im.setMatrixAt(i, tm); if (s.sp === 'lantern') dots.setMatrixAt(dn++, tm); } }
   for (const e of creatures) { if (!SMALL[e.sp]) continue; const R = FISHIM[e.sp]; const i = R.n++; if (e.a < 0.02 || e.pos.distanceTo(camera.position) > 160) tm.makeScale(0, 0, 0); else fishMatrix(e.pos, e.vel.lengthSq() > 0.01 ? e.vel : fwdOf(e.ph, 0, tv3), e.sp === 'tang' ? 1.3 : 1.2, tm); R.im.setMatrixAt(i, tm); }
   for (const k of FISH_KINDS) { FISHIM[k].im.instanceMatrix.needsUpdate = true; }
   dots.instanceMatrix.needsUpdate = true;
