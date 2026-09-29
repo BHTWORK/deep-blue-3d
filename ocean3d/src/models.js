@@ -42,7 +42,6 @@ export function initMaterials() {
   MAT.glass = new THREE.MeshStandardMaterial({ color: 0x9fe8ff, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.55, emissive: 0x0a3a50, emissiveIntensity: 0.6 });
   MAT.bag = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, transparent: true, opacity: 0.62, side: THREE.DoubleSide, depthWrite: false });
   MAT.net = new THREE.MeshBasicMaterial({ color: 0x7fd0c0, wireframe: true, transparent: true, opacity: 0.85 });
-  MAT.gold = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.7, emissive: 0x6a4a00, emissiveIntensity: 0.35 });
   MAT.bone = new THREE.MeshStandardMaterial({ color: 0xe6dcc4, roughness: 0.9 });
   MAT.glowCyan = new THREE.MeshBasicMaterial({ color: 0xa8fbff, fog: false });
   MAT.glowCyan.color.multiplyScalar(2.2);
@@ -82,7 +81,7 @@ export function buildSub() {
   return { root: g, prop, lamps, bodyMesh };
 }
 
-// ---------------------------------------------------------------- trash & treasure
+// ---------------------------------------------------------------- trash
 function bottleGeo(bodyCol, capCol, label) {
   return M(
     P(new THREE.CylinderGeometry(0.17, 0.17, 0.62, 12), bodyCol, [0, 0, 0]),
@@ -116,13 +115,6 @@ export function buildTrashGeos() {
   cont.push(P(new THREE.BoxGeometry(0.06, 2.4, 0.06), '#555555', [3.62, 0, 0.5]), P(new THREE.BoxGeometry(0.06, 2.4, 0.06), '#555555', [3.62, 0, -0.5]));
   G.container = M(...cont);
   G.net = displace(new THREE.IcosahedronGeometry(1.5, 1), 0.35, 1.5, 4);
-  // treasures
-  G.T_chest = M(P(new THREE.BoxGeometry(1.4, 0.8, 0.9), '#6b3f1f'), P(new THREE.CylinderGeometry(0.45, 0.45, 1.4, 12, 1, false, 0, Math.PI), '#7d4a25', [0, 0.4, 0], [0, 0, Math.PI / 2]), P(new THREE.BoxGeometry(1.42, 0.1, 0.92), '#e0b030', [0, 0.35, 0]), P(new THREE.BoxGeometry(0.12, 1.2, 0.94), '#e0b030', [0.5, 0.2, 0]), P(new THREE.BoxGeometry(0.12, 1.2, 0.94), '#e0b030', [-0.5, 0.2, 0]), P(new THREE.BoxGeometry(0.2, 0.25, 0.1), '#f5d25a', [0, 0.3, 0.47]));
-  G.T_coin = M(P(new THREE.SphereGeometry(0.45, 12, 10), '#8b5a2b', [0, 0.1, 0], [0, 0, 0], [1, 1.1, 1]), P(new THREE.CylinderGeometry(0.15, 0.2, 0.2, 10), '#6a4020', [0, 0.6, 0]), ...[0, 1, 2, 3, 4].map((i) => P(new THREE.CylinderGeometry(0.16, 0.16, 0.04, 14), '#f2c230', [0.5 + (i % 2) * 0.2, -0.3 + i * 0.03, -0.3 + i * 0.15], [0.3 * i, 0, 0.2])));
-  G.T_pearl = M(P(new THREE.SphereGeometry(0.6, 16, 8, 0, TAU, 0, Math.PI / 2), '#8c7a9a', [0, 0, 0], [Math.PI, 0, 0], [1, 0.35, 0.9]), P(new THREE.SphereGeometry(0.6, 16, 8, 0, TAU, 0, Math.PI / 2), '#b3a2c4', [0, 0.05, -0.35], [-1.0, 0, 0], [1, 0.35, 0.9]), P(new THREE.SphereGeometry(0.2, 14, 10), '#e8e8f8', [0, 0.12, 0.1]));
-  G.T_vase = P(new THREE.LatheGeometry([[0.01, -0.8], [0.25, -0.75], [0.5, -0.3], [0.55, 0.1], [0.3, 0.5], [0.18, 0.7], [0.24, 0.85], [0.01, 0.86]].map(([a, b]) => new THREE.Vector2(a, b)), 16), '#c9713e', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y) => (Math.abs(y - 0.1) < 0.05 || Math.abs(y + 0.2) < 0.03 ? [0.12, 0.06, 0.03] : [0.78, 0.44, 0.24]));
-  G.T_compass = M(P(new THREE.CylinderGeometry(0.45, 0.45, 0.12, 20), '#c9a13a'), P(new THREE.CylinderGeometry(0.36, 0.36, 0.02, 20), '#f3ead0', [0, 0.07, 0]), P(new THREE.BoxGeometry(0.06, 0.02, 0.5), '#c0392b', [0, 0.09, 0]));
-  G.T_idol = M(P(new THREE.SphereGeometry(0.2, 12, 10), '#f0c030', [0, 0.55, 0]), P(new THREE.CylinderGeometry(0.2, 0.35, 0.7, 8), '#e2b020', [0, 0.05, 0]), P(new THREE.BoxGeometry(0.6, 0.15, 0.4), '#c89818', [0, -0.35, 0]));
   return G;
 }
 

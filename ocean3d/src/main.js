@@ -5,11 +5,11 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { TAU, clamp, lerp, smooth, rnd, fmt, $, esc, seed, rr, rpick, wpick, SR } from './util.js';
-import { TRASH, TREASURE, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS } from './data.js';
+import { TRASH, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS } from './data.js';
 import { AU, Music } from './audio.js';
 import { MAT, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO } from './models.js';
 import { drawCockpit, cockpitLayout, CockpitUI } from './cockpit.js';
-import { WORLD, heightAt, normalAt, reefPoint, U, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBaseShip, buildDockRing, gradTex } from './world.js';
+import { WORLD, heightAt, normalAt, reefPoint, reefFree, U, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBaseShip, buildDockRing, gradTex } from './world.js';
 
 const V3 = THREE.Vector3, UPV = new V3(0, 1, 0), ZERO = new V3();
 const OPV = new V3(), tv1 = new V3(), tv2 = new V3(), tv3 = new V3(), tm = new THREE.Matrix4(), tq = new THREE.Quaternion(), ts = new V3(1, 1, 1);
@@ -45,13 +45,13 @@ const P = { pos: new V3(DOCK.x, DOCK.y - 3, DOCK.z - 15), vel: new V3(), yaw: Ma
 const fwdOf = (yaw, pitch, out = new V3()) => out.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
 const rightOf = (yaw, out = new V3()) => out.set(-Math.cos(yaw), 0, Math.sin(yaw));
 function freshSave() { return { v: 1, money: 0, up: { engine: 0, battery: 0, hull: 0, depth: 0, cargo: 0, light: 0, beam: 0, sonar: 0 }, mission: 0,
-  stats: { collected: 0, kg: 0, earned: 0, sells: 0, upgrades: 0, rescues: 0, deepest: 0, time: 0, dist: 0, types: {}, treasures: 0, fails: 0 }, species: {}, pois: {}, tips: {}, won: false, dayT: 0.12 }; }
+  stats: { collected: 0, kg: 0, earned: 0, sells: 0, upgrades: 0, rescues: 0, deepest: 0, time: 0, dist: 0, types: {}, fails: 0 }, species: {}, pois: {}, tips: {}, won: false, dayT: 0.12 }; }
 function calcStats() { const u = SV.up; S.speed = UP.engine.v[u.engine]; S.bat = UP.battery.v[u.battery]; S.hull = UP.hull.v[u.hull]; S.depth = UP.depth.v[u.depth]; S.cargo = UP.cargo.v[u.cargo];
   S.light = UP.light.v[u.light]; S.beam = UP.beam.v[u.beam]; S.beamPow = 7 + u.beam * 2.4; S.cut = 3.4 - u.beam * 0.4; S.sonar = UP.sonar.v[u.sonar]; S.sonarCd = 7.5 - u.sonar * 0.9;
   if (SUB) { SUB.spot.distance = S.light * 1.3; SUB.spot.angle = 0.5 + u.light * 0.04; } }
 const ST = () => SV.stats;
 const cleanPct = () => Math.floor(G.clean * 1000) / 10;
-function recount() { let c = 0; for (const it of items) if (!it.tr && it.col) c++; G.clean = c / G.poll; }
+function recount() { let c = 0; for (const it of items) if (it.col) c++; G.clean = c / G.poll; }
 POIS.forEach((p) => { if (p.y === undefined) p.y = heightAt(p.x, p.z) + 10; });
 const POI = Object.fromEntries(POIS.map((p) => [p.id, p]));
 
@@ -147,13 +147,13 @@ const T_DEEP = [['drum', 3], ['scrap', 2.5], ['ewaste', 2], ['battery', 2], ['ti
 const T_MID = [['bag', 3], ['bottle', 2], ['mask', 1.5], ['cup', 1.5]];
 const T_REEF = [['bag', 3], ['bottle', 3], ['can', 3], ['cup', 2], ['mask', 2], ['rope', 1.5], ['glass', 1], ['tire', 0.4]];
 function addItem(type, x, y, z, o = {}) {
-  const tr = !!o.tr, D = tr ? TREASURE[type] : TRASH[type];
-  const it = { id: items.length, type, key: tr ? 'T_' + type : type, pos: new V3(x, y, z), home: new V3(x, y, z), orig: new V3(x, y, z), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rr(-0.5, 0.5), rr(0, TAU), rr(-0.5, 0.5))), r: D.r, kg: D.kg, v: D.v, tr,
+  const D = TRASH[type];
+  const it = { id: items.length, type, key: type, pos: new V3(x, y, z), home: new V3(x, y, z), orig: new V3(x, y, z), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rr(-0.5, 0.5), rr(0, TAU), rr(-0.5, 0.5))), r: D.r, kg: D.kg, v: D.v,
     buoy: o.buoy ?? -1, state: 0, vel: new V3(), col: false, known: false, rev: 0, leak: type === 'drum' && SR.r() < 0.6, locked: !!o.locked, ph: rr(0, TAU), spin: 0, idx: 0, dirty: true };
   if (type === 'container' || type === 'drum' || type === 'cart') it.q.setFromEuler(new THREE.Euler(rr(-0.15, 0.15), rr(0, TAU), rr(-0.15, 0.15)));
   items.push(it); return it;
 }
-function floorItem(type, x, z, o = {}) { const D = (o.tr ? TREASURE : TRASH)[type]; const y = heightAt(x, z) + D.r * 0.45; return addItem(type, x, y, z, o); }
+function floorItem(type, x, z, o = {}) { const D = TRASH[type]; const y = heightAt(x, z) + D.r * 0.45; return addItem(type, x, y, z, o); }
 function polar(cx, cz, r0, r1) { const a = rr(0, TAU), d = lerp(r0, r1, Math.sqrt(SR.r())); return [cx + Math.cos(a) * d, cz + Math.sin(a) * d]; }
 function genItems() {
   seed(31337);
@@ -171,10 +171,7 @@ function genItems() {
   n(24, () => { const x = rr(-860, -640), z = rr(-330, 330); if (heightAt(x, z) > -600) return false; return floorItem(wpick(T_DEEP), x, z); });
   n(20, () => { const x = rr(650, 860), z = rr(-330, 330); if (heightAt(x, z) > -450) return false; return floorItem(wpick(T_DEEP), x, z); });
   n(5, () => { const [x, z] = polar(POI.cship.x, POI.cship.z, 15, 60); return floorItem('container', x, z); });
-  n(45, () => { const p = reefPoint(-70); return p ? floorItem(wpick(T_REEF), p[0], p[2]) : false; }); // litter caught among the coral heads
-  // a few rare finds hidden in the big wrecks; the sea is about the rubbish, not the loot
-  const T = (type, x, z) => floorItem(type, x, z, { tr: true });
-  T('chest', POI.wreck.x + 12, POI.wreck.z + 6); T('idol', POI.plane.x + 6, POI.plane.z - 8); T('coin', POI.cship.x - 20, POI.cship.z + 22); T('chest', POI.trench.x + 10, POI.trench.z - 12);
+  n(45, () => { const p = reefPoint(-70); return p && reefFree(p[0], p[2], 0.9) ? floorItem(wpick(T_REEF), p[0], p[2]) : false; }); // litter lying in the gaps between corals
 }
 const rescues = [];
 function genRescues() {
@@ -188,7 +185,7 @@ function genRescues() {
 }
 function buildItemMeshes() {
   const counts = {}; for (const it of items) counts[it.key] = (counts[it.key] || 0) + 1;
-  for (const key in counts) { const geo = TGEO[key]; const mat = key === 'bag' ? MAT.bag : key === 'net' ? new THREE.MeshStandardMaterial({ color: 0x5fb8a8, wireframe: true, emissive: 0x0a2a24 }) : key.startsWith('T_') ? MAT.gold : MAT.vc;
+  for (const key in counts) { const geo = TGEO[key]; const mat = key === 'bag' ? MAT.bag : key === 'net' ? new THREE.MeshStandardMaterial({ color: 0x5fb8a8, wireframe: true, emissive: 0x0a2a24 }) : MAT.vc;
     const im = new THREE.InstancedMesh(geo, mat, counts[key]); im.frustumCulled = false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(im); IM[key] = { im, n: 0 }; }
   const cols = ['#b8392b', '#2d6fb0', '#2e8b57'];
   for (const it of items) { const r = IM[it.key]; it.idx = r.n++; if (it.type === 'container') r.im.setColorAt(it.idx, new THREE.Color(cols[it.id % 3])); }
@@ -518,20 +515,19 @@ function updateItems(dt) {
     if (G.state === 'play') { const pr = 1.8 + it.r; if (it.pos.distanceToSquared(P.pos) < pr * pr || it.pos.distanceToSquared(P.nose) < (1.2 + it.r) ** 2) tryCollect(it); }
   }
 }
-const itemName = (it) => (it.tr ? TREASURE : TRASH)[it.type].n;
+const itemName = (it) => TRASH[it.type].n;
 function tryCollect(it) {
   if (P.kg + it.kg > S.cargo + 1e-6) { if (G.t - G.fullT > 2.5) { G.fullT = G.t; if (it.kg > S.cargo) toast(`${itemName(it)}은(는) 너무 무겁습니다 (${it.kg}kg)`, 'bad', '화물칸을 업그레이드하세요'); else toast('화물칸이 가득 찼습니다', 'bad', '기지선으로 돌아가 판매하세요.'); }
     tv1.subVectors(it.pos, P.pos).normalize().multiplyScalar(6); it.vel.copy(tv1); it.state = 2; return; }
   it.col = true; writeItem(it); P.cargo.push(it.id); P.kg += it.kg;
   G.combo = G.t - G.comboT < 1.6 ? G.combo + 1 : 0; G.comboT = G.t;
   const s = ST(); s.collected++; s.kg += it.kg; s.types[it.type] = (s.types[it.type] || 0) + 1;
-  if (it.tr) burst(it.pos, 40, 1, 0.85, 0.3, 7, 0.25); else burst(it.pos, 18, 0.4, 1, 0.9, 5, 0.18);
-  FXA.emit(PT.BLIP, it.pos.x, it.pos.y, it.pos.z, 0, 0, 0, 0.5, it.r * 2, it.tr ? 1 : 0.4, it.tr ? 0.85 : 1, it.tr ? 0.35 : 0.9, 1, 1);
-  ftext(it.pos.clone().add(new V3(0, it.r + 0.5, 0)), `+${it.v}`, it.tr ? '#e9c46a' : '#e8edf1', it.tr ? 17 : 14);
-  AU.collect(G.combo, it.kg >= 9 || it.tr);
-  if (it.tr) { s.treasures++; toast(`보물 발견: ${itemName(it)}`, 'big', `판매 가치 ${fmt(it.v)}`); }
-  else if (!SV.tips['t_' + it.type]) { SV.tips['t_' + it.type] = 1; toast(`새로운 쓰레기: ${TRASH[it.type].n}`, 'tip', TRASH[it.type].fact); }
-  if (!it.tr) recount();
+  burst(it.pos, 18, 0.4, 1, 0.9, 5, 0.18);
+  FXA.emit(PT.BLIP, it.pos.x, it.pos.y, it.pos.z, 0, 0, 0, 0.5, it.r * 2, 0.4, 1, 0.9, 1, 1);
+  ftext(it.pos.clone().add(new V3(0, it.r + 0.5, 0)), `+${it.v}`, '#e8edf1', 14);
+  AU.collect(G.combo, it.kg >= 9);
+  if (!SV.tips['t_' + it.type]) { SV.tips['t_' + it.type] = 1; toast(`새로운 쓰레기: ${TRASH[it.type].n}`, 'tip', TRASH[it.type].fact); }
+  recount();
 }
 function updateRescues(dt) {
   for (const r of rescues) { if (r.freed) continue; r.t += dt; r.cutting = false;
@@ -589,7 +585,7 @@ function openDock() {
   $('dSubtitle').textContent = `에너지 충전 · 선체 수리 완료 · 바다 정화율 ${cleanPct()}%`;
   renderUpgrades(); renderStats($('dStat')); switchTab('dock', rec.total > 0 ? 'dSell' : 'dUp'); show('dock'); saveGame();
 }
-function sellCargo() { const groups = {}; let base = 0; for (const id of P.cargo) { const it = items[id]; const k = it.key; if (!groups[k]) groups[k] = { n: itemName(it), c: 0, v: 0, tr: it.tr }; groups[k].c++; groups[k].v += it.v; base += it.v; }
+function sellCargo() { const groups = {}; let base = 0; for (const id of P.cargo) { const it = items[id]; const k = it.key; if (!groups[k]) groups[k] = { n: itemName(it), c: 0, v: 0 }; groups[k].c++; groups[k].v += it.v; base += it.v; }
   const bonus = Math.round(base * 0.5 * G.clean), total = base + bonus; if (P.cargo.length) { SV.money += total; ST().earned += total; ST().sells++; AU.sell(); } P.cargo = []; P.kg = 0; return { groups, base, bonus, total }; }
 function buyUpgrade(k) { const lv = SV.up[k], cost = UP[k].c[lv]; if (cost === undefined || SV.money < cost) return; SV.money -= cost; SV.up[k]++; ST().upgrades++; calcStats(); P.bat = S.bat; P.hull = S.hull; AU.upgrade(); renderUpgrades(); $('dMoney').textContent = fmt(SV.money); saveGame(); }
 function launch() { hide('dock'); G.state = 'play'; P.vel.set(0, -4, -3); P.canDock = false; AU.click(); requestLock(); const m = MISSIONS[SV.mission]; if (m && G.t - G.lastMTip > 60) { G.lastMTip = G.t; toast(`임무: ${m.t}`, 'tip', m.d); } }
@@ -657,7 +653,7 @@ function drawMapLayer(c, W, H, x0, z0, span, big) {
   const csx = Math.max(0, sx), csy = Math.max(0, sy), cex = Math.min(MAPN, sx + sw), cey = Math.min(MAPN, sy + shh);
   if (cex > csx && cey > csy) { const dx = (csx - sx) / sw * W, dy = (csy - sy) / shh * H, dw = (cex - csx) / sw * W, dh = (cey - csy) / shh * H; c.drawImage(MAPBASE, csx, csy, cex - csx, cey - csy, dx, dy, dw, dh); c.drawImage(FOG, csx, csy, cex - csx, cey - csy, dx, dy, dw, dh); }
   const dsz = big ? 3 : 4;
-  for (const it of items) { if (it.col || it.locked || !it.known) continue; const x = X(it.pos.x), y = Y(it.pos.z); if (x < 0 || x > W || y < 0 || y > H) continue; c.fillStyle = it.tr ? '#f0d98c' : '#e8925a'; c.fillRect(x - dsz / 2, y - dsz / 2, dsz, dsz); }
+  for (const it of items) { if (it.col || it.locked || !it.known) continue; const x = X(it.pos.x), y = Y(it.pos.z); if (x < 0 || x > W || y < 0 || y > H) continue; c.fillStyle = '#e8925a'; c.fillRect(x - dsz / 2, y - dsz / 2, dsz, dsz); }
   for (const r of rescues) { if (r.freed || !r.known) continue; c.fillStyle = '#e07aa8'; c.beginPath(); c.arc(X(r.pos.x), Y(r.pos.z), big ? 5 : 4, 0, TAU); c.fill(); }
   c.textAlign = 'center';
   for (const p of POIS) { const has = SV.pois[p.id]; if (!has && !p.pinged) continue; const x = X(p.x), y = Y(p.z); if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue; c.fillStyle = has ? '#9fb0bd' : 'rgba(159,176,189,.5)'; c.beginPath(); c.moveTo(x, y - 6); c.lineTo(x + 5, y); c.lineTo(x, y + 6); c.lineTo(x - 5, y); c.fill();
@@ -670,7 +666,7 @@ function drawMapLayer(c, W, H, x0, z0, span, big) {
 let MMC = null;
 function drawMinimap() { const cv = $('minimap'); const c = MMC || (MMC = cv.getContext('2d')); const W = cv.width, H = cv.height, span = 520; drawMapLayer(c, W, H, P.pos.x - span / 2, P.pos.z - span * H / W / 2, span, false); }
 function drawBigMap() { const cv = $('bigmap'), c = cv.getContext('2d'); drawMapLayer(c, cv.width, cv.height, -WORLD.half, -WORLD.half, WORLD.size, true);
-  let rem = 0, known = 0; for (const it of items) { if (it.col || it.locked || it.tr) continue; rem++; if (it.known) known++; } const ex = EXP.reduce((s, v) => s + v, 0) / EXP.length;
+  let rem = 0, known = 0; for (const it of items) { if (it.col || it.locked) continue; rem++; if (it.known) known++; } const ex = EXP.reduce((s, v) => s + v, 0) / EXP.length;
   $('mapSub').textContent = `남은 쓰레기 ${rem}개 · 탐지됨 ${known}개 · 해역 탐사 ${Math.round(ex * 100)}% · 현재 수심 ${Math.floor(depthOf(P.pos.y))}m · 북쪽이 위`; }
 
 // =====================================================================
@@ -732,7 +728,7 @@ function drawOverlayIn(c, W, H) {
   c.textAlign = 'center';
   // revealed items
   for (const it of items) { if (it.col || it.locked || it.rev < G.t) continue; const d = it.pos.distanceTo(camera.position); if (d > 260) continue; const s = project(it.pos, pv); if (s.behind || s.x < -20 || s.x > W + 20 || s.y < -20 || s.y > H + 20) continue;
-    const f = Math.min(1, (it.rev - G.t) / 2), p = 0.5 + 0.5 * Math.sin(G.t * 5 + it.ph), r = clamp(260 / d, 6, 26) + p * 3; c.strokeStyle = it.tr ? `rgba(240,217,140,${0.8 * f})` : `rgba(232,146,90,${0.75 * f})`; c.lineWidth = 1.5; c.beginPath(); c.arc(s.x, s.y, r, 0, TAU); c.stroke(); }
+    const f = Math.min(1, (it.rev - G.t) / 2), p = 0.5 + 0.5 * Math.sin(G.t * 5 + it.ph), r = clamp(260 / d, 6, 26) + p * 3; c.strokeStyle = `rgba(232,146,90,${0.75 * f})`; c.lineWidth = 1.5; c.beginPath(); c.arc(s.x, s.y, r, 0, TAU); c.stroke(); }
   // rescues
   for (const r of rescues) { if (r.freed) continue; const d = r.pos.distanceTo(camera.position); if (d > 120) continue; const s = project(r.pos, pv); if (s.behind) continue; const p = 0.5 + 0.5 * Math.sin(G.t * 4); const R = clamp(900 / d, 20, 90);
     c.strokeStyle = `rgba(224,122,168,${0.35 + 0.35 * p})`; c.lineWidth = 1.5; c.beginPath(); c.arc(s.x, s.y, R, 0, TAU); c.stroke();
@@ -747,7 +743,7 @@ function drawOverlayIn(c, W, H) {
   const T = []; const mt = mTarget(MISSIONS[SV.mission]); if (mt) T.push({ p: mt, col: '#e9c46a', label: '임무', big: true });
   if ((P.bat < S.bat * 0.3 || P.kg >= S.cargo * 0.92) && !(mt && mt.distanceTo(DOCK) < 1)) T.push({ p: DOCK, col: '#8fcf9b', label: '기지선', big: true });
   const near = []; for (const it of items) { if (it.col || it.locked || it.rev < G.t) continue; near.push([it.pos.distanceToSquared(P.pos), it]); } near.sort((a, b) => a[0] - b[0]);
-  for (let i = 0; i < Math.min(5, near.length); i++) T.push({ p: near[i][1].pos, col: near[i][1].tr ? '#f0d98c' : '#e8925a' });
+  for (let i = 0; i < Math.min(5, near.length); i++) T.push({ p: near[i][1].pos, col: '#e8925a' });
   const R = G.win || { x: 12, y: 12, w: W - 24, h: H - 24 }, pad = 22, cx = R.x + R.w / 2, cy = R.y + R.h / 2;
   for (const t of T) { const s = project(t.p, pv); let sx = s.x, sy = s.y; const on = !s.behind && sx > R.x + pad && sx < R.x + R.w - pad && sy > R.y + pad && sy < R.y + R.h - pad;
     const dm = Math.round(t.p.distanceTo(P.pos));
@@ -835,7 +831,7 @@ function renderUpgrades() { $('dMoney').textContent = fmt(SV.money);
 $('ugrid').addEventListener('click', (e) => { const b = e.target.closest('[data-buy]'); if (b && !b.disabled) buyUpgrade(b.dataset.buy); });
 function renderStats(el) { const s = ST(), t = Math.floor(s.time);
   const rows = [['수거한 쓰레기', `${fmt(s.collected)}개`], ['수거 무게', `${fmt(s.kg)}kg`], ['총 수익', fmt(s.earned)], ['바다 정화율', `${cleanPct()}%`], ['구조한 생물', `${s.rescues} / ${rescues.length}`], ['발견한 생물', `${Object.keys(SV.species).length} / ${SPECIES_ORDER.length}`],
-    ['발견한 장소', `${Object.keys(SV.pois).length} / ${POIS.length}`], ['최대 수심', `${fmt(s.deepest)}m`], ['찾은 보물', `${s.treasures}개`], ['이동 거리', `${(s.dist / 1000).toFixed(1)}km`], ['긴급 구조', `${s.fails}회`], ['플레이 시간', `${Math.floor(t / 3600)}시간 ${Math.floor(t / 60) % 60}분`]];
+    ['발견한 장소', `${Object.keys(SV.pois).length} / ${POIS.length}`], ['최대 수심', `${fmt(s.deepest)}m`], ['이동 거리', `${(s.dist / 1000).toFixed(1)}km`], ['긴급 구조', `${s.fails}회`], ['플레이 시간', `${Math.floor(t / 3600)}시간 ${Math.floor(t / 60) % 60}분`]];
   el.innerHTML = `<div class="stats">${rows.map((r) => `<div class="stat"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('')}</div>`; }
 // codex thumbnails via a small secondary renderer
 let TR = null; const THUMBS = {};
@@ -1018,7 +1014,7 @@ function frame(now) {
 // BOOT
 // =====================================================================
 genItems(); genRescues(); buildItemMeshes(); genCreatures(); buildMap();
-G.poll = items.filter((i) => !i.tr).length;
+G.poll = items.length;
 loadSettings(); resize(); showTitle();
 function simulate(sec) { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) { const dt = 1 / 30; G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); FXA.update(dt); FXN.update(dt); } writeFish(); }
 window.__game = { toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };

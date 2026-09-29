@@ -140,7 +140,7 @@ export function drawRadarScr(c, w, h, st) {
   const blip = (x, z, dy, col, r) => { r *= U; const [sx, sy] = toS(x, z); if ((sx - cx) ** 2 + (sy - cy) ** 2 > R * R) return; c.fillStyle = col; c.shadowColor = col; c.shadowBlur = r * 2; c.beginPath(); c.arc(sx, sy, r, 0, TAU); c.fill(); c.shadowBlur = 0;
     if (Math.abs(dy) > 6) { const d = dy > 0 ? -1 : 1; c.beginPath(); c.moveTo(sx - 3 * U, sy + d * (r + 2 * U)); c.lineTo(sx + 3 * U, sy + d * (r + 2 * U)); c.lineTo(sx, sy + d * (r + 6 * U)); c.closePath(); c.fill(); } };
   for (const it of st.items) { if (it.col || it.locked) continue; const dx = it.pos.x - st.pos.x, dz = it.pos.z - st.pos.z, d2 = dx * dx + dz * dz; if (d2 > r2) continue;
-    if (d2 > (range * 0.75) ** 2 && !it.known) continue; n++; blip(it.pos.x, it.pos.z, it.pos.y - st.pos.y, it.tr ? '#ffe08a' : it.known ? '#ffb070' : 'rgba(255,176,112,.65)', it.kg > 5 ? 3.6 : 2.6); }
+    if (d2 > (range * 0.75) ** 2 && !it.known) continue; n++; blip(it.pos.x, it.pos.z, it.pos.y - st.pos.y, it.known ? '#ffb070' : 'rgba(255,176,112,.65)', it.kg > 5 ? 3.6 : 2.6); }
   for (const r of st.rescues) if (!r.freed) blip(r.pos.x, r.pos.z, r.pos.y - st.pos.y, '#ff8fc8', 4);
   for (const e of st.creatures) { if (e.a < 0.5) continue; const hz = e.sp === 'shark' ? (e.state === 1 ? '#ff3b3b' : 'rgba(255,90,90,.8)') : e.sp === 'jelly' ? 'rgba(200,160,255,.85)' : e.sp === 'angler' ? 'rgba(255,130,90,.85)' : null; if (hz) blip(e.pos.x, e.pos.z, e.pos.y - st.pos.y, hz, e.sp === 'shark' ? 3.8 : 2.2); }
   c.restore();
@@ -191,7 +191,7 @@ export function drawNav(c, w, h, st) {
   c.save(); c.lineJoin = 'round'; surf(); c.strokeStyle = 'rgba(120,220,255,.22)'; c.lineWidth = 6 * s; c.stroke(); surf(); c.strokeStyle = '#8fe4ff'; c.lineWidth = 1.6 * s; c.stroke(); c.restore();
   // contacts near the sonar plane
   for (const it of st.items) { if (it.col || it.locked) continue; const dx = it.pos.x - st.pos.x, dz = it.pos.z - st.pos.z, a = dx * fx + dz * fz; if (a < d0 || a > d1) continue; if (Math.abs(dx * fz - dz * fx) > 16) continue;
-    const x = xOf(a), y = yOf(-it.pos.y); if (y < 0 || y > h) continue; c.fillStyle = it.tr ? '#ffe08a' : '#ffae6b'; c.fillRect(x - 2 * s, y - 2 * s, 4 * s, 4 * s); }
+    const x = xOf(a), y = yOf(-it.pos.y); if (y < 0 || y > h) continue; c.fillStyle = '#ffae6b'; c.fillRect(x - 2 * s, y - 2 * s, 4 * s, 4 * s); }
   for (const e of st.creatures) { if (e.a < 0.5) continue; const dx = e.pos.x - st.pos.x, dz = e.pos.z - st.pos.z, a = dx * fx + dz * fz; if (a < d0 || a > d1 || Math.abs(dx * fz - dz * fx) > 25) continue;
     const x = xOf(a), y = yOf(-e.pos.y); c.fillStyle = e.sp === 'shark' ? '#ff6a5e' : 'rgba(170,240,255,.8)'; c.beginPath(); c.moveTo(x - 4 * s, y); c.lineTo(x + 3 * s, y - 2 * s); c.lineTo(x + 3 * s, y + 2 * s); c.closePath(); c.fill(); }
   // own position crosshair and beam reach
