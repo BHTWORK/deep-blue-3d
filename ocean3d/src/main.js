@@ -8,7 +8,7 @@ import { TAU, clamp, lerp, smooth, rnd, fmt, $, esc, seed, rr, rpick, wpick, SR 
 import { TRASH, TREASURE, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS } from './data.js';
 import { AU, Music } from './audio.js';
 import { MAT, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO } from './models.js';
-import { drawCockpit, cockpitLayout, quadCorners, CockpitUI } from './cockpit.js';
+import { drawCockpit, cockpitLayout, CockpitUI } from './cockpit.js';
 import { WORLD, heightAt, normalAt, U, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBaseShip, buildDockRing, gradTex } from './world.js';
 
 const V3 = THREE.Vector3, UPV = new V3(0, 1, 0), ZERO = new V3();
@@ -36,7 +36,7 @@ const overlay = $('overlay'), octx = overlay.getContext('2d');
 // =====================================================================
 // GAME STATE
 // =====================================================================
-const G = { state: 'title', t: 0, dayT: 0.12, night: 0, sunH: 1, clean: 0, poll: 1, shake: 0, flash: 0, flashCol: '255,60,60', combo: 0, comboT: 0, sonar: null, sonarCd: 0, autosave: 0, tick: 0,
+const G = { vp: { x: 0, y: 0, w: innerWidth, h: innerHeight }, state: 'title', t: 0, dayT: 0.12, night: 0, sunH: 1, clean: 0, poll: 1, shake: 0, flash: 0, flashCol: '255,60,60', combo: 0, comboT: 0, sonar: null, sonarCd: 0, autosave: 0, tick: 0,
   alert: '', alertPri: 0, fullT: 0, creakT: 0, alarmT: 0, lowWarned: false, pendingWin: 0, quality: 2, shakeOn: true, lastMTip: -99, sens: 1, fp: true, fpTier: -1, glowSrc: [], coralH: -1, VW: innerWidth, VH: innerHeight };
 let SV = null; const S = {};
 const DOCK = new V3(2.6, -8, -19);
@@ -670,7 +670,7 @@ function updateEnv(dt) {
 // =====================================================================
 // OVERLAY (2D): edge arrows, markers, floating text
 // =====================================================================
-function project(p, out) { out.copy(p).project(camera); const behind = tv3.subVectors(p, camera.position).dot(camera.getWorldDirection(tv2)) < 0; return { x: (out.x * 0.5 + 0.5) * G.VW, y: (-out.y * 0.5 + 0.5) * G.VH, behind }; }
+function project(p, out) { out.copy(p).project(camera); const behind = tv3.subVectors(p, camera.position).dot(camera.getWorldDirection(tv2)) < 0; return { x: G.vp.x + (out.x * 0.5 + 0.5) * G.vp.w, y: G.vp.y + (-out.y * 0.5 + 0.5) * G.vp.h, behind }; }
 const pv = new V3();
 function drawOverlay() {
   const c = octx, W = G.VW, H = G.VH; c.setTransform(renderer.getPixelRatio(), 0, 0, renderer.getPixelRatio(), 0, 0); c.clearRect(0, 0, W, H);
@@ -678,7 +678,7 @@ function drawOverlay() {
   c.save(); drawOverlayIn(c, W, H); c.restore();
 }
 function drawOverlayIn(c, W, H) {
-  if (inCockpit() && G.ck) { const w = G.ck.win; c.beginPath(); c.rect(0, 0, W, G.ck.hoodTop); c.clip(); c.beginPath(); c.roundRect ? c.roundRect(w.x, w.y, w.w, w.h, w.r) : c.rect(w.x, w.y, w.w, w.h); c.clip(); }
+  const ck = inCockpit() && G.ck; if (ck) { const P = ck.port; c.beginPath(); c.rect(0, 0, W, ck.hoodTop); c.clip(); c.beginPath(); c.arc(P.cx, P.cy, P.r, 0, TAU); c.clip(); }
   c.textAlign = 'center';
   // revealed items
   for (const it of items) { if (it.col || it.locked || it.rev < G.t) continue; const d = it.pos.distanceTo(camera.position); if (d > 260) continue; const s = project(it.pos, pv); if (s.behind || s.x < -20 || s.x > W + 20 || s.y < -20 || s.y > H + 20) continue;
@@ -698,12 +698,14 @@ function drawOverlayIn(c, W, H) {
   if ((P.bat < S.bat * 0.3 || P.kg >= S.cargo * 0.92) && !(mt && mt.distanceTo(DOCK) < 1)) T.push({ p: DOCK, col: '#8fcf9b', label: '기지선', big: true });
   const near = []; for (const it of items) { if (it.col || it.locked || it.rev < G.t) continue; near.push([it.pos.distanceToSquared(P.pos), it]); } near.sort((a, b) => a[0] - b[0]);
   for (let i = 0; i < Math.min(5, near.length); i++) T.push({ p: near[i][1].pos, col: near[i][1].tr ? '#f0d98c' : '#e8925a' });
-  const R = G.win || { x: 12, y: 12, w: W - 24, h: H - 24 }, pad = 22, cx = R.x + R.w / 2, cy = R.y + R.h / 2;
-  for (const t of T) { const s = project(t.p, pv); let sx = s.x, sy = s.y; const on = !s.behind && sx > R.x + pad && sx < R.x + R.w - pad && sy > R.y + pad && sy < R.y + R.h - pad;
+  // arrows for off-view targets sit on the viewport edge: a rectangle in third person, an ellipse inside the porthole in first
+  const R = G.win || { x: 12, y: 12, w: W - 24, h: H - 24 }, pad = 22, E = ck ? ck.ell : null, cx = E ? E.cx : R.x + R.w / 2, cy = E ? E.cy : R.y + R.h / 2;
+  for (const t of T) { const s = project(t.p, pv); let sx = s.x, sy = s.y;
+    const on = !s.behind && (E ? ((sx - cx) / (E.rx - pad)) ** 2 + ((sy - cy) / (E.ry - pad)) ** 2 < 1 : sx > R.x + pad && sx < R.x + R.w - pad && sy > R.y + pad && sy < R.y + R.h - pad);
     const dm = Math.round(t.p.distanceTo(P.pos));
     if (on) { if (t.big) { const b = Math.sin(G.t * 4) * 5; c.fillStyle = t.col; c.beginPath(); c.moveTo(sx, sy - 16 + b); c.lineTo(sx - 9, sy - 32 + b); c.lineTo(sx + 9, sy - 32 + b); c.closePath(); c.fill(); c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; c.strokeText(`${t.label} ${dm}m`, sx, sy - 38 + b); c.fillText(`${t.label} ${dm}m`, sx, sy - 38 + b); } continue; }
     if (s.behind) { sx = W - sx; sy = H - sy; }
-    let dx = sx - cx, dy = sy - cy; if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3) dy = 1; const k = Math.min((R.w / 2 - pad) / Math.max(1e-6, Math.abs(dx)), (R.h / 2 - pad) / Math.max(1e-6, Math.abs(dy)));
+    let dx = sx - cx, dy = sy - cy; if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3) dy = 1; const k = E ? 1 / Math.hypot(dx / (E.rx - pad), dy / (E.ry - pad)) : Math.min((R.w / 2 - pad) / Math.max(1e-6, Math.abs(dx)), (R.h / 2 - pad) / Math.max(1e-6, Math.abs(dy)));
     const ax = cx + dx * k, ay = cy + dy * k, ang = Math.atan2(dy, dx);
     c.save(); c.translate(ax, ay); c.rotate(ang); c.globalAlpha = t.big ? 0.95 : 0.55; c.fillStyle = t.col; const sz = t.big ? 12 : 7; c.beginPath(); c.moveTo(sz, 0); c.lineTo(-sz * 0.8, -sz * 0.75); c.lineTo(-sz * 0.4, 0); c.lineTo(-sz * 0.8, sz * 0.75); c.closePath(); c.fill(); c.restore(); c.globalAlpha = 1;
     if (t.big) { const lx = ax - Math.cos(ang) * 36, ly = ay - Math.sin(ang) * 26; c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; const txt = `${t.label} ${dm}m`; c.strokeText(txt, lx, ly + 4); c.fillStyle = t.col; c.fillText(txt, lx, ly + 4); } }
@@ -715,10 +717,11 @@ function drawOverlayIn(c, W, H) {
 const inCockpit = () => G.fp && G.state !== 'title';
 const CK = new CockpitUI($('ckdyn'));
 function redrawCockpit() { if (!inCockpit() || !G.ck) return; drawCockpit($('cockpit'), G.ck, Math.min(devicePixelRatio || 1, 2), G.fpTier < 0 ? 0 : G.fpTier); }
-// HUD lives inside the visible viewport: the porthole glass in first person, the screen in third person
+// Third person: the HUD hugs the screen edges. First person: the mission line and map sit on the hull
+// walls beside the round porthole, and only the hint bar is lifted above the console.
 function layoutHUD() {
   const st = document.documentElement.style, W = G.VW, H = G.VH, ins = 12; let x0 = 0, y0 = 0, x1 = W, y1 = H;
-  if (inCockpit() && G.ck) ({ x0, y0, x1, y1 } = G.ck.glass);
+  if (inCockpit() && G.ck) y1 = G.ck.glass.y1;
   st.setProperty('--hx', `${x0 + ins}px`); st.setProperty('--hy', `${y0 + ins}px`); st.setProperty('--hr', `${W - x1 + ins}px`); st.setProperty('--hb', `${H - y1 + ins}px`);
   st.setProperty('--ppy', inCockpit() && G.ck ? `${G.ck.ppY}px` : '50%');
   // touch buttons sit on the console in first person, inside the screen edge otherwise
@@ -733,38 +736,27 @@ function applyView() {
 }
 function toggleView() { if (G.state !== 'play') return; G.fp = !G.fp; applyView(); saveSettings(); $('sView').value = G.fp ? '1' : '0'; AU.click(); updateCamera(1); toast(G.fp ? '1인칭 조종석 시점' : '3인칭 추적 시점', '', 'V 키로 전환합니다.'); }
 function cycleCam() { if (!inCockpit() || !G.ck || !G.ck.q.scrR) return; FEED.mode = 1 - FEED.mode; AU.click(); }
-// ---- external camera monitor: the scene is rendered from a hull camera into a small target and
-// composited into the hole the cockpit art leaves for the right-hand screen.
-const FEED = { mode: 0, ok: false, n: 0, q: null, cam: new THREE.PerspectiveCamera(64, 1.45, 0.3, 480), rt: new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType }), scene: new THREE.Scene(), ocam: new THREE.OrthographicCamera(0, 1, 0, -1, -1, 1) };
-FEED.mat = new THREE.ShaderMaterial({ depthTest: false, depthWrite: false, side: THREE.DoubleSide, uniforms: { uTex: { value: FEED.rt.texture }, uT: { value: 0 }, uSig: { value: 1 } },
-  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform sampler2D uTex; uniform float uT; uniform float uSig; varying vec2 vUv;
-    float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-    void main(){ vec3 c = texture2D(uTex, vUv).rgb * 1.7; c = c / (1.0 + c);
-      float l = dot(c, vec3(0.3, 0.55, 0.15)); vec3 g = mix(vec3(l), c, 0.4) * vec3(0.8, 0.95, 1.1); g = pow(max(g, 0.0), vec3(1.0 / 2.2));
-      g += (h(vUv * 520.0 + fract(uT * 7.3)) - 0.5) * 0.07; g *= 0.9 + 0.1 * sin(vUv.y * 480.0); vec2 q = vUv - 0.5; g *= 1.0 - dot(q, q) * 1.2;
-      vec3 ns = vec3(h(floor(vUv * vec2(160.0, 90.0)) + floor(uT * 24.0)) * 0.55); gl_FragColor = vec4(mix(ns, g, uSig), 1.0); }` });
-{ const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3)); geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 1, 1, 1, 1, 0, 0, 0]), 2)); geo.setIndex([0, 3, 1, 1, 3, 2]);
-  FEED.quad = new THREE.Mesh(geo, FEED.mat); FEED.quad.frustumCulled = false; FEED.scene.add(FEED.quad); }
+// ---- external camera monitor: each update renders a hull camera into the corner of the WebGL canvas
+// just before the main pass overwrites it, and copies that corner onto the monitor's 2D canvas.
+const FEED = { mode: 0, ok: false, n: 0, q: null, w: 0, h: 0, cam: new THREE.PerspectiveCamera(64, 1.45, 0.3, 480) };
 function feedLayout() {
   const q = FEED.q = inCockpit() && G.ck ? G.ck.q.scrR || null : null; if (!q) return;
-  const pts = quadCorners(q), cx = (pts[0][0] + pts[2][0]) / 2, cy = (pts[0][1] + pts[2][1]) / 2, pos = FEED.quad.geometry.attributes.position;
-  pts.forEach(([x, y], i) => { const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy) || 1; pos.setXYZ(i, x + (dx / d) * 1.5, -(y + (dy / d) * 1.5), 0); }); pos.needsUpdate = true;
-  FEED.ocam.right = G.VW; FEED.ocam.bottom = -G.VH; FEED.ocam.updateProjectionMatrix(); FEED.cam.aspect = q.w / q.h; FEED.cam.updateProjectionMatrix();
-  const px = Math.min(400, q.w * Math.min(devicePixelRatio || 1, 1.5)); FEED.rt.setSize(Math.round(px), Math.round((px * q.h) / q.w));
+  FEED.cam.aspect = q.w / q.h; FEED.cam.updateProjectionMatrix();
+  const s = Math.min(1, (G.vp.w - 2) / q.w, (G.vp.h - 2) / q.h, 360 / q.w); FEED.w = Math.max(16, Math.floor(q.w * s)); FEED.h = Math.max(9, Math.floor(q.h * s));
 }
 function renderFeed() {
   if (!FEED.q) return;
-  FEED.ok = G.quality > 0 && P.alive; FEED.mat.uniforms.uT.value = G.t; FEED.mat.uniforms.uSig.value = FEED.ok ? 1 : 0;
-  if (FEED.ok && FEED.n++ % (G.quality === 2 ? 2 : 3) === 0) {
-    const cam = FEED.cam; SUB.root.updateMatrixWorld();
-    if (FEED.mode === 0) { cam.position.set(0, -0.6, 1.9).applyMatrix4(SUB.root.matrixWorld); cam.rotation.set(P.pitch - 0.62, P.yaw + Math.PI, 0, 'YXZ'); }
-    else { cam.position.set(0, 0.7, -3.4).applyMatrix4(SUB.root.matrixWorld); cam.rotation.set(-0.16 - P.pitch * 0.5, P.yaw, 0, 'YXZ'); }
-    const lc = lightCone.visible, bc = beamCone.visible; lightCone.visible = false; beamCone.visible = false;
-    renderer.setRenderTarget(FEED.rt); renderer.render(scene, cam); renderer.setRenderTarget(null);
-    lightCone.visible = lc; beamCone.visible = bc;
-  }
-  renderer.autoClear = false; renderer.render(FEED.scene, FEED.ocam); renderer.autoClear = true;
+  FEED.ok = G.quality > 0 && P.alive;
+  if (!FEED.ok || FEED.n++ % (G.quality === 2 ? 2 : 3) !== 0) return;
+  const cam = FEED.cam; SUB.root.updateMatrixWorld();
+  if (FEED.mode === 0) { cam.position.set(0, -0.6, 1.9).applyMatrix4(SUB.root.matrixWorld); cam.rotation.set(P.pitch - 0.62, P.yaw + Math.PI, 0, 'YXZ'); }
+  else { cam.position.set(0, 0.7, -3.4).applyMatrix4(SUB.root.matrixWorld); cam.rotation.set(-0.16 - P.pitch * 0.5, P.yaw, 0, 'YXZ'); }
+  const lc = lightCone.visible, bc = beamCone.visible; lightCone.visible = false; beamCone.visible = false;
+  renderer.setRenderTarget(null); renderer.setViewport(0, 0, FEED.w, FEED.h); renderer.setScissor(0, 0, FEED.w, FEED.h); renderer.setScissorTest(true);
+  renderer.render(scene, cam);
+  renderer.setScissorTest(false); renderer.setViewport(0, 0, G.vp.w, G.vp.h);
+  lightCone.visible = lc; beamCone.visible = bc;
+  const pr = renderer.getPixelRatio(); CK.feed(canvas, Math.round(FEED.w * pr), Math.round(FEED.h * pr));
 }
 const CKS = { stickL: [0, 0], stickR: [0, 0], inp: { f: 0, s: 0, u: 0 } };
 function cockpitState() {
@@ -929,15 +921,18 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 // LOOP
 // =====================================================================
 function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; const pr = Math.min(devicePixelRatio || 1, q === 2 ? 1.75 : q === 1 ? 1.25 : 0.85);
-  renderer.setPixelRatio(pr); renderer.setSize(G.VW, G.VH, false); composer.setPixelRatio(pr); composer.setSize(G.VW, G.VH); bloom.enabled = q > 0; bloom.strength = q === 2 ? 0.55 : 0.45;
+  // in first person only the porthole is visible, so the scene is rendered into its bounding box alone
+  const L = G.ck = inCockpit() ? cockpitLayout(G.VW, G.VH, IN.touch) : null, vp = G.vp = L ? L.view : { x: 0, y: 0, w: G.VW, h: G.VH };
+  renderer.setPixelRatio(pr); renderer.setSize(vp.w, vp.h, false); Object.assign(canvas.style, { left: vp.x + 'px', top: vp.y + 'px', width: vp.w + 'px', height: vp.h + 'px' });
+  composer.setPixelRatio(pr); composer.setSize(vp.w, vp.h); bloom.enabled = q > 0; bloom.strength = q === 2 ? 0.55 : 0.45;
   let f;
-  if (inCockpit()) { // principal point moved up to the middle of the porthole; F is the virtual frame height
-    const L = G.ck = cockpitLayout(G.VW, G.VH, IN.touch), F = 2 * Math.max(L.ppY, G.VH - L.ppY); f = Math.max(0.7 * G.VH, 0.4 * G.VW);
-    camera.fov = (2 * Math.atan(F / 2 / f) * 180) / Math.PI; camera.aspect = G.VW / F; camera.setViewOffset(G.VW, F, 0, F / 2 - L.ppY, G.VW, G.VH);
-  } else { G.ck = null; camera.clearViewOffset(); camera.fov = 68; camera.aspect = G.VW / G.VH; f = G.VH / (2 * Math.tan((68 * Math.PI) / 360)); }
+  if (L) { // principal point at the middle of the visible glass; F is the virtual frame height
+    const py = L.ppY - vp.y, F = 2 * Math.max(py, vp.h - py); f = L.port.r * 1.3;
+    camera.fov = (2 * Math.atan(F / 2 / f) * 180) / Math.PI; camera.aspect = vp.w / F; camera.setViewOffset(vp.w, F, 0, F / 2 - py, vp.w, vp.h);
+  } else { camera.clearViewOffset(); camera.fov = 68; camera.aspect = vp.w / vp.h; f = vp.h / (2 * Math.tan((68 * Math.PI) / 360)); }
   camera.updateProjectionMatrix(); overlay.width = Math.round(G.VW * pr); overlay.height = Math.round(G.VH * pr);
   FXA.mat.uniforms.uScale.value = f * pr; FXN.mat.uniforms.uScale.value = f * pr;
-  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); if (G.ck) CK.setLayout(G.ck, Math.min(devicePixelRatio || 1, 2)); feedLayout(); layoutHUD(); }
+  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); if (L) CK.setLayout(L, Math.min(devicePixelRatio || 1, 2)); feedLayout(); layoutHUD(); }
 addEventListener('resize', resize);
 function update(dt) {
   G.dayT = (G.dayT + dt / 600) % 1; G.alert = ''; G.alertPri = 0; ST().time += dt;
@@ -967,7 +962,7 @@ function frame(now) {
     pollGamepad(dt);
     const live = G.state === 'play' || G.state === 'title';
     if (live) { G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); else updateAttract(dt); FXA.update(dt); FXN.update(dt); for (let i = ftexts.length - 1; i >= 0; i--) { const f = ftexts[i]; f.life -= dt; f.p.y += dt * 1.2; if (f.life <= 0) ftexts.splice(i, 1); } writeFish(); }
-    if (live || G.needRender) { updateEnv(dt); if (bloom.enabled) composer.render(); else renderer.render(scene, camera); if (inCockpit()) renderFeed(); drawOverlay(); G.needRender = false; }
+    if (live || G.needRender) { updateEnv(dt); if (inCockpit()) renderFeed(); if (bloom.enabled) composer.render(); else renderer.render(scene, camera); drawOverlay(); G.needRender = false; }
     if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit() && G.ck) CK.update(cockpitState(), dt); }
     if (G.state === 'menu' && !$('mapm').classList.contains('hidden')) { mmAcc += dt; if (mmAcc > 0.3) { mmAcc = 0; drawBigMap(); } }
     AU.update(G.state === 'title' ? 20 : depthOf(P.pos.y), P.vel.length() * 12, G.state === 'play' ? P.thrust : 0, G.state === 'play' && P.beam, G.state === 'play');

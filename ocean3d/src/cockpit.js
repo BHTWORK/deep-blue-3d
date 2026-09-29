@@ -13,21 +13,8 @@ function rr(c, x, y, w, h, r) {
   r = Math.max(0, Math.min(r, w / 2, h / 2));
   c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
 }
-function rrSub(c, x, y, w, h, r) { // adds a rounded rect sub-path without resetting (for even-odd rings)
-  r = Math.max(0, Math.min(r, w / 2, h / 2));
-  c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
-}
 function lin(c, x0, y0, x1, y1, stops) { const g = c.createLinearGradient(x0, y0, x1, y1); stops.forEach(([t, col]) => g.addColorStop(t, col)); return g; }
 function txt(c, s, x, y, size, col, align = 'left', font = MONO, weight = 500) { c.font = `${weight} ${Math.round(size)}px ${font}`; c.textAlign = align; c.fillStyle = col; c.fillText(s, x, y); }
-function perimeter(x, y, w, h, r, step) { // points along a rounded-rect perimeter, ~step px apart
-  const pts = [], segs = [];
-  const straight = (x0, y0, x1, y1) => segs.push((t) => [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, Math.hypot(x1 - x0, y1 - y0)]);
-  const arc = (cx, cy, a0) => segs.push((t) => [cx + Math.cos(a0 + t * Math.PI / 2) * r, cy + Math.sin(a0 + t * Math.PI / 2) * r, r * Math.PI / 2]);
-  straight(x + r, y, x + w - r, y); arc(x + w - r, y + r, -Math.PI / 2); straight(x + w, y + r, x + w, y + h - r); arc(x + w - r, y + h - r, 0);
-  straight(x + w - r, y + h, x + r, y + h); arc(x + r, y + h - r, Math.PI / 2); straight(x, y + h - r, x, y + r); arc(x + r, y + r, Math.PI);
-  for (const s of segs) { const len = s(0)[2]; const n = Math.max(1, Math.round(len / step)); for (let i = 0; i < n; i++) { const p = s(i / n); pts.push([p[0], p[1]]); } }
-  return pts;
-}
 function screw(c, x, y, r) {
   const g = c.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r); g.addColorStop(0, '#9aa6b0'); g.addColorStop(1, '#262d34');
   c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1; c.stroke();
@@ -61,13 +48,21 @@ export function cockpitLayout(W, H, touch) {
   const X = (x) => cx + (x + off) * k, Y = (y) => H - (1000 - y) * k;
   const q = (ox, oy, ux, uy, vx, vy) => Q([X(ox), Y(oy)], [ux * k, uy * k], [vx * k, vy * k]);
   const L = { W, H, k, full, touch, cx, X, Y, q: {}, gauges: [] };
+  // round porthole: its lower part sits behind the console, the rest (frame included) stays on screen.
+  // Phones are short, so there the top of the glass may run slightly off the edge.
   L.ft = Math.max(16, 44 * k);
-  L.wall = Math.max(W * 0.065, 56 * k);
-  const wx = L.wall + L.ft, wb = Y(full ? 640 : 722);
-  L.win = { x: wx, y: -H * 0.5, w: W - wx * 2, h: wb + H * 0.5, r: (full ? 300 : 230) * k };
+  const pb = Y(full ? 790 : 850); let pr = (pb - (8 + L.ft)) / 2; if (!full) pr = Math.max(pr, H * 0.44); pr = Math.min(pr, W * 0.42);
+  L.port = { cx, cy: pb - pr, r: pr };
   L.hoodTop = Y(full ? 560 : 700);
-  L.ppY = L.hoodTop * 0.52;
-  L.glass = { x0: wx + 6, y0: 6, x1: W - wx - 6, y1: L.hoodTop - 6 };
+  const vt = Math.max(0, L.port.cy - pr);
+  L.ppY = (vt + L.hoodTop) / 2;
+  L.glass = { x0: cx - pr, y0: vt, x1: cx + pr, y1: L.hoodTop - 6 };
+  // ellipse inscribed in the visible glass, used to park off-screen target arrows
+  const hw = Math.sqrt(Math.max(0, pr * pr - (L.ppY - L.port.cy) ** 2));
+  L.ell = { cx, cy: L.ppY, rx: hw * 0.9, ry: ((L.hoodTop - vt) / 2) * 0.9 };
+  L.wallW = cx - pr - L.ft * 1.6; // free wall beside the porthole at its widest
+  { const x0 = Math.max(0, Math.floor(cx - pr)), x1 = Math.min(W, Math.ceil(cx + pr)), y0 = Math.max(0, Math.floor(L.port.cy - pr)), y1 = Math.min(H, Math.ceil(Math.min(L.port.cy + pr, Y(full ? 668 : 752) + 2)));
+    L.view = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }; } // screen area the 3D view has to cover
   if (full) {
     L.q.scrC = q(-300, 598, 600, 0, 0, 212);
     L.q.annun = q(-300, 826, 600, 0, 0, 22);
@@ -77,13 +72,13 @@ export function cockpitLayout(W, H, touch) {
     ['depth', 'compass', 'speed'].forEach((kind, i) => L.gauges.push({ x: X((i - 1) * 196), y: Y(930), r: 64 * k, kind }));
     L.q.btn = q(-716, 880, 170, 0, 0, 94);
     if (!touch) { L.q.bal = q(560, 880, 156, 0, 0, 94); L.q.stickL = q(-620, 800, 280, 0, 0, 214); L.q.stickR = q(340, 800, 280, 0, 0, 214); }
-    if (L.wall >= 64) { const lw = Math.min(84, L.wall - 18); L.q.lcd = Q([(L.wall - lw) / 2, H * 0.2], [lw, 0], [0, lw * 1.25]); }
   } else {
     L.q.scrC = q(-265, 728, 530, 0, 0, 188);
     L.q.annun = q(-265, 932, 530, 0, 0, 24);
     L.q.scrL = q(-640, 758, 300, -20, 12, 196);
     if (!touch) L.q.scrR = q(340, 738, 300, 20, -12, 196);
   }
+  if (L.wallW >= 80) { const lw = Math.min(88, L.wallW - 24), lh = lw * 1.25; L.q.lcd = Q([(L.wallW - lw) / 2, L.port.cy - lh * 0.8], [lw, 0], [0, lh]); }
   return L;
 }
 
@@ -95,82 +90,97 @@ export function drawCockpit(cv, L, pr, tier) {
   const rng = mulberry32(99 + tier);
   c.fillStyle = lin(c, 0, 0, 0, H, [[0, '#1b232b'], [0.55, '#11171d'], [1, '#07090c']]); c.fillRect(0, 0, W, H);
   c.globalAlpha = 0.035; c.fillStyle = '#ffffff'; for (let i = 0; i < (W * H) / 900; i++) c.fillRect(rng() * W, rng() * H, 1, 1); c.globalAlpha = 1;
-  sideWalls(c, L, rng);
-  c.save(); c.globalCompositeOperation = 'destination-out'; rr(c, L.win.x, L.win.y, L.win.w, L.win.h, L.win.r); c.fill(); c.restore();
+  walls(c, L);
+  const P = L.port; c.save(); c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(P.cx, P.cy, P.r, 0, TAU); c.fill(); c.restore();
   glassFx(c, L, rng, tier);
   frame(c, L);
   consoleBody(c, L, pr);
 }
 
-function sideWalls(c, L, rng) {
-  const { W, H, k, wall } = L;
+function walls(c, L) {
+  const { W, H, k, port: P, ft } = L;
+  // light from the porthole falling on the hull around it
+  const g = c.createRadialGradient(P.cx, P.cy, P.r, P.cx, P.cy, P.r * 2.1); g.addColorStop(0, 'rgba(70,140,180,.13)'); g.addColorStop(1, 'rgba(70,140,180,0)'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+  // hull plating seams with rivet rows
+  const seams = [W * 0.035, W * 0.2, W * 0.8, W * 0.965];
+  c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 1.5;
+  for (const x of seams) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); c.strokeStyle = 'rgba(255,255,255,.05)'; c.beginPath(); c.moveTo(x + 1.5, 0); c.lineTo(x + 1.5, H); c.stroke(); c.strokeStyle = 'rgba(0,0,0,.5)'; }
+  for (const y of [H * 0.24, H * 0.52]) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+  const rs = Math.max(26, 34 * k);
+  for (const x of seams) for (let y = rs / 2; y < H; y += rs) screw(c, x + 7 * k, y, Math.max(1.6, 2.4 * k));
+  for (const y of [H * 0.24, H * 0.52]) for (let x = rs / 2; x < W; x += rs) screw(c, x, y + 7 * k, Math.max(1.6, 2.4 * k));
+  // conduits running down the far edges
   for (const side of [-1, 1]) {
     c.save(); if (side > 0) { c.translate(W, 0); c.scale(-1, 1); }
-    // vertical pillar with seams and rivets
-    c.fillStyle = lin(c, 0, 0, wall, 0, [[0, '#0b0f13'], [0.6, '#1a2229'], [1, '#232c35']]); c.fillRect(0, 0, wall, H);
-    c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1.5;
-    for (let y = H * 0.12; y < H; y += H * 0.24) { c.beginPath(); c.moveTo(0, y); c.lineTo(wall, y); c.stroke(); for (const x of [wall * 0.3, wall * 0.75]) screw(c, x, y + 7 * k, Math.max(2, 3.2 * k)); }
-    // conduit pipe
-    const px = wall * 0.16, pw = Math.max(5, 12 * k);
-    c.fillStyle = lin(c, px - pw / 2, 0, px + pw / 2, 0, [[0, '#0a0d10'], [0.35, '#44505b'], [0.55, '#2a333c'], [1, '#07090b']]); c.fillRect(px - pw / 2, 0, pw, H);
-    for (let y = H * 0.08; y < H; y += H * 0.18) { c.fillStyle = '#20282f'; c.fillRect(px - pw * 0.8, y, pw * 1.6, pw * 0.55); c.fillStyle = 'rgba(255,255,255,.08)'; c.fillRect(px - pw * 0.8, y, pw * 1.6, 1); }
+    for (const [px, pw] of [[W * 0.012 + 6 * k, Math.max(6, 13 * k)], [W * 0.012 + 24 * k, Math.max(4, 8 * k)]]) {
+      c.fillStyle = lin(c, px - pw / 2, 0, px + pw / 2, 0, [[0, '#07090b'], [0.35, '#46525d'], [0.55, '#2a333c'], [1, '#06080a']]); c.fillRect(px - pw / 2, 0, pw, H);
+    }
+    for (let y = H * 0.1; y < H; y += H * 0.2) { c.fillStyle = '#20282f'; c.fillRect(W * 0.012 - 4 * k, y, 40 * k, 7 * k); c.fillStyle = 'rgba(255,255,255,.08)'; c.fillRect(W * 0.012 - 4 * k, y, 40 * k, 1); }
     c.restore();
   }
-  // right wall: a small pressure dial and two toggles (static decoration)
-  if (wall >= 48) {
-    const x = W - wall * 0.55, y = H * 0.3, r = Math.min(wall * 0.34, 34 * k + 8);
-    c.fillStyle = lin(c, x - r, y - r, x + r, y + r, [[0, '#6c7883'], [1, '#161c21']]); c.beginPath(); c.arc(x, y, r + 4, 0, TAU); c.fill();
+  // right wall: oxygen dial with a name plate (the left wall carries the depth LCD)
+  if (L.full && L.wallW >= 80) {
+    const x = W - L.wallW / 2, y = P.cy - 10 * k, r = Math.min(L.wallW * 0.3, 40 * k + 8);
+    c.save(); c.shadowColor = 'rgba(0,0,0,.7)'; c.shadowBlur = 10 * k; c.fillStyle = lin(c, x - r, y - r, x + r, y + r, [[0, '#6c7883'], [1, '#161c21']]); c.beginPath(); c.arc(x, y, r + 5, 0, TAU); c.fill(); c.restore();
     c.fillStyle = '#05090a'; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
     c.strokeStyle = 'rgba(190,255,225,.55)'; c.lineWidth = 1; for (let i = 0; i <= 8; i++) { const a = Math.PI * 0.75 + (i / 8) * Math.PI * 1.5; c.beginPath(); c.moveTo(x + Math.cos(a) * r * 0.72, y + Math.sin(a) * r * 0.72); c.lineTo(x + Math.cos(a) * r * 0.88, y + Math.sin(a) * r * 0.88); c.stroke(); }
     c.strokeStyle = '#6ff7c8'; c.lineWidth = 1.6; c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(-0.6) * r * 0.78, y + Math.sin(-0.6) * r * 0.78); c.stroke();
     txt(c, 'O₂', x, y + r * 0.55, Math.max(8, r * 0.32), 'rgba(190,255,225,.6)', 'center', SANS, 700);
+    for (const [px, pw, lab] of [[W - L.wallW / 2, Math.min(L.wallW - 24, 110 * k), 'DSV-01 DEEP BLUE']]) {
+      const py = y + r + 22 * k, ph = Math.max(14, 20 * k); c.fillStyle = lin(c, 0, py, 0, py + ph, [[0, '#3a444e'], [1, '#1c2329']]); rr(c, px - pw / 2, py, pw, ph, 3); c.fill();
+      c.strokeStyle = 'rgba(0,0,0,.6)'; c.lineWidth = 1; c.stroke(); txt(c, lab, px, py + ph * 0.68, Math.min(ph * 0.5, pw / (lab.length * 0.72)), 'rgba(220,230,238,.55)', 'center', SANS, 800);
+    }
   }
 }
 
 function glassFx(c, L, rng, tier) {
-  const { W, H, win } = L;
-  c.save(); rr(c, win.x, win.y, win.w, win.h, win.r); c.clip();
-  const cy = L.ppY, rg = c.createRadialGradient(W / 2, cy, Math.min(win.w, L.hoodTop) * 0.45, W / 2, cy, Math.hypot(win.w, L.hoodTop) * 0.62);
-  rg.addColorStop(0, 'rgba(0,0,0,0)'); rg.addColorStop(1, 'rgba(0,8,14,.6)'); c.fillStyle = rg; c.fillRect(0, 0, W, H);
-  for (const [x0, w0, a] of [[0.12, 0.07, 0.05], [0.22, 0.025, 0.045], [0.74, 0.05, 0.03]]) {
-    c.fillStyle = lin(c, W * x0, 0, W * (x0 + w0), 0, [[0, 'rgba(210,240,255,0)'], [0.5, `rgba(210,240,255,${a})`], [1, 'rgba(210,240,255,0)']]);
-    const yb = win.y + win.h; c.beginPath(); c.moveTo(W * x0 + H * 0.25, 0); c.lineTo(W * (x0 + w0) + H * 0.25, 0); c.lineTo(W * (x0 + w0) - H * 0.1, yb); c.lineTo(W * x0 - H * 0.1, yb); c.closePath(); c.fill();
+  const { W, H, port: P } = L;
+  c.save(); c.beginPath(); c.arc(P.cx, P.cy, P.r, 0, TAU); c.clip();
+  const rg = c.createRadialGradient(P.cx, P.cy, P.r * 0.55, P.cx, P.cy, P.r); rg.addColorStop(0, 'rgba(0,0,0,0)'); rg.addColorStop(1, 'rgba(0,8,14,.6)'); c.fillStyle = rg; c.fillRect(0, 0, W, H);
+  for (const [x0, w0, a] of [[-0.62, 0.16, 0.05], [-0.4, 0.05, 0.045], [0.42, 0.1, 0.03]]) {
+    const xa = P.cx + x0 * P.r, xb = xa + w0 * P.r, t = P.cy - P.r, bt = P.cy + P.r;
+    c.fillStyle = lin(c, xa, 0, xb, 0, [[0, 'rgba(210,240,255,0)'], [0.5, `rgba(210,240,255,${a})`], [1, 'rgba(210,240,255,0)']]);
+    c.beginPath(); c.moveTo(xa + P.r * 0.35, t); c.lineTo(xb + P.r * 0.35, t); c.lineTo(xb - P.r * 0.35, bt); c.lineTo(xa - P.r * 0.35, bt); c.closePath(); c.fill();
   }
+  // curved highlight along the upper-left rim
+  c.strokeStyle = 'rgba(210,240,255,.08)'; c.lineWidth = P.r * 0.05; c.beginPath(); c.arc(P.cx, P.cy, P.r * 0.93, Math.PI * 1.08, Math.PI * 1.42); c.stroke();
   if (tier > 0) {
-    const n = tier === 1 ? 2 : 5, yb = L.hoodTop;
+    const n = tier === 1 ? 2 : 5;
     for (let i = 0; i < n; i++) {
-      const edge = (rng() * 3) | 0; const x = edge === 0 ? win.x : edge === 1 ? win.x + win.w : win.x + rng() * win.w, y = edge === 2 ? 0 : rng() * yb * 0.9;
-      const a = Math.atan2(cy - y, W / 2 - x) + (rng() - 0.5) * 1.2;
+      const th = Math.PI * (1.05 + rng() * 0.9), x = P.cx + Math.cos(th) * P.r, y = P.cy + Math.sin(th) * P.r;
+      const a = Math.atan2(P.cy - y, P.cx - x) + (rng() - 0.5) * 1.2;
       const draw = (x, y, a, len, depth) => { const pts = [[x, y]]; for (let s = 0; s < 7; s++) { a += (rng() - 0.5) * 0.7; x += (Math.cos(a) * len) / 7; y += (Math.sin(a) * len) / 7; pts.push([x, y]); }
         for (const [col, w, dx] of [['rgba(0,0,0,.5)', 2.2, 1], ['rgba(230,245,255,.75)', 1.1, 0]]) { c.strokeStyle = col; c.lineWidth = w; c.beginPath(); pts.forEach(([px, py], j) => (j ? c.lineTo(px + dx, py + dx) : c.moveTo(px + dx, py + dx))); c.stroke(); }
         if (depth > 0) for (let b = 0; b < 2; b++) { const p = pts[2 + ((rng() * 4) | 0)]; draw(p[0], p[1], a + (rng() - 0.5) * 2, len * 0.5, depth - 1); } };
-      draw(x, y, a, Math.min(W, H) * (0.18 + rng() * 0.2), 2);
+      draw(x, y, a, P.r * (0.35 + rng() * 0.35), 2);
     }
   }
   c.restore();
 }
 
 function frame(c, L) {
-  const { win, ft, k } = L, o = { x: win.x - ft, y: win.y - ft, w: win.w + ft * 2, h: win.h + ft * 2, r: win.r + ft };
-  c.save();
-  c.shadowColor = 'rgba(0,0,0,.7)'; c.shadowBlur = 24 * k; c.shadowOffsetY = 6 * k;
-  c.beginPath(); rrSub(c, o.x, o.y, o.w, o.h, o.r); rrSub(c, win.x, win.y, win.w, win.h, win.r);
-  c.fillStyle = lin(c, 0, 0, 0, win.y + win.h + ft, [[0, '#46525e'], [0.55, '#2c3640'], [0.85, '#222a32'], [1, '#161c21']]); c.fill('evenodd');
-  c.restore();
-  c.save(); c.beginPath(); rrSub(c, o.x, o.y, o.w, o.h, o.r); rrSub(c, win.x, win.y, win.w, win.h, win.r); c.clip('evenodd');
-  // side shading so the ring reads as rounded metal
-  c.fillStyle = lin(c, o.x, 0, o.x + o.w, 0, [[0, 'rgba(255,255,255,.07)'], [0.08, 'rgba(0,0,0,0)'], [0.92, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,.35)']]); c.fillRect(o.x, o.y, o.w, o.h);
-  // raised flange step
-  const m = ft * 0.46; c.lineWidth = 1.2;
-  c.strokeStyle = 'rgba(0,0,0,.55)'; rr(c, win.x - m, win.y - m, win.w + m * 2, win.h + m * 2, win.r + m); c.stroke();
-  c.strokeStyle = 'rgba(200,225,240,.13)'; rr(c, win.x - m - 1.5, win.y - m - 1.5, win.w + m * 2 + 3, win.h + m * 2 + 3, win.r + m + 1.5); c.stroke();
-  c.restore();
+  const { port: P, ft, k } = L, R0 = P.r, R1 = P.r + ft, R2 = R1 + Math.max(10, 24 * k);
+  const ring = (a, b) => { c.beginPath(); c.arc(P.cx, P.cy, b, 0, TAU); c.arc(P.cx, P.cy, a, 0, TAU, true); };
+  // doubler plate welded round the opening
+  c.save(); c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 18 * k; c.shadowOffsetY = 5 * k; ring(R1, R2);
+  c.fillStyle = lin(c, P.cx - R2, P.cy - R2, P.cx + R2, P.cy + R2, [[0, '#35414c'], [0.5, '#222a32'], [1, '#141a1f']]); c.fill(); c.restore();
+  c.strokeStyle = 'rgba(0,0,0,.6)'; c.lineWidth = 1; c.beginPath(); c.arc(P.cx, P.cy, R2, 0, TAU); c.stroke();
+  c.strokeStyle = 'rgba(200,225,240,.1)'; c.beginPath(); c.arc(P.cx, P.cy, R2 - 1.5, Math.PI * 0.9, Math.PI * 1.7); c.stroke();
+  const nr = Math.max(16, Math.round((TAU * (R1 + R2) * 0.5) / Math.max(22, 30 * k)));
+  for (let i = 0; i < nr; i++) { const a = (i / nr) * TAU, rr0 = (R1 + R2) / 2; screw(c, P.cx + Math.cos(a) * rr0, P.cy + Math.sin(a) * rr0, Math.max(1.5, 2.4 * k)); }
+  // main frame ring
+  c.save(); c.shadowColor = 'rgba(0,0,0,.75)'; c.shadowBlur = 16 * k; c.shadowOffsetY = 4 * k; ring(R0, R1);
+  c.fillStyle = lin(c, P.cx - R1, P.cy - R1, P.cx + R1, P.cy + R1, [[0, '#5d6a76'], [0.45, '#2e3842'], [1, '#161c21']]); c.fill(); c.restore();
+  const m = R0 + ft * 0.46; c.lineWidth = 1.2;
+  c.strokeStyle = 'rgba(0,0,0,.55)'; c.beginPath(); c.arc(P.cx, P.cy, m, 0, TAU); c.stroke();
+  c.strokeStyle = 'rgba(200,225,240,.14)'; c.beginPath(); c.arc(P.cx, P.cy, m + 1.5, 0, TAU); c.stroke();
+  c.strokeStyle = 'rgba(220,235,245,.22)'; c.lineWidth = 1.5; c.beginPath(); c.arc(P.cx, P.cy, R1 - 1, Math.PI * 1.0, Math.PI * 1.6); c.stroke();
+  c.lineWidth = 1; c.strokeStyle = 'rgba(0,0,0,.7)'; c.beginPath(); c.arc(P.cx, P.cy, R1, 0, TAU); c.stroke();
   // rubber gasket + glass edge
-  c.lineWidth = Math.max(3, 7 * k); c.strokeStyle = '#040607'; rr(c, win.x, win.y, win.w, win.h, win.r); c.stroke();
-  c.lineWidth = 1.2; c.strokeStyle = 'rgba(170,220,245,.25)'; rr(c, win.x + 3 * k + 1, win.y + 3 * k + 1, win.w - 6 * k - 2, win.h - 6 * k - 2, win.r - 3 * k); c.stroke();
-  c.lineWidth = 1; c.strokeStyle = 'rgba(0,0,0,.7)'; rr(c, o.x, o.y, o.w, o.h, o.r); c.stroke();
-  const bm = ft * 0.73;
-  for (const [px, py] of perimeter(win.x - bm, win.y - bm, win.w + bm * 2, win.h + bm * 2, win.r + bm, Math.max(40, 66 * k))) if (py > 2 && py < L.H - 2) bolt(c, px, py, Math.max(3, 6.5 * k));
+  c.lineWidth = Math.max(3, 7 * k); c.strokeStyle = '#040607'; c.beginPath(); c.arc(P.cx, P.cy, R0, 0, TAU); c.stroke();
+  c.lineWidth = 1.2; c.strokeStyle = 'rgba(170,220,245,.25)'; c.beginPath(); c.arc(P.cx, P.cy, R0 - 3 * k - 1, 0, TAU); c.stroke();
+  const bm = R0 + ft * 0.73, nb = Math.max(12, Math.round((TAU * bm) / Math.max(40, 62 * k)));
+  for (let i = 0; i < nb; i++) { const a = (i / nb) * TAU + 0.1; bolt(c, P.cx + Math.cos(a) * bm, P.cy + Math.sin(a) * bm, Math.max(3, 6.5 * k)); }
 }
 
 function consoleBody(c, L, pr) {
@@ -232,8 +242,6 @@ function consoleBody(c, L, pr) {
   if (L.q.btn) plate(L.q.btn);
   if (L.q.bal) plate(L.q.bal);
   if (L.q.lcd) inQuad(c, pr, L.q.lcd, (w, h) => { const b = 6; rr(c, -b, -b, w + b * 2, h + b * 2, 5); c.fillStyle = lin(c, 0, -b, 0, h + b, [[0, '#2e3842'], [1, '#12171c']]); c.fill(); c.strokeStyle = 'rgba(0,0,0,.6)'; c.stroke(); });
-  // camera monitor: punch a hole so the WebGL feed below shows through
-  if (L.q.scrR) inQuad(c, pr, L.q.scrR, (w, h) => { c.globalCompositeOperation = 'destination-out'; c.fillRect(0, 0, w, h); });
 }
 
 // ---------------------------------------------------------------- instruments
@@ -352,6 +360,9 @@ export function drawNav(c, w, h, st) {
 
 export function drawCamOverlay(c, w, h, st) {
   c.clearRect(0, 0, w, h); const s = h / 218, fs = Math.max(9, 12 * s), m = 9 * s, L = 16 * s;
+  if (!st.camOn) { c.fillStyle = '#0b0e10'; c.fillRect(0, 0, w, h); for (let i = 0; i < (w * h) / 40; i++) { c.fillStyle = `rgba(200,210,215,${Math.random() * 0.35})`; c.fillRect(Math.random() * w, Math.random() * h, 2, 1); } }
+  c.fillStyle = 'rgba(0,0,0,.14)'; for (let y = 0; y < h; y += 3) c.fillRect(0, y, w, 1);
+  const vg = c.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.hypot(w, h) * 0.58); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.5)'); c.fillStyle = vg; c.fillRect(0, 0, w, h);
   c.strokeStyle = 'rgba(235,245,250,.6)'; c.lineWidth = 1.5 * s;
   c.beginPath(); for (const [x, y, dx, dy] of [[m, m, 1, 1], [w - m, m, -1, 1], [m, h - m, 1, -1], [w - m, h - m, -1, -1]]) { c.moveTo(x, y + dy * L); c.lineTo(x, y); c.lineTo(x + dx * L, y); } c.stroke();
   c.beginPath(); c.moveTo(w / 2 - 8 * s, h / 2); c.lineTo(w / 2 + 8 * s, h / 2); c.moveTo(w / 2, h / 2 - 8 * s); c.lineTo(w / 2, h / 2 + 8 * s); c.strokeStyle = 'rgba(235,245,250,.35)'; c.stroke();
@@ -503,15 +514,18 @@ export class CockpitUI {
   setLayout(L, dpr) {
     this.L = L; this.dpr = dpr; const want = {};
     for (const [id, q] of Object.entries(L.q)) if (q) want[id] = q;
+    if (L.q.scrR) want.cam = L.q.scrR;
     L.gauges.forEach((g, i) => { want['g' + i] = Q([g.x - g.r, g.y - g.r], [g.r * 2, 0], [0, g.r * 2]); });
     for (const id of Object.keys(this.cv)) if (!want[id]) { this.cv[id].remove(); delete this.cv[id]; }
     for (const [id, q] of Object.entries(want)) {
       let el = this.cv[id]; if (!el) { el = document.createElement('canvas'); el.dataset.id = id; this.root.appendChild(el); this.cv[id] = el; }
       el.width = Math.max(1, Math.round(q.w * dpr)); el.height = Math.max(1, Math.round(q.h * dpr)); el.style.width = q.w + 'px'; el.style.height = q.h + 'px';
-      el.style.transform = `matrix(${quadMatrix(q).map((v) => +v.toFixed(5)).join(',')})`; el.style.zIndex = id.startsWith('stick') ? 2 : 1; el._q = q;
+      el.style.transform = `matrix(${quadMatrix(q).map((v) => +v.toFixed(5)).join(',')})`; el.style.zIndex = id.startsWith('stick') ? 2 : id === 'cam' ? 0 : 1; el._q = q;
+      if (id === 'cam') el.style.filter = 'grayscale(.55) contrast(1.2) brightness(.95)';
     }
     this.acc = {}; this.sig = {};
   }
+  feed(src, sw, sh) { const el = this.cv.cam; if (!el) return; const c = this.ctx('cam'); c.drawImage(src, 0, src.height - sh, sw, sh, 0, 0, el._q.w, el._q.h); }
   ctx(id) { const el = this.cv[id]; const c = el.getContext('2d'); c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); return c; }
   run(id, every, dt, fn) { if (!this.cv[id]) return; this.acc[id] = (this.acc[id] ?? every) + dt; if (this.acc[id] < every) return; this.acc[id] = 0; const q = this.cv[id]._q; fn(this.ctx(id), q.w, q.h); }
   once(id, sig, fn) { if (!this.cv[id] || this.sig[id] === sig) return; this.sig[id] = sig; const q = this.cv[id]._q; fn(this.ctx(id), q.w, q.h); }
