@@ -44,100 +44,99 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 @keyframes lfade{to{opacity:1}}
 @keyframes blink{50%{opacity:.4}}
 
-/* ---------- HUD ---------- */
-#hud{position:fixed;inset:0;pointer-events:none;z-index:5}
-#crosshair{position:fixed;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;pointer-events:none;opacity:.8}
+/* ---------- HUD ----------
+   Everything is laid out inside the viewport rect published by JS as --hx/--hy/--hr/--hb
+   (the cockpit glass in first person, the screen edges in third person). */
+:root{--hx:12px;--hy:12px;--hr:12px;--hb:12px;--band:0px}
+#hud{position:fixed;inset:0;pointer-events:none;z-index:5;text-shadow:0 1px 2px rgba(0,0,0,.45)}
+.glass{background:rgba(6,12,17,.4);border:1px solid rgba(255,255,255,.08);border-radius:5px}
+#crosshair{position:fixed;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;pointer-events:none;opacity:.7}
 #crosshair::before,#crosshair::after{content:"";position:absolute;background:var(--ink)}
 #crosshair::before{left:8.5px;top:0;width:1px;height:18px;clip-path:polygon(0 0,100% 0,100% 35%,0 35%,0 65%,100% 65%,100% 100%,0 100%)}
 #crosshair::after{top:8.5px;left:0;height:1px;width:18px;clip-path:polygon(0 0,35% 0,35% 100%,0 100%,0 0,65% 0,100% 0,100% 100%,65% 100%)}
-#lockHint{position:fixed;left:50%;top:58%;transform:translateX(-50%);padding:7px 12px;font-size:12px;color:var(--mute)}
+#lockHint{position:fixed;left:50%;top:58%;transform:translateX(-50%);padding:6px 11px;font-size:12px;color:var(--mute)}
 
-#hudStats{position:absolute;left:12px;top:12px;width:236px;padding:12px 14px;display:flex;flex-direction:column;gap:7px}
-.kv{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--mute)}
-.kv b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:15px;font-weight:600;color:var(--accent)}
-.row{display:grid;grid-template-columns:42px 1fr 68px;align-items:center;gap:10px;font-size:12px}
+#hudLeft{position:absolute;left:var(--hx);top:var(--hy);width:196px;display:flex;flex-direction:column;gap:6px}
+#hudStats{padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.depth{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px}
+.depth b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:24px;font-weight:500;line-height:1}
+.depth small{font-size:12px;color:var(--mute);margin-left:3px}
+.depth span{font-size:11px;color:var(--mute);font-family:var(--mono)}
+.row{display:grid;grid-template-columns:40px 1fr 52px;align-items:center;gap:8px;font-size:11px}
 .lbl{color:var(--mute);white-space:nowrap}
-.bar{height:3px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden}
-.bar i{display:block;height:100%;width:100%;background:var(--ink);border-radius:2px;transition:width .12s linear}
-.val{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:11px;color:var(--ink);white-space:nowrap}
+.bar{height:2px;background:rgba(255,255,255,.14);border-radius:1px;overflow:hidden}
+.bar i{display:block;height:100%;width:100%;background:var(--ink);transition:width .12s linear}
+.val{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:11px;white-space:nowrap}
 .row.warn .bar i{background:var(--bad)}
 .row.warn .val{color:var(--bad)}
-.depth{display:flex;align-items:baseline;justify-content:space-between;padding-top:8px;border-top:1px solid var(--line)}
-.depth b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:28px;font-weight:500;line-height:1;letter-spacing:-.5px}
-.depth small{font-size:13px;color:var(--mute);margin-left:3px}
-.dinfo{display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:11px;color:var(--mute)}
-.dinfo .zone{color:var(--ink)}
-.dgauge{position:relative;height:3px;background:rgba(255,255,255,.1);border-radius:2px}
-.dgauge i{position:absolute;top:-3px;width:2px;height:9px;background:var(--ink);transform:translateX(-1px)}
-.dgauge em{position:absolute;top:-3px;width:1px;height:9px;background:var(--bad)}
+.kv{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--mute);padding-top:5px;border-top:1px solid rgba(255,255,255,.08)}
+.kv b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12px;font-weight:600;color:var(--accent)}
+#hudMission{padding:8px 12px;display:flex;flex-direction:column;gap:5px}
+#hudMission .mt{display:flex;justify-content:space-between;gap:8px;font-size:12px}
+#hudMission .mn{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hudMission .mt .num{color:var(--mute);font-size:11px}
+#hudMission .bar i{background:var(--accent)}
 
-#hudRight{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-.mapbox{padding:8px;width:236px;display:flex;flex-direction:column;gap:7px}
-#minimap{display:block;width:218px;height:123px;border-radius:3px;background:#030a0f}
-.clean{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--mute);padding:0 2px}
+#hudRight{position:absolute;right:var(--hr);top:var(--hy);width:172px;display:flex;flex-direction:column;align-items:stretch;gap:6px}
+.mapbox{padding:5px;display:flex;flex-direction:column;gap:5px}
+#minimap{display:block;width:100%;height:auto;aspect-ratio:16/9;border-radius:3px;opacity:.9}
+.clean{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--mute);padding:0 3px 2px}
 .clean b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;color:var(--ok)}
-.cleanbar i{background:var(--ok)}
-.btnrow{display:flex;gap:6px;pointer-events:auto}
-.ibtn{width:36px;height:36px;border-radius:var(--r);border:1px solid var(--line);background:var(--plate);color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center}
-.ibtn:hover{border-color:var(--line2);background:rgba(20,30,38,.9)}
+.btnrow{display:flex;justify-content:flex-end;gap:5px;pointer-events:auto}
+.ibtn{width:32px;height:32px;border-radius:5px;border:1px solid rgba(255,255,255,.08);background:rgba(6,12,17,.4);color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.ibtn svg.i{width:16px;height:16px}
+.ibtn:hover{background:rgba(6,12,17,.7)}
 .ibtn:focus-visible,.btn:focus-visible,.tab:focus-visible,.x:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-#hudMission{position:absolute;left:12px;top:252px;width:236px;padding:11px 14px;display:flex;flex-direction:column;gap:5px}
-#hudMission .mt{display:flex;justify-content:space-between;font-size:11px;color:var(--mute)}
-#hudMission .mt .num{color:var(--accent)}
-#hudMission .mn{font-size:14px;font-weight:700}
-#hudMission .md{font-size:12px;color:var(--mute);line-height:1.5}
-#hudMission .mp{display:flex;align-items:center;gap:8px;margin-top:3px;font-size:11px;color:var(--mute)}
-#hudMission .mp .bar{flex:1}
-#hudMission .mp .bar i{background:var(--accent)}
-
-#toasts{position:absolute;left:50%;top:14px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;width:min(460px,64vw)}
-.toast{width:100%;padding:9px 14px;border-radius:var(--r);font-size:13px;font-weight:600;background:rgba(9,15,20,.92);border:1px solid var(--line);border-left:2px solid var(--line2);animation:tin .25s ease-out}
-.toast small{display:block;font-size:12px;font-weight:400;color:var(--mute);margin-top:3px;line-height:1.5}
+#toasts{position:absolute;left:50%;top:var(--hy);transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:5px;width:min(400px,calc(100vw - var(--hx) - var(--hr) - 420px))}
+.toast{width:100%;min-width:220px;padding:7px 12px;border-radius:5px;font-size:12px;font-weight:600;background:rgba(6,12,17,.6);border:1px solid rgba(255,255,255,.08);border-left:2px solid rgba(255,255,255,.25);animation:tin .25s ease-out}
+.toast small{display:block;font-size:11px;font-weight:400;color:var(--mute);margin-top:2px;line-height:1.5}
 .toast.big{border-left-color:var(--accent)}
 .toast.good{border-left-color:var(--ok)}
 .toast.bad{border-left-color:var(--bad)}
 .toast.out{animation:tout .3s ease-in forwards}
 @keyframes tin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 @keyframes tout{to{opacity:0}}
-#alert{position:absolute;left:50%;top:30%;transform:translateX(-50%);padding:6px 12px;border-radius:4px;font-size:14px;font-weight:700;color:var(--bad);background:rgba(30,8,8,.8);border:1px solid rgba(229,100,94,.45);white-space:nowrap;opacity:0;transition:opacity .2s}
+#alert{position:absolute;left:50%;top:32%;transform:translateX(-50%);padding:5px 11px;border-radius:4px;font-size:13px;font-weight:600;color:var(--bad);background:rgba(30,8,8,.5);border:1px solid rgba(229,100,94,.35);white-space:nowrap;opacity:0;transition:opacity .2s}
 #alert.on{opacity:1;animation:blink 1s steps(2) infinite}
-#hint{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);padding:8px 14px;font-size:12px;color:var(--mute);white-space:nowrap;transition:opacity 1s;display:flex;gap:14px}
-#hint kbd,.keys kbd{display:inline-block;min-width:20px;padding:1px 5px;margin-right:4px;border-radius:3px;border:1px solid var(--line2);font:600 11px var(--mono);color:var(--ink);text-align:center}
-#sonarInd{position:absolute;right:12px;bottom:16px;padding:7px 11px;font-size:12px;display:flex;align-items:center;gap:8px;color:var(--ink)}
-#sonarInd .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+#hint{position:absolute;left:50%;bottom:var(--hb);transform:translateX(-50%);padding:6px 12px;font-size:11px;color:var(--mute);white-space:nowrap;transition:opacity 1s;display:flex;gap:12px}
+#hint kbd,.keys kbd{display:inline-block;min-width:18px;padding:0 4px;margin-right:4px;border-radius:3px;border:1px solid var(--line2);font:600 10px var(--mono);color:var(--ink);text-align:center}
+#sonarInd{position:absolute;right:var(--hr);bottom:var(--hb);padding:5px 10px;font-size:11px;display:flex;align-items:center;gap:7px}
+#sonarInd .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
 #sonarInd.cd{color:var(--mute)}
 #sonarInd.cd .dot{background:var(--dim)}
 
-/* first-person dashboard */
-#dash{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;align-items:flex-end;gap:12px;pointer-events:none}
-#dash .dcol{display:flex;flex-direction:column;gap:5px;margin-bottom:6px}
-.lamp{min-width:78px;padding:4px 9px;border-radius:3px;font:600 11px var(--font);background:rgba(6,10,13,.9);border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+/* first-person instrument strip: sits inside the metal band under the viewport */
+#dash{position:absolute;left:50%;bottom:max(8px,calc((var(--band) - 88px) / 2));transform:translateX(-50%);display:flex;align-items:center;gap:10px;pointer-events:none;text-shadow:none}
+#dash .dcol{display:flex;flex-direction:column;gap:4px}
+.lamp{width:74px;padding:3px 8px;border-radius:3px;font:600 10px var(--font);background:rgba(4,8,11,.85);border:1px solid rgba(255,255,255,.07);color:var(--dim);white-space:nowrap}
 .lamp.ok{color:var(--ok)}
-.lamp.on{color:var(--accent);border-color:rgba(233,196,106,.4)}
-.lamp.warn{color:var(--warn);border-color:rgba(233,180,76,.45);animation:blink .9s steps(2) infinite}
-.lamp.bad{color:var(--bad);border-color:rgba(229,100,94,.55);animation:blink .45s steps(2) infinite}
-.radarbox{position:relative;width:146px;height:146px;border-radius:50%;padding:5px;background:#10181e;border:1px solid var(--line2)}
-#radar{width:134px;height:134px;border-radius:50%;display:block}
-#heading{position:absolute;left:50%;top:-22px;transform:translateX(-50%);font:600 11px var(--mono);color:var(--ink);background:rgba(6,10,13,.9);padding:2px 7px;border-radius:3px;border:1px solid var(--line);white-space:nowrap}
+.lamp.on{color:var(--accent)}
+.lamp.warn{color:var(--warn);animation:blink .9s steps(2) infinite}
+.lamp.bad{color:var(--bad);animation:blink .45s steps(2) infinite}
+#heading{color:var(--ink);font-family:var(--mono);font-variant-numeric:tabular-nums}
+.radarbox{width:88px;height:88px;border-radius:50%;padding:3px;background:#0b1217;border:1px solid rgba(255,255,255,.14)}
+#radar{width:80px;height:80px;border-radius:50%;display:block}
 body.fp #vign,body.fp #sonarInd{display:none}
-body.fp #hint{bottom:176px}
+body.fp.touch #dash .dcol{display:none}
+body.fp.touch #dash{bottom:var(--hb)}
+body.fp.touch .radarbox{background:rgba(6,12,17,.45)}
 
 /* ---------- touch ---------- */
 #touch{position:fixed;inset:0;z-index:6;pointer-events:none}
-#joyZone{position:absolute;left:0;top:90px;bottom:0;width:45%;pointer-events:auto}
+#joyZone{position:absolute;left:0;top:var(--hy);bottom:0;width:45%;pointer-events:auto}
 #lookZone{position:absolute;right:0;top:90px;bottom:0;width:55%;pointer-events:auto}
 #joy{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;border:1px solid var(--line2);pointer-events:none;opacity:0;transition:opacity .15s}
 #joy.on{opacity:1}
 #joyKnob{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:rgba(232,237,241,.25);border:1px solid var(--line2)}
-.tbtn{position:absolute;pointer-events:auto;border-radius:50%;border:1px solid var(--line2);background:rgba(9,15,20,.55);color:var(--ink);font:600 13px var(--font);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1px;touch-action:none}
-.tbtn.on{border-color:var(--accent);color:var(--accent);background:rgba(9,15,20,.75)}
+.tbtn{position:absolute;pointer-events:auto;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(6,12,17,.28);color:var(--ink);font:600 12px var(--font);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1px;touch-action:none;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.tbtn.on{border-color:var(--accent);color:var(--accent);background:rgba(6,12,17,.45)}
 .tbtn small{font-size:10px;color:var(--mute)}
-#tBeam{right:18px;bottom:20px;width:84px;height:84px;font-size:15px}
-#tSonar{right:112px;bottom:16px;width:60px;height:60px}
-#tBoost{right:180px;bottom:16px;width:60px;height:60px}
-#tUp{right:250px;bottom:84px;width:54px;height:54px}
-#tDown{right:250px;bottom:18px;width:54px;height:54px}
+#tBeam{right:var(--hr);bottom:var(--hb);width:74px;height:74px;font-size:14px}
+#tSonar{right:calc(var(--hr) + 84px);bottom:var(--hb);width:54px;height:54px}
+#tBoost{right:calc(var(--hr) + 146px);bottom:var(--hb);width:54px;height:54px}
+#tUp{right:calc(var(--hr) + 208px);bottom:calc(var(--hb) + 60px);width:50px;height:50px}
+#tDown{right:calc(var(--hr) + 208px);bottom:var(--hb);width:50px;height:50px}
 
 /* ---------- buttons, modals ---------- */
 .btn{appearance:none;height:40px;padding:0 18px;border-radius:var(--r);border:1px solid var(--line2);background:transparent;color:var(--ink);font:600 14px var(--font);cursor:pointer;transition:background .15s,border-color .15s}
@@ -242,27 +241,21 @@ body.fp #hint{bottom:176px}
 #title .foot{margin-top:22px;font-size:12px;color:var(--dim)}
 
 @media (max-width:760px),(max-height:520px){
-  #hudStats{width:188px;padding:8px 10px;gap:5px;left:8px;top:8px}
-  .row{grid-template-columns:36px 1fr 56px;gap:6px;font-size:10px}
+  #hudLeft{width:150px;gap:5px}
+  #hudStats{padding:7px 9px;gap:4px}
+  .depth b{font-size:18px}
+  .row{grid-template-columns:34px 1fr 40px;gap:6px;font-size:10px}
   .val{font-size:10px}
-  .depth b{font-size:20px}
-  #hudMission{top:auto;bottom:10px;left:8px;width:200px;padding:8px 10px}
-  #hudMission .md{display:none}
-  #hudMission .mn{font-size:13px}
-  .mapbox{width:152px;padding:6px}
-  #minimap{width:138px;height:78px}
-  #hudRight{right:8px;top:8px}
-  .ibtn{width:34px;height:34px}
+  #hudMission{display:none}
+  #hudRight{width:128px}
+  .ibtn{width:28px;height:28px}
   #hint,#sonarInd{display:none}
-  .toast{font-size:12px;padding:7px 11px}
-  #alert{font-size:13px}
-  body.touch #hudMission{display:none}
-  #dash .dcol{display:none}
-  .radarbox{width:102px;height:102px;padding:4px}
-  #radar{width:92px;height:92px}
+  #toasts{width:min(320px,calc(100vw - var(--hx) - var(--hr) - 300px))}
+  .toast{min-width:180px;font-size:11px;padding:6px 10px}
+  .toast small{display:none}
+  #alert{font-size:12px}
   .urow{grid-template-columns:minmax(0,1fr) 96px;gap:8px 12px}
-  .urow .pips{grid-column:1}
-  .urow .uv{grid-column:1}
+  .urow .pips,.urow .uv{grid-column:1}
   .urow .btn{grid-column:2;grid-row:1 / span 3}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important}}
@@ -277,20 +270,24 @@ body.fp #hint{bottom:176px}
 
 <div id="hud" class="hidden">
   <div id="crosshair"></div>
-  <div id="lockHint" class="plate hidden">화면을 클릭하면 마우스로 시점을 조작합니다. 드래그해도 됩니다.</div>
-  <div id="hudStats" class="plate">
-    <div class="kv"><span>자금</span><b id="hMoney">0</b></div>
-    <div class="row" id="rBat"><span class="lbl">에너지</span><div class="bar"><i id="hBat"></i></div><span class="val" id="hBatV">100</span></div>
-    <div class="row" id="rHull"><span class="lbl">선체</span><div class="bar"><i id="hHull"></i></div><span class="val" id="hHullV">100</span></div>
-    <div class="row" id="rCargo"><span class="lbl">화물</span><div class="bar"><i id="hCargo"></i></div><span class="val" id="hCargoV">0/25kg</span></div>
-    <div class="depth"><div><b id="hDepth">0</b><small>m</small></div><div class="dinfo"><span class="zone" id="hZone">표층</span><span id="hLimit">한계 120m</span></div></div>
-    <div class="dgauge"><em id="hLimitMark"></em><i id="hDepthMark"></i></div>
+  <div id="lockHint" class="glass hidden">화면을 클릭하면 마우스로 시점을 조작합니다. 드래그해도 됩니다.</div>
+  <div id="hudLeft">
+    <div id="hudStats" class="glass">
+      <div class="depth"><div><b id="hDepth">0</b><small>m</small></div><span id="hLimit">한계 120m</span></div>
+      <div class="row" id="rBat"><span class="lbl">에너지</span><div class="bar"><i id="hBat"></i></div><span class="val" id="hBatV">100</span></div>
+      <div class="row" id="rHull"><span class="lbl">선체</span><div class="bar"><i id="hHull"></i></div><span class="val" id="hHullV">100</span></div>
+      <div class="row" id="rCargo"><span class="lbl">화물</span><div class="bar"><i id="hCargo"></i></div><span class="val" id="hCargoV">0/25</span></div>
+      <div class="kv"><span>자금</span><b id="hMoney">0</b></div>
+    </div>
+    <div id="hudMission" class="glass">
+      <div class="mt"><span class="mn" id="mName"></span><span class="num" id="mProg"></span></div>
+      <div class="bar" id="mProgRow"><i id="mBar"></i></div>
+    </div>
   </div>
   <div id="hudRight">
-    <div class="plate mapbox">
-      <canvas id="minimap" width="436" height="246"></canvas>
-      <div class="clean"><span>바다 정화율</span><b id="hClean">0%</b></div>
-      <div class="bar cleanbar"><i id="hCleanBar" style="width:0%"></i></div>
+    <div class="glass mapbox">
+      <canvas id="minimap" width="330" height="186"></canvas>
+      <div class="clean"><span>정화율</span><b id="hClean">0%</b></div>
     </div>
     <div class="btnrow">
       <button class="ibtn" id="bView" title="1인칭/3인칭 전환 (V)" aria-label="시점 전환"><svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg></button>
@@ -299,21 +296,15 @@ body.fp #hint{bottom:176px}
       <button class="ibtn" id="bPause" title="일시정지 (P)" aria-label="일시정지"><svg class="i" viewBox="0 0 24 24"><path d="M9 5.5v13M15 5.5v13"/></svg></button>
     </div>
   </div>
-  <div id="hudMission" class="plate">
-    <div class="mt"><span>임무 <span class="num" id="mIdx"></span></span><span class="num" id="mRw"></span></div>
-    <div class="mn" id="mName"></div>
-    <div class="md" id="mDesc"></div>
-    <div class="mp" id="mProgRow"><div class="bar"><i id="mBar"></i></div><span class="num" id="mProg"></span></div>
-  </div>
   <div id="dash" class="hidden">
-    <div class="dcol"><div class="lamp" id="lPower">전력</div><div class="lamp" id="lHull">선체</div><div class="lamp" id="lPress">수압</div></div>
-    <div class="radarbox"><div id="heading">N 000°</div><canvas id="radar" width="268" height="268"></canvas></div>
-    <div class="dcol"><div class="lamp" id="lCargo">화물</div><div class="lamp" id="lBeam">트랙터 빔</div><div class="lamp" id="lSonar">소나</div></div>
+    <div class="dcol"><div class="lamp" id="heading">N 000°</div><div class="lamp" id="lPower">전력</div><div class="lamp" id="lHull">선체</div></div>
+    <div class="radarbox"><canvas id="radar" width="160" height="160"></canvas></div>
+    <div class="dcol"><div class="lamp" id="lPress">수압</div><div class="lamp" id="lCargo">화물</div><div class="lamp" id="lSonar">소나</div></div>
   </div>
   <div id="toasts"></div>
   <div id="alert"></div>
-  <div id="hint" class="plate"></div>
-  <div id="sonarInd" class="plate"><span class="dot"></span><span id="sonarTxt">소나 준비 (Q)</span></div>
+  <div id="hint" class="glass"></div>
+  <div id="sonarInd" class="glass"><span class="dot"></span><span id="sonarTxt">소나 준비 (Q)</span></div>
 </div>
 
 <div id="touch" class="hidden">

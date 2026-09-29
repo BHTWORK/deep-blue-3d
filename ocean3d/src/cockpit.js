@@ -16,7 +16,7 @@ function perimeter(x, y, w, h, r, step) {
   return pts;
 }
 export function cockpitWindow(W, H, touch) {
-  const mx = Math.max(12, W * 0.022), top = Math.max(10, H * 0.028), bot = touch ? Math.max(14, H * 0.04) : Math.max(90, H * 0.15);
+  const mx = Math.max(12, W * 0.022), top = Math.max(10, H * 0.028), bot = touch ? Math.max(14, H * 0.04) : Math.max(112, H * 0.16);
   return { x: mx, y: top, w: W - mx * 2, h: H - top - bot, r: Math.min(W, H) * 0.13 };
 }
 export function drawCockpit(cv, W, H, pr, tier, touch) {
@@ -58,10 +58,6 @@ export function drawCockpit(cv, W, H, pr, tier, touch) {
     const bgr = c.createRadialGradient(px - 1.2, py - 1.2, 0.5, px, py, 4.2); bgr.addColorStop(0, '#a9b6c1'); bgr.addColorStop(1, '#2a333b');
     c.fillStyle = bgr; c.beginPath(); c.arc(px, py, 4, 0, TAU); c.fill(); c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 1; c.stroke();
   }
-  if (!touch) {
-    c.fillStyle = 'rgba(160,190,210,.35)'; c.font = '800 10px sans-serif'; c.textAlign = 'left'; c.fillText('DSV DEEP BLUE-3  ·  RV 푸른바다', win.x + 14, H - 10);
-    c.textAlign = 'right'; c.fillText('PRESSURE HULL Ti-6Al-4V  ·  VIEWPORT ACRYLIC 180mm', W - win.x - 14, H - 10);
-  }
 }
 export const headingDeg = (yaw) => ((Math.atan2(Math.sin(yaw), -Math.cos(yaw)) * 180) / Math.PI + 360) % 360;
 const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -74,26 +70,25 @@ export function drawRadar(cv, st) {
   const toS = (x, z) => { const dx = x - st.pos.x, dz = z - st.pos.z; return [cx + (dx * rx + dz * rz) * k, cy - (dx * fx + dz * fz) * k]; };
   c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, W, H);
   c.save(); c.beginPath(); c.arc(cx, cy, R, 0, TAU); c.clip();
-  const bg = c.createRadialGradient(cx, cy, 0, cx, cy, R); bg.addColorStop(0, '#062a26'); bg.addColorStop(1, '#010d0c'); c.fillStyle = bg; c.fillRect(0, 0, W, H);
-  c.strokeStyle = 'rgba(90,255,200,.22)'; c.lineWidth = 1.5; for (let i = 1; i <= 3; i++) { c.beginPath(); c.arc(cx, cy, (R * i) / 3, 0, TAU); c.stroke(); }
+  const bg = c.createRadialGradient(cx, cy, 0, cx, cy, R); bg.addColorStop(0, '#0d1c1a'); bg.addColorStop(1, '#050b0b'); c.fillStyle = bg; c.fillRect(0, 0, W, H);
+  c.strokeStyle = 'rgba(143,207,155,.22)'; c.lineWidth = Math.max(1, W / 200); for (let i = 1; i <= 3; i++) { c.beginPath(); c.arc(cx, cy, (R * i) / 3, 0, TAU); c.stroke(); }
   c.beginPath(); c.moveTo(cx - R, cy); c.lineTo(cx + R, cy); c.moveTo(cx, cy - R); c.lineTo(cx, cy + R); c.stroke();
   const sw = (st.t * 2.4) % TAU; const sg = c.createConicGradient ? c.createConicGradient(sw - Math.PI / 2 - 0.9, cx, cy) : null;
-  if (sg) { sg.addColorStop(0, 'rgba(90,255,200,0)'); sg.addColorStop(0.14, 'rgba(90,255,200,.28)'); sg.addColorStop(0.1401, 'rgba(90,255,200,0)'); c.fillStyle = sg; c.fillRect(0, 0, W, H); }
-  const blip = (x, z, dy, col, r) => { const [sx, sy] = toS(x, z); if ((sx - cx) ** 2 + (sy - cy) ** 2 > R * R) return; c.fillStyle = col; c.beginPath(); c.arc(sx, sy, r, 0, TAU); c.fill();
+  if (sg) { sg.addColorStop(0, 'rgba(143,207,155,0)'); sg.addColorStop(0.14, 'rgba(143,207,155,.25)'); sg.addColorStop(0.1401, 'rgba(143,207,155,0)'); c.fillStyle = sg; c.fillRect(0, 0, W, H); }
+  const U = W / 200; const blip = (x, z, dy, col, r) => { r *= U; const [sx, sy] = toS(x, z); if ((sx - cx) ** 2 + (sy - cy) ** 2 > R * R) return; c.fillStyle = col; c.beginPath(); c.arc(sx, sy, r, 0, TAU); c.fill();
     if (Math.abs(dy) > 6) { c.beginPath(); const d = dy > 0 ? -1 : 1; c.moveTo(sx - 3.5, sy + d * (r + 2)); c.lineTo(sx + 3.5, sy + d * (r + 2)); c.lineTo(sx, sy + d * (r + 7)); c.closePath(); c.fill(); } };
   const r2 = st.range * st.range;
   for (const it of st.items) { if (it.col || it.locked) continue; const dx = it.pos.x - st.pos.x, dz = it.pos.z - st.pos.z, d2 = dx * dx + dz * dz; if (d2 > r2) continue;
-    const near = d2 < (st.range * 0.75) ** 2; if (!near && !it.known) continue; blip(it.pos.x, it.pos.z, it.pos.y - st.pos.y, it.tr ? '#ffd23f' : it.known ? '#ff9a6a' : 'rgba(255,154,106,.6)', it.kg > 5 ? 4.5 : 3.2); }
-  for (const r of st.rescues) if (!r.freed) blip(r.pos.x, r.pos.z, r.pos.y - st.pos.y, '#ff4fa3', 5.5);
+    const near = d2 < (st.range * 0.75) ** 2; if (!near && !it.known) continue; blip(it.pos.x, it.pos.z, it.pos.y - st.pos.y, it.tr ? '#f0d98c' : it.known ? '#e8925a' : 'rgba(232,146,90,.6)', it.kg > 5 ? 4.5 : 3.2); }
+  for (const r of st.rescues) if (!r.freed) blip(r.pos.x, r.pos.z, r.pos.y - st.pos.y, '#e07aa8', 5);
   for (const e of st.creatures) { if (e.a < 0.5) continue; const hz = e.sp === 'shark' ? (e.state === 1 ? '#ff3b3b' : 'rgba(255,90,90,.75)') : e.sp === 'jelly' ? 'rgba(190,140,255,.8)' : e.sp === 'angler' ? 'rgba(255,120,90,.8)' : null; if (!hz) continue; blip(e.pos.x, e.pos.z, e.pos.y - st.pos.y, hz, e.sp === 'shark' ? 4.5 : 2.6); }
   const edgeMark = (p, col, label) => { let [sx, sy] = toS(p.x, p.z); const dx = sx - cx, dy = sy - cy, d = Math.hypot(dx, dy); if (d > R - 10) { sx = cx + (dx / d) * (R - 10); sy = cy + (dy / d) * (R - 10); }
-    c.fillStyle = col; c.save(); c.translate(sx, sy); c.rotate(Math.atan2(dy, dx) + Math.PI / 2); c.beginPath(); c.moveTo(0, -8); c.lineTo(6, 5); c.lineTo(-6, 5); c.closePath(); c.fill(); c.restore();
+    c.fillStyle = col; c.save(); c.translate(sx, sy); c.rotate(Math.atan2(dy, dx) + Math.PI / 2); c.scale(U, U); c.beginPath(); c.moveTo(0, -8); c.lineTo(6, 5); c.lineTo(-6, 5); c.closePath(); c.fill(); c.restore();
     if (label) { c.font = '900 16px sans-serif'; c.textAlign = 'center'; c.fillText(label, sx, sy + (sy < cy ? 22 : -12)); } };
-  if (st.target) edgeMark(st.target, '#ffb000', '');
-  edgeMark(st.dock, '#5dff9a', '');
+  if (st.target) edgeMark(st.target, '#e9c46a', '');
+  edgeMark(st.dock, '#8fcf9b', '');
   c.restore();
-  c.fillStyle = '#ffd23f'; c.beginPath(); c.moveTo(cx, cy - 10); c.lineTo(cx + 7, cy + 7); c.lineTo(cx, cy + 3); c.lineTo(cx - 7, cy + 7); c.closePath(); c.fill();
-  c.strokeStyle = 'rgba(90,255,200,.5)'; c.lineWidth = 3; c.beginPath(); c.arc(cx, cy, R, 0, TAU); c.stroke();
-  c.fillStyle = 'rgba(150,255,220,.75)'; c.font = '800 15px sans-serif'; c.textAlign = 'center'; c.fillText(`${st.range}m`, cx, cy + R - 12); c.fillText('▲', cx, cy - R + 20);
+  const u = W / 200; c.fillStyle = '#e8edf1'; c.beginPath(); c.moveTo(cx, cy - 9 * u); c.lineTo(cx + 6 * u, cy + 6 * u); c.lineTo(cx, cy + 3 * u); c.lineTo(cx - 6 * u, cy + 6 * u); c.closePath(); c.fill();
+  c.fillStyle = 'rgba(200,225,210,.7)'; c.font = `600 ${Math.round(13 * u)}px ui-monospace, Menlo, monospace`; c.textAlign = 'center'; c.fillText(`${st.range}m`, cx, cy + R - 10 * u);
 }
 export { clamp };

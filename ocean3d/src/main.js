@@ -8,7 +8,7 @@ import { TAU, clamp, lerp, smooth, rnd, fmt, $, esc, seed, rr, rpick, wpick, SR 
 import { TRASH, TREASURE, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS } from './data.js';
 import { AU, Music } from './audio.js';
 import { MAT, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO } from './models.js';
-import { drawCockpit, drawRadar, headingLabel } from './cockpit.js';
+import { drawCockpit, drawRadar, headingLabel, cockpitWindow } from './cockpit.js';
 import { WORLD, heightAt, normalAt, U, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBaseShip, buildDockRing, gradTex } from './world.js';
 
 const V3 = THREE.Vector3, UPV = new V3(0, 1, 0), ZERO = new V3();
@@ -694,12 +694,12 @@ function drawOverlay() {
   if ((P.bat < S.bat * 0.3 || P.kg >= S.cargo * 0.92) && !(mt && mt.distanceTo(DOCK) < 1)) T.push({ p: DOCK, col: '#8fcf9b', label: '기지선', big: true });
   const near = []; for (const it of items) { if (it.col || it.locked || it.rev < G.t) continue; near.push([it.pos.distanceToSquared(P.pos), it]); } near.sort((a, b) => a[0] - b[0]);
   for (let i = 0; i < Math.min(5, near.length); i++) T.push({ p: near[i][1].pos, col: near[i][1].tr ? '#f0d98c' : '#e8925a' });
-  const pad = 46, cx = W / 2, cy = H / 2;
-  for (const t of T) { const s = project(t.p, pv); let sx = s.x, sy = s.y; const on = !s.behind && sx > pad && sx < W - pad && sy > pad && sy < H - pad;
+  const R = G.win || { x: 12, y: 12, w: W - 24, h: H - 24 }, pad = 22, cx = R.x + R.w / 2, cy = R.y + R.h / 2;
+  for (const t of T) { const s = project(t.p, pv); let sx = s.x, sy = s.y; const on = !s.behind && sx > R.x + pad && sx < R.x + R.w - pad && sy > R.y + pad && sy < R.y + R.h - pad;
     const dm = Math.round(t.p.distanceTo(P.pos));
     if (on) { if (t.big) { const b = Math.sin(G.t * 4) * 5; c.fillStyle = t.col; c.beginPath(); c.moveTo(sx, sy - 16 + b); c.lineTo(sx - 9, sy - 32 + b); c.lineTo(sx + 9, sy - 32 + b); c.closePath(); c.fill(); c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; c.strokeText(`${t.label} ${dm}m`, sx, sy - 38 + b); c.fillText(`${t.label} ${dm}m`, sx, sy - 38 + b); } continue; }
     if (s.behind) { sx = W - sx; sy = H - sy; }
-    let dx = sx - cx, dy = sy - cy; if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3) dy = 1; const k = Math.min((W / 2 - pad) / Math.max(1e-6, Math.abs(dx)), (H / 2 - pad) / Math.max(1e-6, Math.abs(dy)));
+    let dx = sx - cx, dy = sy - cy; if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3) dy = 1; const k = Math.min((R.w / 2 - pad) / Math.max(1e-6, Math.abs(dx)), (R.h / 2 - pad) / Math.max(1e-6, Math.abs(dy)));
     const ax = cx + dx * k, ay = cy + dy * k, ang = Math.atan2(dy, dx);
     c.save(); c.translate(ax, ay); c.rotate(ang); c.globalAlpha = t.big ? 0.95 : 0.55; c.fillStyle = t.col; const sz = t.big ? 12 : 7; c.beginPath(); c.moveTo(sz, 0); c.lineTo(-sz * 0.8, -sz * 0.75); c.lineTo(-sz * 0.4, 0); c.lineTo(-sz * 0.8, sz * 0.75); c.closePath(); c.fill(); c.restore(); c.globalAlpha = 1;
     if (t.big) { const lx = ax - Math.cos(ang) * 36, ly = ay - Math.sin(ang) * 26; c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; const txt = `${t.label} ${dm}m`; c.strokeText(txt, lx, ly + 4); c.fillStyle = t.col; c.fillText(txt, lx, ly + 4); } }
@@ -710,6 +710,14 @@ function drawOverlay() {
 // =====================================================================
 const inCockpit = () => G.fp && G.state !== 'title';
 function redrawCockpit() { if (!inCockpit()) return; drawCockpit($('cockpit'), G.VW, G.VH, Math.min(devicePixelRatio || 1, 2), G.fpTier < 0 ? 0 : G.fpTier, IN.touch); }
+// HUD lives inside the visible viewport: the cockpit glass in first person, the screen in third person
+function layoutHUD() {
+  const st = document.documentElement.style; let ins, x0, y0, x1, y1, band = 0;
+  if (inCockpit()) { const w = cockpitWindow(G.VW, G.VH, IN.touch); ins = Math.max(12, Math.round(w.r * 0.3)); x0 = w.x; y0 = w.y; x1 = w.x + w.w; y1 = w.y + w.h; band = G.VH - y1; }
+  else { ins = 12; x0 = 0; y0 = 0; x1 = G.VW; y1 = G.VH; }
+  st.setProperty('--hx', `${x0 + ins}px`); st.setProperty('--hy', `${y0 + ins}px`); st.setProperty('--hr', `${G.VW - x1 + ins}px`); st.setProperty('--hb', `${G.VH - y1 + ins}px`); st.setProperty('--band', `${band}px`);
+  G.win = { x: x0 + ins, y: y0 + ins, w: x1 - x0 - ins * 2, h: y1 - y0 - ins * 2 };
+}
 function applyView() {
   const on = inCockpit();
   for (const ch of SUB.root.children) if (ch.isMesh && ch !== lightCone) ch.visible = !on;
@@ -726,7 +734,7 @@ function updateDash() {
   setLamp('lHull', P.hull < S.hull * 0.3 ? 'bad' : P.hull < S.hull * 0.6 ? 'warn' : 'ok');
   setLamp('lPress', dm > S.depth ? 'bad' : dm > S.depth * 0.9 ? 'warn' : 'ok');
   setLamp('lCargo', P.kg >= S.cargo * 0.92 ? 'warn' : P.kg > 0 ? 'ok' : '');
-  setLamp('lBeam', P.beam ? 'on' : ''); setLamp('lSonar', G.sonarCd > 0 ? '' : 'on');
+  setLamp('lSonar', G.sonarCd > 0 ? '' : 'on');
   $('heading').textContent = headingLabel(P.yaw);
 }
 
@@ -775,18 +783,18 @@ function renderCodex() {
 const H = {};
 const zoneName = (dm) => (dm < 60 ? '표층' : dm < 220 ? '중층' : dm < 500 ? '심층' : '심해');
 function updateHUD() {
-  if (!H.ok) { for (const id of ['hMoney', 'hBat', 'hBatV', 'hHull', 'hHullV', 'hCargo', 'hCargoV', 'hDepth', 'hZone', 'hLimit', 'hDepthMark', 'hLimitMark', 'hClean', 'hCleanBar', 'mIdx', 'mName', 'mDesc', 'mProg', 'mBar', 'mRw', 'mProgRow', 'alert', 'sonarInd', 'sonarTxt', 'rBat', 'rHull', 'rCargo', 'tSonar']) H[id] = $(id); H.ok = true; }
+  if (!H.ok) { for (const id of ['hMoney', 'hBat', 'hBatV', 'hHull', 'hHullV', 'hCargo', 'hCargoV', 'hDepth', 'hLimit', 'hClean', 'mName', 'mProg', 'mBar', 'mProgRow', 'alert', 'sonarInd', 'sonarTxt', 'rBat', 'rHull', 'rCargo', 'tSonar']) H[id] = $(id); H.ok = true; }
   H.hMoney.textContent = fmt(SV.money);
-  H.hBat.style.width = ((P.bat / S.bat) * 100).toFixed(1) + '%'; H.hBatV.textContent = `${Math.ceil(P.bat)}/${S.bat}`;
-  H.hHull.style.width = ((P.hull / S.hull) * 100).toFixed(1) + '%'; H.hHullV.textContent = `${Math.ceil(P.hull)}/${S.hull}`;
-  H.hCargo.style.width = Math.min(100, (P.kg / S.cargo) * 100).toFixed(1) + '%'; H.hCargoV.textContent = `${Math.round(P.kg * 10) / 10}/${S.cargo}kg`;
+  H.hBat.style.width = ((P.bat / S.bat) * 100).toFixed(1) + '%'; H.hBatV.textContent = `${Math.round((P.bat / S.bat) * 100)}%`;
+  H.hHull.style.width = ((P.hull / S.hull) * 100).toFixed(1) + '%'; H.hHullV.textContent = `${Math.round((P.hull / S.hull) * 100)}%`;
+  H.hCargo.style.width = Math.min(100, (P.kg / S.cargo) * 100).toFixed(1) + '%'; H.hCargoV.textContent = `${Math.round(P.kg)}/${S.cargo}`;
   H.rBat.classList.toggle('warn', P.bat < S.bat * 0.25); H.rHull.classList.toggle('warn', P.hull < S.hull * 0.3); H.rCargo.classList.toggle('warn', P.kg >= S.cargo * 0.92);
   const dm = depthOf(P.pos.y); H.hDepth.textContent = Math.floor(dm); H.hDepth.style.color = dm > S.depth ? 'var(--danger)' : dm > S.depth * 0.9 ? 'var(--accent2)' : '';
-  H.hZone.textContent = zoneName(dm); H.hLimit.textContent = `한계 ${S.depth}m`; H.hDepthMark.style.left = clamp((dm / 900) * 100, 0, 100) + '%'; H.hLimitMark.style.left = clamp((S.depth / 900) * 100, 0, 100) + '%';
-  H.hClean.textContent = cleanPct().toFixed(1) + '%'; H.hCleanBar.style.width = (G.clean * 100).toFixed(1) + '%';
+  H.hLimit.textContent = `한계 ${S.depth}m`;
+  H.hClean.textContent = cleanPct().toFixed(1) + '%';
   const m = MISSIONS[SV.mission];
-  if (m) { H.mIdx.textContent = `${SV.mission + 1}/${MISSIONS.length}`; H.mName.textContent = m.t; H.mDesc.textContent = m.d; H.mRw.textContent = `+${fmt(m.rw)}`; const [c, g] = mProg(m); H.mProgRow.style.display = ''; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = m.poi || m.sp ? (c ? '완료' : '탐색 중') : `${fmt(c)} / ${fmt(g)}`; }
-  else { H.mIdx.textContent = ''; H.mName.textContent = '자유 탐험'; H.mDesc.textContent = '모든 임무를 완료했습니다. 남은 쓰레기를 모두 치워 보세요!'; H.mRw.textContent = ''; H.mProgRow.style.display = 'none'; }
+  if (m) { H.mName.textContent = m.t; H.mName.title = m.d; const [c, g] = mProg(m); H.mProgRow.style.display = ''; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = m.poi || m.sp ? (c ? '완료' : '탐색 중') : `${fmt(c)}/${fmt(g)}`; }
+  else { H.mName.textContent = '자유 탐험'; H.mProg.textContent = ''; H.mProgRow.style.display = 'none'; }
   if (G.alert) { H.alert.textContent = G.alert; H.alert.classList.add('on'); } else H.alert.classList.remove('on');
   const cd = G.sonarCd > 0; H.sonarInd.classList.toggle('cd', cd); H.sonarTxt.textContent = cd ? `소나 충전 중 ${G.sonarCd.toFixed(1)}s` : '소나 준비 (Q)'; H.tSonar.innerHTML = cd ? `<span>${Math.ceil(G.sonarCd)}</span>` : '소나';
   $('lockHint').classList.toggle('hidden', IN.locked || IN.touch || G.state !== 'play');
@@ -860,7 +868,7 @@ canvas.addEventListener('mousedown', (e) => { AU.init(); if (IN.touch || G.state
 addEventListener('mousemove', (e) => { if (IN.locked) { IN.mdx += e.movementX; IN.mdy += e.movementY; } else if (IN.drag) { IN.mdx += e.clientX - IN.lx; IN.mdy += e.clientY - IN.ly; IN.lx = e.clientX; IN.ly = e.clientY; } });
 addEventListener('mouseup', (e) => { if (e.button === 0) IN.lmb = false; IN.drag = false; });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-function enableTouch() { if (IN.touch) return; IN.touch = true; document.body.classList.add('touch'); if (G.state !== 'title') show('touch'); }
+function enableTouch() { if (IN.touch) return; IN.touch = true; document.body.classList.add('touch'); if (G.state !== 'title') show('touch'); resize(); }
 addEventListener('touchstart', () => { AU.init(); enableTouch(); }, { passive: true });
 const jz = $('joyZone'), joy = $('joy'), knob = $('joyKnob'), lz = $('lookZone');
 jz.addEventListener('touchstart', (e) => { e.preventDefault(); const t = e.changedTouches[0]; IN.joy.on = true; IN.joy.id = t.identifier; IN.joy.ox = t.clientX; IN.joy.oy = t.clientY; IN.joy.dx = IN.joy.dy = 0; joy.style.left = t.clientX + 'px'; joy.style.top = t.clientY + 'px'; joy.classList.add('on'); knob.style.transform = 'translate(0,0)'; }, { passive: false });
@@ -883,7 +891,7 @@ function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; 
   renderer.setPixelRatio(pr); renderer.setSize(G.VW, G.VH, false); composer.setPixelRatio(pr); composer.setSize(G.VW, G.VH); bloom.enabled = q > 0; bloom.strength = q === 2 ? 0.55 : 0.45;
   camera.fov = inCockpit() ? 76 : 68; camera.aspect = G.VW / G.VH; camera.updateProjectionMatrix(); overlay.width = Math.round(G.VW * pr); overlay.height = Math.round(G.VH * pr);
   const sc = (G.VH * pr) / (2 * Math.tan((camera.fov * Math.PI) / 360)); FXA.mat.uniforms.uScale.value = sc; FXN.mat.uniforms.uScale.value = sc;
-  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); }
+  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); layoutHUD(); }
 addEventListener('resize', resize);
 function update(dt) {
   G.dayT = (G.dayT + dt / 600) % 1; G.alert = ''; G.alertPri = 0; ST().time += dt;
