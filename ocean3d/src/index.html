@@ -58,7 +58,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 #crosshair::after{top:8.5px;left:0;height:1px;width:18px;clip-path:polygon(0 0,35% 0,35% 100%,0 100%,0 0,65% 0,100% 0,100% 100%,65% 100%)}
 #lockHint{position:fixed;left:50%;top:calc(var(--ppy) + 48px);transform:translateX(-50%);padding:6px 11px;font-size:12px;color:var(--mute)}
 
-#hudLeft{position:absolute;left:var(--hx);top:var(--hy);width:196px;display:flex;flex-direction:column;gap:6px}
+#hudLeft{position:absolute;left:var(--hx);top:var(--hy);width:250px;display:flex;flex-direction:column;gap:6px}
 #hudStats{padding:10px 12px;display:flex;flex-direction:column;gap:6px}
 .depth{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px}
 .depth b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:24px;font-weight:500;line-height:1}
@@ -74,8 +74,12 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 .kv{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--mute);padding-top:5px;border-top:1px solid rgba(255,255,255,.08)}
 .kv b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12px;font-weight:600;color:var(--accent)}
 #hudMission{padding:8px 12px;display:flex;flex-direction:column;gap:5px}
-#hudMission .mt{display:flex;justify-content:space-between;gap:8px;font-size:12px}
-#hudMission .mn{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hudMission .mt{display:flex;align-items:baseline;gap:7px;font-size:13px}
+#hudMission .mtag{flex:none;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;color:#0b1116;background:var(--accent)}
+#hudMission .mn{flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hudMission .md{font-size:11px;line-height:1.5;color:var(--mute)}
+#hudMission .mg{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--accent)}
+#hudMission .mg .arr{flex:none;width:16px;height:16px;fill:var(--accent);transition:transform .15s linear}
 #hudMission .mt .num{color:var(--mute);font-size:11px}
 #hudMission .bar i{background:var(--accent)}
 
@@ -230,12 +234,14 @@ body.fp #vign,body.fp #sonarInd,body.fp #hudStats{display:none}
 #title .foot{margin-top:22px;font-size:12px;color:var(--dim)}
 
 @media (max-width:760px),(max-height:520px){
-  #hudLeft{width:150px;gap:5px}
+  #hudLeft{width:200px;gap:5px}
   #hudStats{padding:7px 9px;gap:4px}
   .depth b{font-size:18px}
   .row{grid-template-columns:34px 1fr 40px;gap:6px;font-size:10px}
   .val{font-size:10px}
-  #hudMission{display:none}
+  #hudMission{padding:6px 9px;gap:4px}
+  #hudMission .md{font-size:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  #hudMission .mg{font-size:11px}
   #hudRight{width:128px}
   .ibtn{width:28px;height:28px}
   #hint,#sonarInd{display:none}
@@ -270,8 +276,10 @@ body.fp #vign,body.fp #sonarInd,body.fp #hudStats{display:none}
       <div class="kv"><span>자금</span><b id="hMoney">0</b></div>
     </div>
     <div id="hudMission" class="glass">
-      <div class="mt"><span class="mn" id="mName"></span><span class="num" id="mProg"></span></div>
+      <div class="mt"><span class="mtag">임무</span><span class="mn" id="mName"></span><span class="num" id="mProg"></span></div>
+      <div class="md" id="mDesc"></div>
       <div class="bar" id="mProgRow"><i id="mBar"></i></div>
+      <div class="mg" id="mGuide"><svg class="arr" id="mArrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 20 20.5 12 15.8 4 20.5z"/></svg><span id="mGuideTxt"></span></div>
     </div>
   </div>
   <div id="hudRight">
