@@ -8,7 +8,7 @@ import { TAU, clamp, lerp, smooth, rnd, fmt, $, esc, seed, rr, rpick, wpick, SR 
 import { TRASH, TREASURE, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS } from './data.js';
 import { AU, Music } from './audio.js';
 import { MAT, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO } from './models.js';
-import { drawCockpit, drawRadar, headingLabel, cockpitWindow } from './cockpit.js';
+import { drawCockpit, cockpitLayout, quadCorners, CockpitUI } from './cockpit.js';
 import { WORLD, heightAt, normalAt, U, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBaseShip, buildDockRing, gradTex } from './world.js';
 
 const V3 = THREE.Vector3, UPV = new V3(0, 1, 0), ZERO = new V3();
@@ -101,7 +101,7 @@ class FX {
     this.vel = new Float32Array(n * 3); this.life = new Float32Array(n); this.max = new Float32Array(n); this.type = new Uint8Array(n); this.base = new Float32Array(n * 4);
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3)); g.setAttribute('aCol', new THREE.BufferAttribute(this.col, 4)); g.setAttribute('aSize', new THREE.BufferAttribute(this.size, 1)); g.setAttribute('aShape', new THREE.BufferAttribute(this.shape, 1));
     this.mat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending, uniforms: { uScale: { value: 400 } },
-      vertexShader: 'attribute vec4 aCol; attribute float aSize; attribute float aShape; uniform float uScale; varying vec4 vC; varying float vS; void main(){ vC = aCol; vS = aShape; vec4 mv = modelViewMatrix*vec4(position,1.0); gl_PointSize = aSize*uScale/max(-mv.z,0.1); gl_Position = projectionMatrix*mv; }',
+      vertexShader: 'attribute vec4 aCol; attribute float aSize; attribute float aShape; uniform float uScale; varying vec4 vC; varying float vS; void main(){ vC = aCol; vS = aShape; vec4 mv = modelViewMatrix*vec4(position,1.0); vC.a *= smoothstep(0.8, 3.5, -mv.z); gl_PointSize = aSize*uScale/max(-mv.z,0.1); gl_Position = projectionMatrix*mv; }',
       fragmentShader: 'varying vec4 vC; varying float vS; void main(){ float d = length(gl_PointCoord-0.5)*2.0; float a = vS > 0.5 ? smoothstep(1.0,0.8,d)*smoothstep(0.45,0.7,d) + 0.25*smoothstep(0.5,0.0,length(gl_PointCoord-vec2(0.35))) : smoothstep(1.0,0.0,d); if (a < 0.01) discard; gl_FragColor = vec4(vC.rgb, vC.a*a); }' });
     this.pts = new THREE.Points(g, this.mat); this.pts.frustumCulled = false; scene.add(this.pts);
   }
@@ -391,7 +391,7 @@ function damage(v, cause, silent) { if (G.state !== 'play' || v <= 0) return; if
   if (P.hull <= 0) { P.hull = 0; fail(cause === '수압' ? 'pressure' : 'hull'); } }
 function updatePlayer(dt) {
   const sens = 0.0022 * G.sens; P.yaw -= IN.mdx * sens; P.pitch = clamp(P.pitch - IN.mdy * sens, -1.3, 1.3); IN.mdx = IN.mdy = 0;
-  const inp = inputVec(); const f = fwdOf(P.yaw, P.pitch, P.fwd), r = rightOf(P.yaw, tv2);
+  const inp = inputVec(); P.inp = inp; const f = fwdOf(P.yaw, P.pitch, P.fwd), r = rightOf(P.yaw, tv2);
   tv1.set(0, 0, 0).addScaledVector(f, inp.f).addScaledVector(r, inp.s).addScaledVector(UPV, inp.u); let ml = tv1.length(); if (ml > 1) { tv1.divideScalar(ml); ml = 1; }
   P.alive = P.bat > 0; if (!P.alive) { tv1.set(0, 0.5, 0); ml = 0; }
   const boosting = inp.boost && P.alive && ml > 0.1; P.boost = boosting; const spd = S.speed * (boosting ? 1.55 : 1);
@@ -407,7 +407,7 @@ function updatePlayer(dt) {
   // visual orientation
   const turn = ((((P.yaw - P.vyaw + Math.PI) % TAU) + TAU) % TAU) - Math.PI; P.vyaw += turn * Math.min(1, dt * 5);
   P.vpitch += (P.pitch * 0.75 - P.vpitch) * Math.min(1, dt * 4); P.roll += (clamp(-turn * 1.5, -0.5, 0.5) - P.roll) * Math.min(1, dt * 4);
-  if (G.fp) { const yr = angDelta(P.yaw, P.lyaw ?? P.yaw) / Math.max(dt, 1e-3); P.lyaw = P.yaw; P.vyaw = P.yaw; P.vpitch = P.pitch; P.roll += (clamp(-yr * 0.035, -0.12, 0.12) - P.roll) * Math.min(1, dt * 3);
+  if (G.fp) { const yr = angDelta(P.yaw, P.lyaw ?? P.yaw) / Math.max(dt, 1e-3); P.lyaw = P.yaw; P.yr = (P.yr || 0) + (yr - (P.yr || 0)) * Math.min(1, dt * 10); P.vyaw = P.yaw; P.vpitch = P.pitch; P.roll += (clamp(-yr * 0.035, -0.12, 0.12) - P.roll) * Math.min(1, dt * 3);
     if (ml > 0.3 && Math.random() < dt * (10 + (boosting ? 25 : 0))) { const cp = camera.position, fw = P.fwd; bubble(cp.x + fw.x * 5 + rnd(-2.5, 2.5), cp.y + fw.y * 5 + rnd(-1.8, 1.8), cp.z + fw.z * 5 + rnd(-2.5, 2.5), 0, rnd(0.3, 1), 0, rnd(0.03, 0.08)); } }
   SUB.root.position.copy(P.pos); if (P.pos.y > -1.6) SUB.root.position.y += Math.sin(G.t * 2) * 0.15;
   SUB.root.rotation.set(-P.vpitch, P.vyaw, P.roll, 'YXZ');
@@ -675,6 +675,10 @@ const pv = new V3();
 function drawOverlay() {
   const c = octx, W = G.VW, H = G.VH; c.setTransform(renderer.getPixelRatio(), 0, 0, renderer.getPixelRatio(), 0, 0); c.clearRect(0, 0, W, H);
   if (G.state === 'title') return;
+  c.save(); drawOverlayIn(c, W, H); c.restore();
+}
+function drawOverlayIn(c, W, H) {
+  if (inCockpit() && G.ck) { const w = G.ck.win; c.beginPath(); c.rect(0, 0, W, G.ck.hoodTop); c.clip(); c.beginPath(); c.roundRect ? c.roundRect(w.x, w.y, w.w, w.h, w.r) : c.rect(w.x, w.y, w.w, w.h); c.clip(); }
   c.textAlign = 'center';
   // revealed items
   for (const it of items) { if (it.col || it.locked || it.rev < G.t) continue; const d = it.pos.distanceTo(camera.position); if (d > 260) continue; const s = project(it.pos, pv); if (s.behind || s.x < -20 || s.x > W + 20 || s.y < -20 || s.y > H + 20) continue;
@@ -709,33 +713,70 @@ function drawOverlay() {
 // VIEW MODE (first / third person) + COCKPIT
 // =====================================================================
 const inCockpit = () => G.fp && G.state !== 'title';
-function redrawCockpit() { if (!inCockpit()) return; drawCockpit($('cockpit'), G.VW, G.VH, Math.min(devicePixelRatio || 1, 2), G.fpTier < 0 ? 0 : G.fpTier, IN.touch); }
-// HUD lives inside the visible viewport: the cockpit glass in first person, the screen in third person
+const CK = new CockpitUI($('ckdyn'));
+function redrawCockpit() { if (!inCockpit() || !G.ck) return; drawCockpit($('cockpit'), G.ck, Math.min(devicePixelRatio || 1, 2), G.fpTier < 0 ? 0 : G.fpTier); }
+// HUD lives inside the visible viewport: the porthole glass in first person, the screen in third person
 function layoutHUD() {
-  const st = document.documentElement.style; let ins, x0, y0, x1, y1, band = 0;
-  if (inCockpit()) { const w = cockpitWindow(G.VW, G.VH, IN.touch); ins = Math.max(12, Math.round(w.r * 0.3)); x0 = w.x; y0 = w.y; x1 = w.x + w.w; y1 = w.y + w.h; band = G.VH - y1; }
-  else { ins = 12; x0 = 0; y0 = 0; x1 = G.VW; y1 = G.VH; }
-  st.setProperty('--hx', `${x0 + ins}px`); st.setProperty('--hy', `${y0 + ins}px`); st.setProperty('--hr', `${G.VW - x1 + ins}px`); st.setProperty('--hb', `${G.VH - y1 + ins}px`); st.setProperty('--band', `${band}px`);
+  const st = document.documentElement.style, W = G.VW, H = G.VH, ins = 12; let x0 = 0, y0 = 0, x1 = W, y1 = H;
+  if (inCockpit() && G.ck) ({ x0, y0, x1, y1 } = G.ck.glass);
+  st.setProperty('--hx', `${x0 + ins}px`); st.setProperty('--hy', `${y0 + ins}px`); st.setProperty('--hr', `${W - x1 + ins}px`); st.setProperty('--hb', `${H - y1 + ins}px`);
+  st.setProperty('--ppy', inCockpit() && G.ck ? `${G.ck.ppY}px` : '50%');
+  // touch buttons sit on the console in first person, inside the screen edge otherwise
+  st.setProperty('--tr', inCockpit() ? '14px' : `${W - x1 + ins}px`); st.setProperty('--tb', inCockpit() ? '12px' : `${H - y1 + ins}px`);
   G.win = { x: x0 + ins, y: y0 + ins, w: x1 - x0 - ins * 2, h: y1 - y0 - ins * 2 };
 }
 function applyView() {
   const on = inCockpit();
   for (const ch of SUB.root.children) if (ch.isMesh && ch !== lightCone) ch.visible = !on;
-  document.body.classList.toggle('fp', on); $('cockpit').classList.toggle('hidden', !on); $('dash').classList.toggle('hidden', !on);
-  camera.fov = on ? 76 : 68; resize(); G.fpTier = -1;
+  document.body.classList.toggle('fp', on); $('cockpit').classList.toggle('hidden', !on); $('ckdyn').classList.toggle('hidden', !on);
+  G.fpTier = -1; resize();
 }
 function toggleView() { if (G.state !== 'play') return; G.fp = !G.fp; applyView(); saveSettings(); $('sView').value = G.fp ? '1' : '0'; AU.click(); updateCamera(1); toast(G.fp ? '1인칭 조종석 시점' : '3인칭 추적 시점', '', 'V 키로 전환합니다.'); }
-const LAMP = {};
-function setLamp(id, cls) { const el = LAMP[id] || (LAMP[id] = $(id)); const c = 'lamp ' + cls; if (el.className !== c) el.className = c; }
-function updateDash() {
-  const tier = P.hull < S.hull * 0.25 ? 2 : P.hull < S.hull * 0.5 ? 1 : 0; if (tier !== G.fpTier) { G.fpTier = tier; redrawCockpit(); }
-  const dm = depthOf(P.pos.y);
-  setLamp('lPower', !P.alive || P.bat < S.bat * 0.1 ? 'bad' : P.bat < S.bat * 0.25 ? 'warn' : 'ok');
-  setLamp('lHull', P.hull < S.hull * 0.3 ? 'bad' : P.hull < S.hull * 0.6 ? 'warn' : 'ok');
-  setLamp('lPress', dm > S.depth ? 'bad' : dm > S.depth * 0.9 ? 'warn' : 'ok');
-  setLamp('lCargo', P.kg >= S.cargo * 0.92 ? 'warn' : P.kg > 0 ? 'ok' : '');
-  setLamp('lSonar', G.sonarCd > 0 ? '' : 'on');
-  $('heading').textContent = headingLabel(P.yaw);
+function cycleCam() { if (!inCockpit() || !G.ck || !G.ck.q.scrR) return; FEED.mode = 1 - FEED.mode; AU.click(); }
+// ---- external camera monitor: the scene is rendered from a hull camera into a small target and
+// composited into the hole the cockpit art leaves for the right-hand screen.
+const FEED = { mode: 0, ok: false, n: 0, q: null, cam: new THREE.PerspectiveCamera(64, 1.45, 0.3, 480), rt: new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType }), scene: new THREE.Scene(), ocam: new THREE.OrthographicCamera(0, 1, 0, -1, -1, 1) };
+FEED.mat = new THREE.ShaderMaterial({ depthTest: false, depthWrite: false, side: THREE.DoubleSide, uniforms: { uTex: { value: FEED.rt.texture }, uT: { value: 0 }, uSig: { value: 1 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D uTex; uniform float uT; uniform float uSig; varying vec2 vUv;
+    float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main(){ vec3 c = texture2D(uTex, vUv).rgb * 1.7; c = c / (1.0 + c);
+      float l = dot(c, vec3(0.3, 0.55, 0.15)); vec3 g = mix(vec3(l), c, 0.4) * vec3(0.8, 0.95, 1.1); g = pow(max(g, 0.0), vec3(1.0 / 2.2));
+      g += (h(vUv * 520.0 + fract(uT * 7.3)) - 0.5) * 0.07; g *= 0.9 + 0.1 * sin(vUv.y * 480.0); vec2 q = vUv - 0.5; g *= 1.0 - dot(q, q) * 1.2;
+      vec3 ns = vec3(h(floor(vUv * vec2(160.0, 90.0)) + floor(uT * 24.0)) * 0.55); gl_FragColor = vec4(mix(ns, g, uSig), 1.0); }` });
+{ const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3)); geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 1, 1, 1, 1, 0, 0, 0]), 2)); geo.setIndex([0, 3, 1, 1, 3, 2]);
+  FEED.quad = new THREE.Mesh(geo, FEED.mat); FEED.quad.frustumCulled = false; FEED.scene.add(FEED.quad); }
+function feedLayout() {
+  const q = FEED.q = inCockpit() && G.ck ? G.ck.q.scrR || null : null; if (!q) return;
+  const pts = quadCorners(q), cx = (pts[0][0] + pts[2][0]) / 2, cy = (pts[0][1] + pts[2][1]) / 2, pos = FEED.quad.geometry.attributes.position;
+  pts.forEach(([x, y], i) => { const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy) || 1; pos.setXYZ(i, x + (dx / d) * 1.5, -(y + (dy / d) * 1.5), 0); }); pos.needsUpdate = true;
+  FEED.ocam.right = G.VW; FEED.ocam.bottom = -G.VH; FEED.ocam.updateProjectionMatrix(); FEED.cam.aspect = q.w / q.h; FEED.cam.updateProjectionMatrix();
+  const px = Math.min(400, q.w * Math.min(devicePixelRatio || 1, 1.5)); FEED.rt.setSize(Math.round(px), Math.round((px * q.h) / q.w));
+}
+function renderFeed() {
+  if (!FEED.q) return;
+  FEED.ok = G.quality > 0 && P.alive; FEED.mat.uniforms.uT.value = G.t; FEED.mat.uniforms.uSig.value = FEED.ok ? 1 : 0;
+  if (FEED.ok && FEED.n++ % (G.quality === 2 ? 2 : 3) === 0) {
+    const cam = FEED.cam; SUB.root.updateMatrixWorld();
+    if (FEED.mode === 0) { cam.position.set(0, -0.6, 1.9).applyMatrix4(SUB.root.matrixWorld); cam.rotation.set(P.pitch - 0.62, P.yaw + Math.PI, 0, 'YXZ'); }
+    else { cam.position.set(0, 0.7, -3.4).applyMatrix4(SUB.root.matrixWorld); cam.rotation.set(-0.16 - P.pitch * 0.5, P.yaw, 0, 'YXZ'); }
+    const lc = lightCone.visible, bc = beamCone.visible; lightCone.visible = false; beamCone.visible = false;
+    renderer.setRenderTarget(FEED.rt); renderer.render(scene, cam); renderer.setRenderTarget(null);
+    lightCone.visible = lc; beamCone.visible = bc;
+  }
+  renderer.autoClear = false; renderer.render(FEED.scene, FEED.ocam); renderer.autoClear = true;
+}
+const CKS = { stickL: [0, 0], stickR: [0, 0], inp: { f: 0, s: 0, u: 0 } };
+function cockpitState() {
+  const s = CKS, dm = depthOf(P.pos.y), inp = P.inp || s.inp;
+  s.t = G.t; s.clock = ST().time; s.depth = dm; s.limit = S.depth; s.speed = P.vel.length(); s.vmax = S.speed * 1.55; s.yaw = P.yaw; s.pos = P.pos;
+  s.bat = P.bat / S.bat; s.hull = P.hull / S.hull; s.kg = P.kg; s.cargo = S.cargo; s.money = SV.money; s.alive = P.alive; s.beam = P.beam; s.boost = !!P.boost;
+  s.sonarCd = G.sonarCd; s.sonarRange = 50 + SV.up.sonar * 10; s.navRange = 150 + SV.up.sonar * 20; s.beamRange = S.beam; s.alert = G.alert;
+  s.items = items; s.rescues = rescues; s.creatures = creatures; s.dock = DOCK; s.target = mTarget(MISSIONS[SV.mission]); s.heightAt = heightAt;
+  s.cam = FEED.mode; s.camOn = FEED.ok; s.inp = inp;
+  s.sys = !P.alive || P.hull < S.hull * 0.3 || dm > S.depth || P.bat < S.bat * 0.1 ? 'bad' : P.hull < S.hull * 0.6 || dm > S.depth * 0.9 || P.bat < S.bat * 0.25 ? 'warn' : 'ok';
+  s.stickL[0] = clamp(inp.s, -1, 1); s.stickL[1] = clamp(inp.f, -1, 1); s.stickR[0] = clamp((P.yr || 0) / 2.5, -1, 1); s.stickR[1] = clamp(-inp.u, -1, 1);
+  return s;
 }
 
 // =====================================================================
@@ -798,7 +839,7 @@ function updateHUD() {
   if (G.alert) { H.alert.textContent = G.alert; H.alert.classList.add('on'); } else H.alert.classList.remove('on');
   const cd = G.sonarCd > 0; H.sonarInd.classList.toggle('cd', cd); H.sonarTxt.textContent = cd ? `소나 충전 중 ${G.sonarCd.toFixed(1)}s` : '소나 준비 (Q)'; H.tSonar.innerHTML = cd ? `<span>${Math.ceil(G.sonarCd)}</span>` : '소나';
   $('lockHint').classList.toggle('hidden', IN.locked || IN.touch || G.state !== 'play');
-  if (inCockpit()) updateDash();
+  if (inCockpit()) { const tier = P.hull < S.hull * 0.25 ? 2 : P.hull < S.hull * 0.5 ? 1 : 0; if (tier !== G.fpTier) { G.fpTier = tier; redrawCockpit(); } }
   $('dmgVig').style.opacity = P.hull < S.hull * 0.3 ? 0.55 + 0.35 * Math.sin(G.t * 6) : 0; $('flash').style.opacity = G.flash; $('flash').style.background = `rgba(${G.flashCol},1)`;
 }
 // ---- flow
@@ -814,7 +855,7 @@ function showTitle() { G.state = 'title'; unlockPointer(); hide('hud'); hide('to
   const d = loadGame(); $('bContinue').classList.toggle('hidden', !d); $('bNew').classList.toggle('primary', !d); SV = freshSave(); calcStats(); resetWorld(); G.clean = 0.6; G.coralH = -1; missionTickCoral(); SUB.root.visible = false; applyView(); }
 function missionTickCoral() { const h = Math.round(clamp(0.12 + G.clean * 1.15, 0, 1) * 50) / 50; if (h !== G.coralH) { G.coralH = h; flora.setCoralHealth(h); } }
 function startGame(d) { AU.init(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); requestLock();
-  const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>빔으로 수거·절단</span>' : '<span><kbd>WASD</kbd>이동</span><span><kbd>Space</kbd><kbd>C</kbd>상승·하강</span><span><kbd>클릭</kbd>빔</span><span><kbd>Q</kbd>소나</span><span><kbd>Shift</kbd>가속</span><span><kbd>V</kbd>시점</span><span><kbd>M</kbd>지도</span><span><kbd>Tab</kbd>도감</span>';
+  const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>빔으로 수거·절단</span>' : '<span><kbd>WASD</kbd>이동</span><span><kbd>Space</kbd><kbd>C</kbd>상승·하강</span><span><kbd>클릭</kbd>빔</span><span><kbd>Q</kbd>소나</span><span><kbd>Shift</kbd>가속</span><span><kbd>V</kbd>시점</span><span><kbd>F</kbd>카메라</span><span><kbd>M</kbd>지도</span><span><kbd>Tab</kbd>도감</span>';
   setTimeout(() => { hint.style.opacity = 0; }, 25000);
   if (!d) { setTimeout(() => toast('해양 정화선 푸른바다호', 'big', '바다가 쓰레기로 병들고 있습니다. 잠수정으로 쓰레기를 수거해 주세요.'), 600); setTimeout(() => { const m = MISSIONS[0]; toast(`임무: ${m.t}`, 'tip', m.d); }, 4200); }
   else toast('이어서 탐험을 시작합니다', '', `바다 정화율 ${cleanPct()}%`);
@@ -855,7 +896,7 @@ addEventListener('keydown', (e) => {
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
   if (BLOCK.has(e.code)) e.preventDefault(); AU.init();
   IN.keys[e.code] = true; if (e.repeat) return;
-  if (G.state === 'play') { if (e.code === 'KeyQ' || e.code === 'KeyR') doSonar(); else if (e.code === 'KeyM') openMap(); else if (e.code === 'Tab' || e.code === 'KeyB') openCodex(); else if (e.code === 'Escape' || e.code === 'KeyP') togglePause(); else if (e.code === 'KeyV') toggleView(); }
+  if (G.state === 'play') { if (e.code === 'KeyQ' || e.code === 'KeyR') doSonar(); else if (e.code === 'KeyM') openMap(); else if (e.code === 'Tab' || e.code === 'KeyB') openCodex(); else if (e.code === 'Escape' || e.code === 'KeyP') togglePause(); else if (e.code === 'KeyV') toggleView(); else if (e.code === 'KeyF') cycleCam(); }
   else if (G.state === 'menu') { if (e.code === 'KeyM' && !$('mapm').classList.contains('hidden')) openMap(); else if ((e.code === 'Tab' || e.code === 'KeyB') && !$('codex').classList.contains('hidden')) openCodex(); else if (e.code === 'Escape') { if (!$('mapm').classList.contains('hidden')) closeModal('mapm'); else if (!$('codex').classList.contains('hidden')) closeModal('codex'); else if (!$('win').classList.contains('hidden')) { hide('win'); G.state = 'play'; } } }
   else if (G.state === 'pause') { if (e.code === 'Escape' || e.code === 'KeyP') { if (!$('settings').classList.contains('hidden') || !$('help').classList.contains('hidden')) { hide('settings'); hide('help'); show('pause'); modalBack = null; } else togglePause(); } }
   else if (G.state === 'dock') { if (e.code === 'Enter') launch(); }
@@ -889,9 +930,14 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 // =====================================================================
 function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; const pr = Math.min(devicePixelRatio || 1, q === 2 ? 1.75 : q === 1 ? 1.25 : 0.85);
   renderer.setPixelRatio(pr); renderer.setSize(G.VW, G.VH, false); composer.setPixelRatio(pr); composer.setSize(G.VW, G.VH); bloom.enabled = q > 0; bloom.strength = q === 2 ? 0.55 : 0.45;
-  camera.fov = inCockpit() ? 76 : 68; camera.aspect = G.VW / G.VH; camera.updateProjectionMatrix(); overlay.width = Math.round(G.VW * pr); overlay.height = Math.round(G.VH * pr);
-  const sc = (G.VH * pr) / (2 * Math.tan((camera.fov * Math.PI) / 360)); FXA.mat.uniforms.uScale.value = sc; FXN.mat.uniforms.uScale.value = sc;
-  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); layoutHUD(); }
+  let f;
+  if (inCockpit()) { // principal point moved up to the middle of the porthole; F is the virtual frame height
+    const L = G.ck = cockpitLayout(G.VW, G.VH, IN.touch), F = 2 * Math.max(L.ppY, G.VH - L.ppY); f = Math.max(0.7 * G.VH, 0.4 * G.VW);
+    camera.fov = (2 * Math.atan(F / 2 / f) * 180) / Math.PI; camera.aspect = G.VW / F; camera.setViewOffset(G.VW, F, 0, F / 2 - L.ppY, G.VW, G.VH);
+  } else { G.ck = null; camera.clearViewOffset(); camera.fov = 68; camera.aspect = G.VW / G.VH; f = G.VH / (2 * Math.tan((68 * Math.PI) / 360)); }
+  camera.updateProjectionMatrix(); overlay.width = Math.round(G.VW * pr); overlay.height = Math.round(G.VH * pr);
+  FXA.mat.uniforms.uScale.value = f * pr; FXN.mat.uniforms.uScale.value = f * pr;
+  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); if (G.ck) CK.setLayout(G.ck, Math.min(devicePixelRatio || 1, 2)); feedLayout(); layoutHUD(); }
 addEventListener('resize', resize);
 function update(dt) {
   G.dayT = (G.dayT + dt / 600) % 1; G.alert = ''; G.alertPri = 0; ST().time += dt;
@@ -913,7 +959,7 @@ function updateAttract(dt) {
   for (const c of creatures) updateCreature(c, dt); for (const s of schools) updateSchool(s, dt);
   for (const it of items) if (it.buoy >= 0 && it.pos.distanceToSquared(camera.position) < 150 * 150) writeItem(it, 1);
 }
-let last = performance.now(), hudAcc = 0, mmAcc = 0, rdAcc = 0;
+let last = performance.now(), hudAcc = 0, mmAcc = 0;
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = (now - last) / 1000; last = now; if (!(dt > 0)) dt = 0.016; dt = Math.min(dt, 1 / 30);
@@ -921,8 +967,8 @@ function frame(now) {
     pollGamepad(dt);
     const live = G.state === 'play' || G.state === 'title';
     if (live) { G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); else updateAttract(dt); FXA.update(dt); FXN.update(dt); for (let i = ftexts.length - 1; i >= 0; i--) { const f = ftexts[i]; f.life -= dt; f.p.y += dt * 1.2; if (f.life <= 0) ftexts.splice(i, 1); } writeFish(); }
-    if (live || G.needRender) { updateEnv(dt); if (bloom.enabled) composer.render(); else renderer.render(scene, camera); drawOverlay(); G.needRender = false; }
-    if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit()) { rdAcc += dt; if (rdAcc > 0.05) { rdAcc = 0; drawRadar($('radar'), { t: G.t, pos: P.pos, yaw: P.yaw, range: 50 + SV.up.sonar * 10, items, rescues, creatures, dock: DOCK, target: mTarget(MISSIONS[SV.mission]) }); } } }
+    if (live || G.needRender) { updateEnv(dt); if (bloom.enabled) composer.render(); else renderer.render(scene, camera); if (inCockpit()) renderFeed(); drawOverlay(); G.needRender = false; }
+    if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit() && G.ck) CK.update(cockpitState(), dt); }
     if (G.state === 'menu' && !$('mapm').classList.contains('hidden')) { mmAcc += dt; if (mmAcc > 0.3) { mmAcc = 0; drawBigMap(); } }
     AU.update(G.state === 'title' ? 20 : depthOf(P.pos.y), P.vel.length() * 12, G.state === 'play' ? P.thrust : 0, G.state === 'play' && P.beam, G.state === 'play');
   } catch (err) { console.error(err); }

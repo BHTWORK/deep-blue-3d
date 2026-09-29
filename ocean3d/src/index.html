@@ -24,6 +24,8 @@ button{font-family:var(--font)}
 canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
 canvas#overlay,canvas#cockpit{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
 canvas#cockpit{z-index:3}
+#ckdyn{position:fixed;inset:0;z-index:3;pointer-events:none;overflow:hidden}
+#ckdyn canvas{position:absolute;left:0;top:0;transform-origin:0 0}
 canvas#overlay{z-index:4}
 #vign{position:fixed;inset:0;pointer-events:none;z-index:3;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 60%,rgba(0,5,10,.45) 100%)}
 #dmgVig{position:fixed;inset:0;pointer-events:none;z-index:3;opacity:0;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 50%,rgba(229,100,94,.45) 100%)}
@@ -47,14 +49,14 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 /* ---------- HUD ----------
    Everything is laid out inside the viewport rect published by JS as --hx/--hy/--hr/--hb
    (the cockpit glass in first person, the screen edges in third person). */
-:root{--hx:12px;--hy:12px;--hr:12px;--hb:12px;--band:0px}
+:root{--hx:12px;--hy:12px;--hr:12px;--hb:12px;--tr:12px;--tb:12px;--ppy:50%}
 #hud{position:fixed;inset:0;pointer-events:none;z-index:5;text-shadow:0 1px 2px rgba(0,0,0,.45)}
 .glass{background:rgba(6,12,17,.4);border:1px solid rgba(255,255,255,.08);border-radius:5px}
-#crosshair{position:fixed;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;pointer-events:none;opacity:.7}
+#crosshair{position:fixed;left:50%;top:var(--ppy);width:18px;height:18px;margin:-9px 0 0 -9px;pointer-events:none;opacity:.7}
 #crosshair::before,#crosshair::after{content:"";position:absolute;background:var(--ink)}
 #crosshair::before{left:8.5px;top:0;width:1px;height:18px;clip-path:polygon(0 0,100% 0,100% 35%,0 35%,0 65%,100% 65%,100% 100%,0 100%)}
 #crosshair::after{top:8.5px;left:0;height:1px;width:18px;clip-path:polygon(0 0,35% 0,35% 100%,0 100%,0 0,65% 0,100% 0,100% 100%,65% 100%)}
-#lockHint{position:fixed;left:50%;top:58%;transform:translateX(-50%);padding:6px 11px;font-size:12px;color:var(--mute)}
+#lockHint{position:fixed;left:50%;top:calc(var(--ppy) + 48px);transform:translateX(-50%);padding:6px 11px;font-size:12px;color:var(--mute)}
 
 #hudLeft{position:absolute;left:var(--hx);top:var(--hy);width:196px;display:flex;flex-direction:column;gap:6px}
 #hudStats{padding:10px 12px;display:flex;flex-direction:column;gap:6px}
@@ -106,21 +108,8 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 #sonarInd.cd{color:var(--mute)}
 #sonarInd.cd .dot{background:var(--dim)}
 
-/* first-person instrument strip: sits inside the metal band under the viewport */
-#dash{position:absolute;left:50%;bottom:max(8px,calc((var(--band) - 88px) / 2));transform:translateX(-50%);display:flex;align-items:center;gap:10px;pointer-events:none;text-shadow:none}
-#dash .dcol{display:flex;flex-direction:column;gap:4px}
-.lamp{width:74px;padding:3px 8px;border-radius:3px;font:600 10px var(--font);background:rgba(4,8,11,.85);border:1px solid rgba(255,255,255,.07);color:var(--dim);white-space:nowrap}
-.lamp.ok{color:var(--ok)}
-.lamp.on{color:var(--accent)}
-.lamp.warn{color:var(--warn);animation:blink .9s steps(2) infinite}
-.lamp.bad{color:var(--bad);animation:blink .45s steps(2) infinite}
-#heading{color:var(--ink);font-family:var(--mono);font-variant-numeric:tabular-nums}
-.radarbox{width:88px;height:88px;border-radius:50%;padding:3px;background:#0b1217;border:1px solid rgba(255,255,255,.14)}
-#radar{width:80px;height:80px;border-radius:50%;display:block}
-body.fp #vign,body.fp #sonarInd{display:none}
-body.fp.touch #dash .dcol{display:none}
-body.fp.touch #dash{bottom:var(--hb)}
-body.fp.touch .radarbox{background:rgba(6,12,17,.45)}
+/* first person: the console carries the gauges, so the glass keeps only the mission line and map */
+body.fp #vign,body.fp #sonarInd,body.fp #hudStats{display:none}
 
 /* ---------- touch ---------- */
 #touch{position:fixed;inset:0;z-index:6;pointer-events:none}
@@ -132,11 +121,11 @@ body.fp.touch .radarbox{background:rgba(6,12,17,.45)}
 .tbtn{position:absolute;pointer-events:auto;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(6,12,17,.28);color:var(--ink);font:600 12px var(--font);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1px;touch-action:none;text-shadow:0 1px 2px rgba(0,0,0,.5)}
 .tbtn.on{border-color:var(--accent);color:var(--accent);background:rgba(6,12,17,.45)}
 .tbtn small{font-size:10px;color:var(--mute)}
-#tBeam{right:var(--hr);bottom:var(--hb);width:74px;height:74px;font-size:14px}
-#tSonar{right:calc(var(--hr) + 84px);bottom:var(--hb);width:54px;height:54px}
-#tBoost{right:calc(var(--hr) + 146px);bottom:var(--hb);width:54px;height:54px}
-#tUp{right:calc(var(--hr) + 208px);bottom:calc(var(--hb) + 60px);width:50px;height:50px}
-#tDown{right:calc(var(--hr) + 208px);bottom:var(--hb);width:50px;height:50px}
+#tBeam{right:var(--tr);bottom:var(--tb);width:74px;height:74px;font-size:14px}
+#tSonar{right:calc(var(--tr) + 84px);bottom:var(--tb);width:54px;height:54px}
+#tBoost{right:calc(var(--tr) + 146px);bottom:var(--tb);width:54px;height:54px}
+#tUp{right:calc(var(--tr) + 208px);bottom:calc(var(--tb) + 60px);width:50px;height:50px}
+#tDown{right:calc(var(--tr) + 208px);bottom:var(--tb);width:50px;height:50px}
 
 /* ---------- buttons, modals ---------- */
 .btn{appearance:none;height:40px;padding:0 18px;border-radius:var(--r);border:1px solid var(--line2);background:transparent;color:var(--ink);font:600 14px var(--font);cursor:pointer;transition:background .15s,border-color .15s}
@@ -264,6 +253,7 @@ body.fp.touch .radarbox{background:rgba(6,12,17,.45)}
 <body>
 <canvas id="game"></canvas>
 <canvas id="cockpit" class="hidden"></canvas>
+<div id="ckdyn" class="hidden"></div>
 <canvas id="overlay"></canvas>
 <div id="vign"></div><div id="dmgVig"></div><div id="flash"></div>
 <div id="loading"><i></i><span id="loadMsg">심해를 불러오는 중</span><p class="lhint">이 화면이 계속된다면 지금 쓰는 앱의 파일 미리보기가 스크립트 실행을 막고 있습니다. 파일을 Safari나 Chrome 같은 브라우저로 열거나, 공유받은 게임 링크로 접속하세요.</p></div>
@@ -295,11 +285,6 @@ body.fp.touch .radarbox{background:rgba(6,12,17,.45)}
       <button class="ibtn" id="bCodex" title="도감 (Tab)" aria-label="도감"><svg class="i" viewBox="0 0 24 24"><path d="M3.5 6c3-1.2 6-1.2 8.5.8 2.5-2 5.5-2 8.5-.8v12.5c-3-1.2-6-1.2-8.5.8-2.5-2-5.5-2-8.5-.8z"/><path d="M12 6.8v12.5"/></svg></button>
       <button class="ibtn" id="bPause" title="일시정지 (P)" aria-label="일시정지"><svg class="i" viewBox="0 0 24 24"><path d="M9 5.5v13M15 5.5v13"/></svg></button>
     </div>
-  </div>
-  <div id="dash" class="hidden">
-    <div class="dcol"><div class="lamp" id="heading">N 000°</div><div class="lamp" id="lPower">전력</div><div class="lamp" id="lHull">선체</div></div>
-    <div class="radarbox"><canvas id="radar" width="160" height="160"></canvas></div>
-    <div class="dcol"><div class="lamp" id="lPress">수압</div><div class="lamp" id="lCargo">화물</div><div class="lamp" id="lSonar">소나</div></div>
   </div>
   <div id="toasts"></div>
   <div id="alert"></div>
@@ -405,6 +390,7 @@ body.fp.touch .radarbox{background:rgba(6,12,17,.45)}
     <span><kbd>Shift</kbd></span><span>가속. 에너지를 더 씁니다.</span>
     <span><kbd>Q</kbd><kbd>우클릭</kbd></span><span>소나. 주변 쓰레기를 찾고 상어를 쫓아냅니다.</span>
     <span><kbd>V</kbd></span><span>1인칭 조종석과 3인칭 시점 전환</span>
+    <span><kbd>F</kbd></span><span>조종석 외부 카메라 전환 (전방 하단 / 후방)</span>
     <span><kbd>M</kbd></span><span>지도</span>
     <span><kbd>Tab</kbd></span><span>해양 도감</span>
     <span><kbd>P</kbd></span><span>일시정지</span>
