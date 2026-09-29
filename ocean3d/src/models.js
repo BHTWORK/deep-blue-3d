@@ -128,13 +128,14 @@ export function buildTrashGeos() {
 
 // ---------------------------------------------------------------- small fish (instanced)
 export function fishGeo(kind) {
-  const L = { sardine: 0.45, lantern: 0.4, clownfish: 0.4, tang: 0.55 }[kind];
-  const H = { sardine: 0.13, lantern: 0.12, clownfish: 0.2, tang: 0.34 }[kind];
-  const W = { sardine: 0.09, lantern: 0.08, clownfish: 0.12, tang: 0.08 }[kind];
+  const L = { sardine: 0.45, lantern: 0.4, clownfish: 0.4, tang: 0.55, reef: 0.34 }[kind];
+  const H = { sardine: 0.13, lantern: 0.12, clownfish: 0.2, tang: 0.34, reef: 0.2 }[kind];
+  const W = { sardine: 0.09, lantern: 0.08, clownfish: 0.12, tang: 0.08, reef: 0.07 }[kind];
   const cfn = {
     sardine: (x, y) => (y > 0.01 ? [0.17, 0.33, 0.5] : [0.85, 0.9, 0.93]),
     lantern: (x, y) => (y > 0 ? [0.08, 0.1, 0.14] : [0.2, 0.24, 0.3]),
     clownfish: (x, y, z) => { const zz = z / L; const band = [0.22, -0.02, -0.28].some((b) => Math.abs(zz - b) < 0.05); const edge = [0.22, -0.02, -0.28].some((b) => Math.abs(zz - b) < 0.075); return band ? [1, 1, 1] : edge ? [0.05, 0.05, 0.05] : [1, 0.45, 0.07]; },
+    reef: (x, y) => (y > 0.03 ? [0.78, 0.78, 0.8] : [1, 1, 1]), // tinted per fish by instance colour
     tang: (x, y, z) => (z < -L * 0.42 ? [1, 0.82, 0.2] : y > H * 0.1 && z < L * 0.1 && z > -L * 0.3 ? [0.05, 0.08, 0.2] : [0.12, 0.38, 0.9]),
   }[kind];
   const body = P(new THREE.SphereGeometry(0.5, 12, 8), '#fff', [0, 0, 0], [0, 0, 0], [W, H, L], cfn);

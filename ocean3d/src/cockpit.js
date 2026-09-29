@@ -20,16 +20,9 @@ function screw(c, x, y, r) {
   c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1; c.stroke();
   c.strokeStyle = 'rgba(0,0,0,.5)'; c.beginPath(); c.moveTo(x - r * 0.6, y - r * 0.2); c.lineTo(x + r * 0.6, y + r * 0.2); c.stroke();
 }
-function bolt(c, x, y, r) {
-  const g = c.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.1, x, y, r * 1.1); g.addColorStop(0, '#a3afb9'); g.addColorStop(0.6, '#4b5761'); g.addColorStop(1, '#1b2228');
-  c.fillStyle = 'rgba(0,0,0,.45)'; c.beginPath(); c.arc(x + r * 0.2, y + r * 0.3, r * 1.15, 0, TAU); c.fill();
-  c.fillStyle = g; c.beginPath(); for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + 0.3; c.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } c.closePath(); c.fill();
-  c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 1; c.stroke();
-}
 // a quad is a parallelogram: origin o, width edge U, height edge V; w/h are its local pixel size
 function Q(o, U, V) { return { o, U, V, w: Math.max(1, Math.round(Math.hypot(U[0], U[1]))), h: Math.max(1, Math.round(Math.hypot(V[0], V[1]))) }; }
 export const quadMatrix = (q) => [q.U[0] / q.w, q.U[1] / q.w, q.V[0] / q.h, q.V[1] / q.h, q.o[0], q.o[1]];
-export const quadCorners = (q) => [[q.o[0], q.o[1]], [q.o[0] + q.U[0], q.o[1] + q.U[1]], [q.o[0] + q.U[0] + q.V[0], q.o[1] + q.U[1] + q.V[1]], [q.o[0] + q.V[0], q.o[1] + q.V[1]]];
 function inQuad(c, pr, q, fn) { const m = quadMatrix(q); c.save(); c.setTransform(pr * m[0], pr * m[1], pr * m[2], pr * m[3], pr * m[4], pr * m[5]); fn(q.w, q.h); c.restore(); }
 
 export const headingDeg = (yaw) => ((Math.atan2(Math.sin(yaw), -Math.cos(yaw)) * 180) / Math.PI + 360) % 360;
@@ -37,48 +30,28 @@ const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 export const headingLabel = (yaw) => { const d = headingDeg(yaw); return `${DIRS[Math.round(d / 45) % 8]} ${String(Math.round(d) % 360).padStart(3, '0')}°`; };
 
 // ---------------------------------------------------------------- layout
-// Console geometry is authored in design units: x relative to the screen centre, y on a 0..1000
-// scale where 1000 is the bottom edge. It scales uniformly by k and stays anchored to the bottom, so
-// narrow screens get a smaller console and a taller porthole rather than a squashed one.
+// The whole screen is the viewing glass, held by a slim canopy frame; a low console runs along the
+// bottom. Console geometry is authored in design units (x relative to the screen centre, y on a
+// 0..1000 scale where 1000 is the bottom edge) and scales uniformly by k, anchored to the bottom.
 export function cockpitLayout(W, H, touch) {
   const full = H >= 560 && W >= 820 && W > H * 1.05;
-  const cx = W / 2;
-  const k = full ? Math.min(H / 1000, (W / 2 - 14) / 720) : Math.min((H / 1000) * 1.15, (W / 2 - 12) / 660);
-  const off = !full && touch ? -90 : 0; // phones: leave the bottom-right corner free for the touch buttons
+  const cx = W / 2, u = H / 1000;
+  const k = full ? Math.min(u * 0.95, (W / 2 - 14) / 730) : Math.min(u * 1.25, (W / 2 - 12) / 730);
+  const off = !full && touch ? -120 : 0; // phones: leave the bottom-right corner free for the touch buttons
   const X = (x) => cx + (x + off) * k, Y = (y) => H - (1000 - y) * k;
   const q = (ox, oy, ux, uy, vx, vy) => Q([X(ox), Y(oy)], [ux * k, uy * k], [vx * k, vy * k]);
   const L = { W, H, k, full, touch, cx, X, Y, q: {}, gauges: [] };
-  // round porthole: its lower part sits behind the console, the rest (frame included) stays on screen.
-  // Phones are short, so there the top of the glass may run slightly off the edge.
-  L.ft = Math.max(16, 44 * k);
-  const pb = Y(full ? 790 : 850); let pr = (pb - (8 + L.ft)) / 2; if (!full) pr = Math.max(pr, H * 0.44); pr = Math.min(pr, W * 0.42);
-  L.port = { cx, cy: pb - pr, r: pr };
-  L.hoodTop = Y(full ? 560 : 700);
-  const vt = Math.max(0, L.port.cy - pr);
-  L.ppY = (vt + L.hoodTop) / 2;
-  L.glass = { x0: cx - pr, y0: vt, x1: cx + pr, y1: L.hoodTop - 6 };
-  // ellipse inscribed in the visible glass, used to park off-screen target arrows
-  const hw = Math.sqrt(Math.max(0, pr * pr - (L.ppY - L.port.cy) ** 2));
-  L.ell = { cx, cy: L.ppY, rx: hw * 0.9, ry: ((L.hoodTop - vt) / 2) * 0.9 };
-  L.wallW = cx - pr - L.ft * 1.6; // free wall beside the porthole at its widest
-  { const x0 = Math.max(0, Math.floor(cx - pr)), x1 = Math.min(W, Math.ceil(cx + pr)), y0 = Math.max(0, Math.floor(L.port.cy - pr)), y1 = Math.min(H, Math.ceil(Math.min(L.port.cy + pr, Y(full ? 668 : 752) + 2)));
-    L.view = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }; } // screen area the 3D view has to cover
-  if (full) {
-    L.q.scrC = q(-300, 598, 600, 0, 0, 212);
-    L.q.annun = q(-300, 826, 600, 0, 0, 22);
-    const sh = touch ? 186 : 200;
-    L.q.scrL = q(-704, 606, 322, -26, 20, sh);
-    L.q.scrR = q(382, 580, 322, 26, -20, sh);
-    ['depth', 'compass', 'speed'].forEach((kind, i) => L.gauges.push({ x: X((i - 1) * 196), y: Y(930), r: 64 * k, kind }));
-    L.q.btn = q(-716, 880, 170, 0, 0, 94);
-    if (!touch) { L.q.bal = q(560, 880, 156, 0, 0, 94); L.q.stickL = q(-620, 800, 280, 0, 0, 214); L.q.stickR = q(340, 800, 280, 0, 0, 214); }
-  } else {
-    L.q.scrC = q(-265, 728, 530, 0, 0, 188);
-    L.q.annun = q(-265, 932, 530, 0, 0, 24);
-    L.q.scrL = q(-640, 758, 300, -20, 12, 196);
-    if (!touch) L.q.scrR = q(340, 738, 300, 20, -12, 196);
-  }
-  if (L.wallW >= 80) { const lw = Math.min(88, L.wallW - 24), lh = lw * 1.25; L.q.lcd = Q([(L.wallW - lw) / 2, L.port.cy - lh * 0.8], [lw, 0], [0, lh]); }
+  L.fw = Math.max(7, 13 * k);
+  L.deskTop = Y(812); L.hoodTop = Y(770);
+  L.win = { x: L.fw, y: L.fw, w: W - L.fw * 2, h: L.deskTop - L.fw + 40 * k, r: Math.max(16, 38 * k) };
+  L.ppY = (L.fw + L.hoodTop) / 2;
+  L.glass = { x0: L.fw, y0: L.fw, x1: W - L.fw, y1: L.hoodTop };
+  L.view = { x: 0, y: 0, w: W, h: Math.min(H, Math.ceil(L.deskTop + 2)) }; // screen area the 3D view has to cover
+  L.q.scrC = q(-236, 788, 472, 0, 0, 158);
+  L.q.annun = q(-236, 956, 472, 0, 0, 22);
+  L.q.scrL = q(-716, 800, 286, -18, 12, 160);
+  if (!touch) L.q.scrR = q(430, 782, 286, 18, -12, 160);
+  if (full) { L.gauges.push({ x: X(-346), y: Y(890), r: 54 * k, kind: 'depth' }); if (!touch) L.gauges.push({ x: X(346), y: Y(890), r: 54 * k, kind: 'speed' }); }
   return L;
 }
 
@@ -88,160 +61,96 @@ export function drawCockpit(cv, L, pr, tier) {
   cv.width = Math.round(W * pr); cv.height = Math.round(H * pr);
   const c = cv.getContext('2d'); c.setTransform(pr, 0, 0, pr, 0, 0); c.clearRect(0, 0, W, H);
   const rng = mulberry32(99 + tier);
-  c.fillStyle = lin(c, 0, 0, 0, H, [[0, '#1b232b'], [0.55, '#11171d'], [1, '#07090c']]); c.fillRect(0, 0, W, H);
-  c.globalAlpha = 0.035; c.fillStyle = '#ffffff'; for (let i = 0; i < (W * H) / 900; i++) c.fillRect(rng() * W, rng() * H, 1, 1); c.globalAlpha = 1;
-  walls(c, L);
-  const P = L.port; c.save(); c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(P.cx, P.cy, P.r, 0, TAU); c.fill(); c.restore();
-  glassFx(c, L, rng, tier);
-  frame(c, L);
+  canopy(c, L, rng, tier);
   consoleBody(c, L, pr);
 }
 
-function walls(c, L) {
-  const { W, H, k, port: P, ft } = L;
-  // light from the porthole falling on the hull around it
-  const g = c.createRadialGradient(P.cx, P.cy, P.r, P.cx, P.cy, P.r * 2.1); g.addColorStop(0, 'rgba(70,140,180,.13)'); g.addColorStop(1, 'rgba(70,140,180,0)'); c.fillStyle = g; c.fillRect(0, 0, W, H);
-  // hull plating seams with rivet rows
-  const seams = [W * 0.035, W * 0.2, W * 0.8, W * 0.965];
-  c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 1.5;
-  for (const x of seams) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); c.strokeStyle = 'rgba(255,255,255,.05)'; c.beginPath(); c.moveTo(x + 1.5, 0); c.lineTo(x + 1.5, H); c.stroke(); c.strokeStyle = 'rgba(0,0,0,.5)'; }
-  for (const y of [H * 0.24, H * 0.52]) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
-  const rs = Math.max(26, 34 * k);
-  for (const x of seams) for (let y = rs / 2; y < H; y += rs) screw(c, x + 7 * k, y, Math.max(1.6, 2.4 * k));
-  for (const y of [H * 0.24, H * 0.52]) for (let x = rs / 2; x < W; x += rs) screw(c, x, y + 7 * k, Math.max(1.6, 2.4 * k));
-  // conduits running down the far edges
-  for (const side of [-1, 1]) {
-    c.save(); if (side > 0) { c.translate(W, 0); c.scale(-1, 1); }
-    for (const [px, pw] of [[W * 0.012 + 6 * k, Math.max(6, 13 * k)], [W * 0.012 + 24 * k, Math.max(4, 8 * k)]]) {
-      c.fillStyle = lin(c, px - pw / 2, 0, px + pw / 2, 0, [[0, '#07090b'], [0.35, '#46525d'], [0.55, '#2a333c'], [1, '#06080a']]); c.fillRect(px - pw / 2, 0, pw, H);
-    }
-    for (let y = H * 0.1; y < H; y += H * 0.2) { c.fillStyle = '#20282f'; c.fillRect(W * 0.012 - 4 * k, y, 40 * k, 7 * k); c.fillStyle = 'rgba(255,255,255,.08)'; c.fillRect(W * 0.012 - 4 * k, y, 40 * k, 1); }
-    c.restore();
+function canopy(c, L, rng, tier) {
+  const { W, H, k, win, fw } = L, g0 = L.hoodTop;
+  // frame: paint the metal, then cut the glass out of it
+  c.fillStyle = lin(c, 0, 0, 0, H, [[0, '#2c3640'], [0.6, '#1b2229'], [1, '#0e1216']]); c.fillRect(0, 0, W, H);
+  c.globalAlpha = 0.05; c.fillStyle = '#ffffff'; for (let i = 0; i < (W + H) * 1.5; i++) { const t = rng(); const x = t < 0.5 ? rng() * W : rng() < 0.5 ? rng() * fw : W - rng() * fw, y = t < 0.5 ? rng() * fw : rng() * H; c.fillRect(x, y, 1, 1); } c.globalAlpha = 1;
+  c.save(); c.globalCompositeOperation = 'destination-out'; rr(c, win.x, win.y, win.w, win.h, win.r); c.fill(); c.restore();
+  // glass
+  c.save(); rr(c, win.x, win.y, win.w, win.h, win.r); c.clip();
+  const cx = W / 2, cy = L.ppY, rg = c.createRadialGradient(cx, cy, Math.min(W, g0) * 0.42, cx, cy, Math.hypot(W / 2, g0 / 2) * 1.08);
+  rg.addColorStop(0, 'rgba(0,0,0,0)'); rg.addColorStop(1, 'rgba(0,12,18,.55)'); c.fillStyle = rg; c.fillRect(0, 0, W, H);
+  c.fillStyle = lin(c, 0, 0, 0, H * 0.14, [[0, 'rgba(200,235,255,.06)'], [1, 'rgba(200,235,255,0)']]); c.fillRect(0, 0, W, H * 0.14);
+  c.fillStyle = lin(c, 0, g0, 0, g0 - H * 0.14, [[0, 'rgba(80,160,220,.09)'], [1, 'rgba(80,160,220,0)']]); c.fillRect(0, g0 - H * 0.14, W, H * 0.14);
+  // reflections: two broad diagonal bands and a thin one
+  for (const [x0, w0, a] of [[0.08, 0.1, 0.035], [0.2, 0.025, 0.045], [0.7, 0.07, 0.025]]) {
+    c.fillStyle = lin(c, W * x0, 0, W * (x0 + w0), 0, [[0, 'rgba(210,240,255,0)'], [0.5, `rgba(210,240,255,${a})`], [1, 'rgba(210,240,255,0)']]);
+    c.beginPath(); c.moveTo(W * x0 + H * 0.3, 0); c.lineTo(W * (x0 + w0) + H * 0.3, 0); c.lineTo(W * (x0 + w0) - H * 0.12, g0); c.lineTo(W * x0 - H * 0.12, g0); c.closePath(); c.fill();
   }
-  // right wall: oxygen dial with a name plate (the left wall carries the depth LCD)
-  if (L.full && L.wallW >= 80) {
-    const x = W - L.wallW / 2, y = P.cy - 10 * k, r = Math.min(L.wallW * 0.3, 40 * k + 8);
-    c.save(); c.shadowColor = 'rgba(0,0,0,.7)'; c.shadowBlur = 10 * k; c.fillStyle = lin(c, x - r, y - r, x + r, y + r, [[0, '#6c7883'], [1, '#161c21']]); c.beginPath(); c.arc(x, y, r + 5, 0, TAU); c.fill(); c.restore();
-    c.fillStyle = '#05090a'; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
-    c.strokeStyle = 'rgba(190,255,225,.55)'; c.lineWidth = 1; for (let i = 0; i <= 8; i++) { const a = Math.PI * 0.75 + (i / 8) * Math.PI * 1.5; c.beginPath(); c.moveTo(x + Math.cos(a) * r * 0.72, y + Math.sin(a) * r * 0.72); c.lineTo(x + Math.cos(a) * r * 0.88, y + Math.sin(a) * r * 0.88); c.stroke(); }
-    c.strokeStyle = '#6ff7c8'; c.lineWidth = 1.6; c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(-0.6) * r * 0.78, y + Math.sin(-0.6) * r * 0.78); c.stroke();
-    txt(c, 'O₂', x, y + r * 0.55, Math.max(8, r * 0.32), 'rgba(190,255,225,.6)', 'center', SANS, 700);
-    for (const [px, pw, lab] of [[W - L.wallW / 2, Math.min(L.wallW - 24, 110 * k), 'DSV-01 DEEP BLUE']]) {
-      const py = y + r + 22 * k, ph = Math.max(14, 20 * k); c.fillStyle = lin(c, 0, py, 0, py + ph, [[0, '#3a444e'], [1, '#1c2329']]); rr(c, px - pw / 2, py, pw, ph, 3); c.fill();
-      c.strokeStyle = 'rgba(0,0,0,.6)'; c.lineWidth = 1; c.stroke(); txt(c, lab, px, py + ph * 0.68, Math.min(ph * 0.5, pw / (lab.length * 0.72)), 'rgba(220,230,238,.55)', 'center', SANS, 800);
-    }
-  }
-}
-
-function glassFx(c, L, rng, tier) {
-  const { W, H, port: P } = L;
-  c.save(); c.beginPath(); c.arc(P.cx, P.cy, P.r, 0, TAU); c.clip();
-  const rg = c.createRadialGradient(P.cx, P.cy, P.r * 0.55, P.cx, P.cy, P.r); rg.addColorStop(0, 'rgba(0,0,0,0)'); rg.addColorStop(1, 'rgba(0,8,14,.6)'); c.fillStyle = rg; c.fillRect(0, 0, W, H);
-  for (const [x0, w0, a] of [[-0.62, 0.16, 0.05], [-0.4, 0.05, 0.045], [0.42, 0.1, 0.03]]) {
-    const xa = P.cx + x0 * P.r, xb = xa + w0 * P.r, t = P.cy - P.r, bt = P.cy + P.r;
-    c.fillStyle = lin(c, xa, 0, xb, 0, [[0, 'rgba(210,240,255,0)'], [0.5, `rgba(210,240,255,${a})`], [1, 'rgba(210,240,255,0)']]);
-    c.beginPath(); c.moveTo(xa + P.r * 0.35, t); c.lineTo(xb + P.r * 0.35, t); c.lineTo(xb - P.r * 0.35, bt); c.lineTo(xa - P.r * 0.35, bt); c.closePath(); c.fill();
-  }
-  // curved highlight along the upper-left rim
-  c.strokeStyle = 'rgba(210,240,255,.08)'; c.lineWidth = P.r * 0.05; c.beginPath(); c.arc(P.cx, P.cy, P.r * 0.93, Math.PI * 1.08, Math.PI * 1.42); c.stroke();
+  for (const [x, y] of [[win.x, win.y], [win.x + win.w, win.y]]) { const g = c.createRadialGradient(x, y, 0, x, y, H * 0.3); g.addColorStop(0, 'rgba(210,240,255,.07)'); g.addColorStop(1, 'rgba(210,240,255,0)'); c.fillStyle = g; c.fillRect(x - H * 0.3, y - H * 0.3, H * 0.6, H * 0.6); }
+  // smudges and hairline scratches
+  for (let i = 0; i < 6; i++) { const x = rng() * W, y = rng() * g0, r = (40 + rng() * 90) * k; const g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(220,235,245,.025)'); g.addColorStop(1, 'rgba(220,235,245,0)'); c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2); }
+  c.strokeStyle = 'rgba(230,245,255,.06)'; c.lineWidth = 0.8; for (let i = 0; i < 10; i++) { const x = rng() * W, y = rng() * g0, a = rng() * Math.PI, l = (20 + rng() * 60) * k; c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + Math.cos(a + 0.3) * l * 0.5, y + Math.sin(a + 0.3) * l * 0.5, x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke(); }
   if (tier > 0) {
     const n = tier === 1 ? 2 : 5;
     for (let i = 0; i < n; i++) {
-      const th = Math.PI * (1.05 + rng() * 0.9), x = P.cx + Math.cos(th) * P.r, y = P.cy + Math.sin(th) * P.r;
-      const a = Math.atan2(P.cy - y, P.cx - x) + (rng() - 0.5) * 1.2;
+      const edge = (rng() * 3) | 0, x = edge === 0 ? win.x : edge === 1 ? win.x + win.w : win.x + rng() * win.w, y = edge === 2 ? win.y : win.y + rng() * g0 * 0.85;
+      const a = Math.atan2(cy - y, cx - x) + (rng() - 0.5) * 1.2;
       const draw = (x, y, a, len, depth) => { const pts = [[x, y]]; for (let s = 0; s < 7; s++) { a += (rng() - 0.5) * 0.7; x += (Math.cos(a) * len) / 7; y += (Math.sin(a) * len) / 7; pts.push([x, y]); }
         for (const [col, w, dx] of [['rgba(0,0,0,.5)', 2.2, 1], ['rgba(230,245,255,.75)', 1.1, 0]]) { c.strokeStyle = col; c.lineWidth = w; c.beginPath(); pts.forEach(([px, py], j) => (j ? c.lineTo(px + dx, py + dx) : c.moveTo(px + dx, py + dx))); c.stroke(); }
         if (depth > 0) for (let b = 0; b < 2; b++) { const p = pts[2 + ((rng() * 4) | 0)]; draw(p[0], p[1], a + (rng() - 0.5) * 2, len * 0.5, depth - 1); } };
-      draw(x, y, a, P.r * (0.35 + rng() * 0.35), 2);
+      draw(x, y, a, Math.min(W, H) * (0.18 + rng() * 0.2), 2);
     }
   }
   c.restore();
-}
-
-function frame(c, L) {
-  const { port: P, ft, k } = L, R0 = P.r, R1 = P.r + ft, R2 = R1 + Math.max(10, 24 * k);
-  const ring = (a, b) => { c.beginPath(); c.arc(P.cx, P.cy, b, 0, TAU); c.arc(P.cx, P.cy, a, 0, TAU, true); };
-  // doubler plate welded round the opening
-  c.save(); c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 18 * k; c.shadowOffsetY = 5 * k; ring(R1, R2);
-  c.fillStyle = lin(c, P.cx - R2, P.cy - R2, P.cx + R2, P.cy + R2, [[0, '#35414c'], [0.5, '#222a32'], [1, '#141a1f']]); c.fill(); c.restore();
-  c.strokeStyle = 'rgba(0,0,0,.6)'; c.lineWidth = 1; c.beginPath(); c.arc(P.cx, P.cy, R2, 0, TAU); c.stroke();
-  c.strokeStyle = 'rgba(200,225,240,.1)'; c.beginPath(); c.arc(P.cx, P.cy, R2 - 1.5, Math.PI * 0.9, Math.PI * 1.7); c.stroke();
-  const nr = Math.max(16, Math.round((TAU * (R1 + R2) * 0.5) / Math.max(22, 30 * k)));
-  for (let i = 0; i < nr; i++) { const a = (i / nr) * TAU, rr0 = (R1 + R2) / 2; screw(c, P.cx + Math.cos(a) * rr0, P.cy + Math.sin(a) * rr0, Math.max(1.5, 2.4 * k)); }
-  // main frame ring
-  c.save(); c.shadowColor = 'rgba(0,0,0,.75)'; c.shadowBlur = 16 * k; c.shadowOffsetY = 4 * k; ring(R0, R1);
-  c.fillStyle = lin(c, P.cx - R1, P.cy - R1, P.cx + R1, P.cy + R1, [[0, '#5d6a76'], [0.45, '#2e3842'], [1, '#161c21']]); c.fill(); c.restore();
-  const m = R0 + ft * 0.46; c.lineWidth = 1.2;
-  c.strokeStyle = 'rgba(0,0,0,.55)'; c.beginPath(); c.arc(P.cx, P.cy, m, 0, TAU); c.stroke();
-  c.strokeStyle = 'rgba(200,225,240,.14)'; c.beginPath(); c.arc(P.cx, P.cy, m + 1.5, 0, TAU); c.stroke();
-  c.strokeStyle = 'rgba(220,235,245,.22)'; c.lineWidth = 1.5; c.beginPath(); c.arc(P.cx, P.cy, R1 - 1, Math.PI * 1.0, Math.PI * 1.6); c.stroke();
-  c.lineWidth = 1; c.strokeStyle = 'rgba(0,0,0,.7)'; c.beginPath(); c.arc(P.cx, P.cy, R1, 0, TAU); c.stroke();
-  // rubber gasket + glass edge
-  c.lineWidth = Math.max(3, 7 * k); c.strokeStyle = '#040607'; c.beginPath(); c.arc(P.cx, P.cy, R0, 0, TAU); c.stroke();
-  c.lineWidth = 1.2; c.strokeStyle = 'rgba(170,220,245,.25)'; c.beginPath(); c.arc(P.cx, P.cy, R0 - 3 * k - 1, 0, TAU); c.stroke();
-  const bm = R0 + ft * 0.73, nb = Math.max(12, Math.round((TAU * bm) / Math.max(40, 62 * k)));
-  for (let i = 0; i < nb; i++) { const a = (i / nb) * TAU + 0.1; bolt(c, P.cx + Math.cos(a) * bm, P.cy + Math.sin(a) * bm, Math.max(3, 6.5 * k)); }
+  // gasket, glass edge highlight and frame bolts
+  c.lineWidth = Math.max(2.5, 5 * k); c.strokeStyle = '#040607'; rr(c, win.x, win.y, win.w, win.h, win.r); c.stroke();
+  c.lineWidth = 1; c.strokeStyle = 'rgba(170,220,245,.22)'; rr(c, win.x + 3, win.y + 3, win.w - 6, win.h - 6, win.r - 3); c.stroke();
+  c.strokeStyle = 'rgba(210,230,245,.16)'; c.beginPath(); c.moveTo(0, 0.5); c.lineTo(W, 0.5); c.stroke();
+  const br = Math.max(1.8, 3 * k), step = Math.max(90, 150 * k);
+  for (let x = win.r + step / 2; x < W - win.r; x += step) screw(c, x, fw / 2, br);
+  for (let y = win.r + step / 2; y < L.deskTop - 10; y += step) { screw(c, fw / 2, y, br); screw(c, W - fw / 2, y, br); }
 }
 
 function consoleBody(c, L, pr) {
   const { W, H, k, X, Y, full } = L;
-  // desk: a rounded lip across the width and the vertical face below it
-  const yb = Y(full ? 668 : 752), lip = 14 * k;
-  c.save(); c.shadowColor = 'rgba(0,0,0,.8)'; c.shadowBlur = 30 * k; c.shadowOffsetY = -4 * k;
-  c.fillStyle = lin(c, 0, yb, 0, H, [[0, '#343f4a'], [lip / (H - yb), '#1c242b'], [0.35, '#141a20'], [1, '#07090b']]); c.fillRect(0, yb, W, H - yb); c.restore();
-  c.fillStyle = 'rgba(190,215,235,.18)'; c.fillRect(0, yb, W, 1);
+  // desk: rounded lip across the width and the vertical face below it
+  const yb = L.deskTop, lip = 12 * k;
+  c.save(); c.shadowColor = 'rgba(0,0,0,.8)'; c.shadowBlur = 26 * k; c.shadowOffsetY = -4 * k;
+  c.fillStyle = lin(c, 0, yb, 0, H, [[0, '#36414c'], [Math.min(0.9, lip / (H - yb)), '#1d252c'], [0.5, '#141a20'], [1, '#07090b']]); c.fillRect(0, yb, W, H - yb); c.restore();
+  c.fillStyle = 'rgba(190,215,235,.2)'; c.fillRect(0, yb, W, 1);
   c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 1.5;
-  for (const x of full ? [-400, 400, -740, 740] : [-330, 330]) { const px = X(x); if (px < 0 || px > W) continue; c.beginPath(); c.moveTo(px, yb + lip); c.lineTo(px, H); c.stroke(); }
-  for (let x = -900; x <= 900; x += 150) { const px = X(x); if (px > 8 && px < W - 8) screw(c, px, yb + lip + 8 * k, Math.max(2, 3 * k)); }
-  // centre hood
-  const ht = full ? 560 : 700, hb = full ? 862 : 1000, hw0 = full ? 338 : 292, hw1 = full ? 352 : 316;
-  const hood = () => { c.beginPath(); c.moveTo(X(-hw1), Y(hb)); c.lineTo(X(-hw0), Y(ht + 18)); c.quadraticCurveTo(X(-hw0), Y(ht), X(-hw0 + 20), Y(ht)); c.lineTo(X(hw0 - 20), Y(ht)); c.quadraticCurveTo(X(hw0), Y(ht), X(hw0), Y(ht + 18)); c.lineTo(X(hw1), Y(hb)); c.closePath(); };
-  c.save(); c.shadowColor = 'rgba(0,0,0,.75)'; c.shadowBlur = 26 * k; c.shadowOffsetY = 8 * k; hood();
-  c.fillStyle = lin(c, 0, Y(ht), 0, Y(hb), [[0, '#2f3943'], [0.2, '#232b33'], [1, '#161b21']]); c.fill(); c.restore();
+  for (const x of [-420, 420, -760, 760]) { const px = X(x); if (px < 0 || px > W) continue; c.beginPath(); c.moveTo(px, yb + lip); c.lineTo(px, H); c.stroke(); }
+  for (let x = -900; x <= 900; x += 150) { const px = X(x); if (px > 8 && px < W - 8) screw(c, px, yb + lip + 7 * k, Math.max(1.8, 2.6 * k)); }
+  // centre hood carrying the nav screen
+  const ht = 770, hw0 = 262, hw1 = 280;
+  const hood = () => { c.beginPath(); c.moveTo(X(-hw1), Y(1000)); c.lineTo(X(-hw0), Y(ht + 14)); c.quadraticCurveTo(X(-hw0), Y(ht), X(-hw0 + 16), Y(ht)); c.lineTo(X(hw0 - 16), Y(ht)); c.quadraticCurveTo(X(hw0), Y(ht), X(hw0), Y(ht + 14)); c.lineTo(X(hw1), Y(1000)); c.closePath(); };
+  c.save(); c.shadowColor = 'rgba(0,0,0,.75)'; c.shadowBlur = 22 * k; c.shadowOffsetY = 6 * k; hood();
+  c.fillStyle = lin(c, 0, Y(ht), 0, H, [[0, '#303a44'], [0.2, '#232b33'], [1, '#12171c']]); c.fill(); c.restore();
   hood(); c.save(); c.clip(); c.fillStyle = lin(c, X(-hw1), 0, X(hw1), 0, [[0, 'rgba(255,255,255,.05)'], [0.1, 'rgba(0,0,0,0)'], [0.9, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,.3)']]); c.fillRect(0, 0, W, H); c.restore();
-  c.strokeStyle = 'rgba(190,215,235,.3)'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(X(-hw0), Y(ht + 18)); c.quadraticCurveTo(X(-hw0), Y(ht), X(-hw0 + 20), Y(ht)); c.lineTo(X(hw0 - 20), Y(ht)); c.quadraticCurveTo(X(hw0), Y(ht), X(hw0), Y(ht + 18)); c.stroke();
-  // gauge plate
-  if (full) {
-    const gp = () => { c.beginPath(); c.moveTo(X(-372), Y(850)); c.lineTo(X(372), Y(850)); c.lineTo(X(392), Y(1000)); c.lineTo(X(-392), Y(1000)); c.closePath(); };
-    c.save(); c.shadowColor = 'rgba(0,0,0,.7)'; c.shadowBlur = 20 * k; gp(); c.fillStyle = lin(c, 0, Y(850), 0, Y(1000), [[0, '#2a333c'], [0.12, '#1c232a'], [1, '#0c1014']]); c.fill(); c.restore();
-    c.fillStyle = 'rgba(190,215,235,.22)'; c.fillRect(X(-372), Y(850), 744 * k, 1);
-    for (const g of L.gauges) {
-      const R = g.r + 9 * k;
-      c.save(); c.shadowColor = 'rgba(0,0,0,.8)'; c.shadowBlur = 12 * k; c.shadowOffsetY = 4 * k;
-      c.fillStyle = lin(c, g.x - R, g.y - R, g.x + R, g.y + R, [[0, '#7a8793'], [0.45, '#35404a'], [1, '#12171b']]); c.beginPath(); c.arc(g.x, g.y, R, 0, TAU); c.fill(); c.restore();
-      c.fillStyle = '#020304'; c.beginPath(); c.arc(g.x, g.y, g.r + 1.5, 0, TAU); c.fill();
-      for (let i = 0; i < 4; i++) { const a = Math.PI / 4 + (i * Math.PI) / 2; screw(c, g.x + Math.cos(a) * (g.r + 4.5 * k), g.y + Math.sin(a) * (g.r + 4.5 * k), Math.max(1.6, 2.4 * k)); }
-    }
+  c.strokeStyle = 'rgba(190,215,235,.3)'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(X(-hw0), Y(ht + 14)); c.quadraticCurveTo(X(-hw0), Y(ht), X(-hw0 + 16), Y(ht)); c.lineTo(X(hw0 - 16), Y(ht)); c.quadraticCurveTo(X(hw0), Y(ht), X(hw0), Y(ht + 14)); c.stroke();
+  // gauge bezels
+  for (const g of L.gauges) {
+    const R = g.r + 8 * k;
+    c.save(); c.shadowColor = 'rgba(0,0,0,.8)'; c.shadowBlur = 10 * k; c.shadowOffsetY = 3 * k;
+    c.fillStyle = lin(c, g.x - R, g.y - R, g.x + R, g.y + R, [[0, '#7a8793'], [0.45, '#35404a'], [1, '#12171b']]); c.beginPath(); c.arc(g.x, g.y, R, 0, TAU); c.fill(); c.restore();
+    c.fillStyle = '#020304'; c.beginPath(); c.arc(g.x, g.y, g.r + 1.5, 0, TAU); c.fill();
+    for (let i = 0; i < 4; i++) { const a = Math.PI / 4 + (i * Math.PI) / 2; screw(c, g.x + Math.cos(a) * (g.r + 4 * k), g.y + Math.sin(a) * (g.r + 4 * k), Math.max(1.4, 2.1 * k)); }
   }
   // screen housings
   const housing = (q, b, label) => {
     inQuad(c, pr, q, (w, h) => {
-      c.save(); c.shadowColor = 'rgba(0,0,0,.8)'; c.shadowBlur = 22 * k; c.shadowOffsetY = 8 * k;
-      rr(c, -b, -b, w + b * 2, h + b * 2, 12 * k); c.fillStyle = lin(c, 0, -b, 0, h + b, [[0, '#333e48'], [0.1, '#232b33'], [1, '#12171c']]); c.fill(); c.restore();
-      c.strokeStyle = 'rgba(190,215,235,.22)'; c.lineWidth = 1; rr(c, -b + 0.5, -b + 0.5, w + b * 2 - 1, h + b * 2 - 1, 12 * k); c.stroke();
-      rr(c, -4 * k, -4 * k, w + 8 * k, h + 8 * k, 5 * k); c.fillStyle = '#020304'; c.fill();
-      for (const [sx, sy] of [[-b * 0.55, -b * 0.55], [w + b * 0.55, -b * 0.55], [-b * 0.55, h + b * 0.55], [w + b * 0.55, h + b * 0.55]]) screw(c, sx, sy, Math.max(1.6, 2.6 * k));
-      if (label) txt(c, label, w / 2, h + b * 0.72, Math.max(7, 9 * k), 'rgba(200,220,235,.38)', 'center', SANS, 700);
+      c.save(); c.shadowColor = 'rgba(0,0,0,.8)'; c.shadowBlur = 18 * k; c.shadowOffsetY = 6 * k;
+      rr(c, -b, -b, w + b * 2, h + b * 2, 10 * k); c.fillStyle = lin(c, 0, -b, 0, h + b, [[0, '#333e48'], [0.1, '#232b33'], [1, '#12171c']]); c.fill(); c.restore();
+      c.strokeStyle = 'rgba(190,215,235,.22)'; c.lineWidth = 1; rr(c, -b + 0.5, -b + 0.5, w + b * 2 - 1, h + b * 2 - 1, 10 * k); c.stroke();
+      rr(c, -3 * k, -3 * k, w + 6 * k, h + 6 * k, 4 * k); c.fillStyle = '#020304'; c.fill();
+      for (const [sx, sy] of [[-b * 0.55, -b * 0.55], [w + b * 0.55, -b * 0.55], [-b * 0.55, h + b * 0.55], [w + b * 0.55, h + b * 0.55]]) screw(c, sx, sy, Math.max(1.4, 2.3 * k));
+      if (label) txt(c, label, w / 2, h + b * 0.74, Math.max(7, 8 * k), 'rgba(200,220,235,.38)', 'center', SANS, 700);
     });
   };
-  housing(L.q.scrC, 16 * k, '');
-  if (L.q.scrL) housing(L.q.scrL, 18 * k, 'PROXIMITY SONAR');
-  if (L.q.scrR) housing(L.q.scrR, 18 * k, 'EXTERNAL CAMERA');
+  housing(L.q.scrC, 14 * k, '');
+  if (L.q.scrL) housing(L.q.scrL, 15 * k, 'PROXIMITY SONAR');
+  if (L.q.scrR) housing(L.q.scrR, 15 * k, 'EXTERNAL CAMERA');
   // soft light spill from the screens onto the console
   c.save(); c.globalCompositeOperation = 'source-atop';
   for (const q of [L.q.scrC, L.q.scrL, L.q.scrR]) { if (!q) continue; const [x, y] = [q.o[0] + (q.U[0] + q.V[0]) / 2, q.o[1] + (q.U[1] + q.V[1]) / 2], r = q.w * 0.9;
-    const g = c.createRadialGradient(x, y, r * 0.2, x, y, r); g.addColorStop(0, 'rgba(70,150,220,.10)'); g.addColorStop(1, 'rgba(70,150,220,0)'); c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2); }
+    if (y - r > H) continue; const g = c.createRadialGradient(x, y, r * 0.2, x, y, r); g.addColorStop(0, 'rgba(70,150,220,.10)'); g.addColorStop(1, 'rgba(70,150,220,0)'); c.fillStyle = g; c.fillRect(x - r, Math.max(yb, y - r), r * 2, r * 2); }
   c.restore();
-  // side panels
-  const plate = (q) => inQuad(c, pr, q, (w, h) => {
-    const b = 7 * k; c.save(); c.shadowColor = 'rgba(0,0,0,.7)'; c.shadowBlur = 14 * k; c.shadowOffsetY = 4 * k;
-    rr(c, -b, -b, w + b * 2, h + b * 2, 6 * k); c.fillStyle = lin(c, 0, -b, 0, h + b, [[0, '#2b343d'], [1, '#12171c']]); c.fill(); c.restore();
-    c.strokeStyle = 'rgba(190,215,235,.18)'; c.lineWidth = 1; rr(c, -b + 0.5, -b + 0.5, w + b * 2 - 1, h + b * 2 - 1, 6 * k); c.stroke();
-    for (const [sx, sy] of [[-b * 0.4, -b * 0.4], [w + b * 0.4, -b * 0.4]]) screw(c, sx, sy, Math.max(1.5, 2.2 * k));
-  });
-  if (L.q.btn) plate(L.q.btn);
-  if (L.q.bal) plate(L.q.bal);
-  if (L.q.lcd) inQuad(c, pr, L.q.lcd, (w, h) => { const b = 6; rr(c, -b, -b, w + b * 2, h + b * 2, 5); c.fillStyle = lin(c, 0, -b, 0, h + b, [[0, '#2e3842'], [1, '#12171c']]); c.fill(); c.strokeStyle = 'rgba(0,0,0,.6)'; c.stroke(); });
 }
 
 // ---------------------------------------------------------------- instruments
@@ -252,12 +161,6 @@ function screenGlass(c, w, h) {
   c.fillStyle = 'rgba(0,0,0,.16)'; for (let y = 0; y < h; y += 3) c.fillRect(0, y, w, 1);
   const g = c.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.hypot(w, h) * 0.6); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.42)'); c.fillStyle = g; c.fillRect(0, 0, w, h);
   c.fillStyle = lin(c, 0, 0, w * 0.55, h, [[0, 'rgba(255,255,255,.07)'], [0.4, 'rgba(255,255,255,.015)'], [0.41, 'rgba(255,255,255,0)']]); c.fillRect(0, 0, w, h);
-}
-function led(c, x, y, r, st) {
-  const col = LED[st]; c.save();
-  if (col) { c.shadowColor = col; c.shadowBlur = r * 3; c.fillStyle = col; } else c.fillStyle = '#18211c';
-  rr(c, x - r, y - r, r * 2, r * 2, r * 0.3); c.fill(); c.restore();
-  c.fillStyle = col ? 'rgba(255,255,255,.45)' : 'rgba(255,255,255,.06)'; c.fillRect(x - r * 0.6, y - r * 0.7, r * 1.2, r * 0.35);
 }
 const fmtN = (n) => Math.round(n).toLocaleString('en-US');
 const blinkOn = (t, hz = 1.6) => Math.floor(t * hz * 2) % 2 === 0;
@@ -419,95 +322,6 @@ export function drawGauge(c, S, kind, st) {
   c.restore();
 }
 
-function button(c, x, y, w, h, label, lit, s) {
-  c.save(); c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 3 * s; c.shadowOffsetY = 1.5 * s; rr(c, x, y, w, h, 3 * s); c.fillStyle = lin(c, 0, y, 0, y + h, [[0, '#2a3138'], [1, '#14181c']]); c.fill(); c.restore();
-  c.strokeStyle = 'rgba(255,255,255,.1)'; c.lineWidth = 1; rr(c, x + 0.5, y + 0.5, w - 1, h - 1, 3 * s); c.stroke();
-  const col = lit ? LED[lit] : null;
-  if (col) { c.save(); c.shadowColor = col; c.shadowBlur = 6 * s; txt(c, label, x + w / 2, y + h * 0.66, h * 0.44, col, 'center', SANS, 700); c.restore(); }
-  else txt(c, label, x + w / 2, y + h * 0.66, h * 0.44, 'rgba(210,222,230,.62)', 'center', SANS, 700);
-}
-export function drawBtnPanel(c, w, h, st) {
-  c.clearRect(0, 0, w, h); const s = h / 94, rh = h / 4, on = blinkOn(st.t, 1.2);
-  const rows = [['LIGHT', st.alive ? 'g' : ''], ['SONAR', st.sonarCd > 0 ? (on ? 'a' : '') : 'g'], ['CAMERA', st.camOn ? 'g' : 'a'], ['SYSTEM', st.sys === 'ok' ? 'g' : on ? (st.sys === 'bad' ? 'r' : 'a') : '']];
-  rows.forEach(([lab, stt], i) => { const y = i * rh + rh / 2; led(c, 9 * s, y, 4.2 * s, stt); button(c, 20 * s, y - rh * 0.38, w - 44 * s, rh * 0.76, lab, '', s);
-    c.fillStyle = stt ? 'rgba(255,190,90,.9)' : '#2a2418'; c.beginPath(); c.arc(w - 12 * s, y, 3.2 * s, 0, TAU); c.fill(); });
-}
-export function drawBallast(c, w, h, st) {
-  c.clearRect(0, 0, w, h); const s = h / 94, u = st.inp.u || 0, on = blinkOn(st.t, 1.4);
-  txt(c, 'BALLAST', 8 * s, 14 * s, 9 * s, 'rgba(210,222,230,.55)', 'left', SANS, 800);
-  const bw = w * 0.6; button(c, 6 * s, 22 * s, bw, 30 * s, '▲ BLOW', u > 0.2 ? 'c' : '', s); button(c, 6 * s, 58 * s, bw, 30 * s, '▼ FLOOD', u < -0.2 ? 'c' : '', s);
-  const ax = w - (w - bw - 6 * s) / 2, ay = 50 * s, ar = Math.min(15 * s, (w - bw) * 0.34), lit = st.alert && on;
-  c.fillStyle = '#1b1f23'; c.beginPath(); c.arc(ax, ay, ar + 3 * s, 0, TAU); c.fill();
-  c.save(); if (lit) { c.shadowColor = '#ff3b30'; c.shadowBlur = 16 * s; }
-  const g = c.createRadialGradient(ax - ar * 0.3, ay - ar * 0.3, ar * 0.1, ax, ay, ar); g.addColorStop(0, lit ? '#ffb3a8' : '#6a2522'); g.addColorStop(1, lit ? '#e0241b' : '#2a0d0c'); c.fillStyle = g;
-  c.beginPath(); c.arc(ax, ay, ar, 0, TAU); c.fill(); c.restore();
-  txt(c, 'ALARM', ax, ay + ar + 12 * s, 7.5 * s, 'rgba(210,222,230,.5)', 'center', SANS, 800);
-}
-export function drawLcd(c, w, h, st) {
-  screenBase(c, w, h, '#0b1f13', '#06120b'); const s = w / 80, col = '#7dffa8', dim = 'rgba(125,255,168,.6)';
-  c.save(); c.shadowColor = col; c.shadowBlur = 5 * s;
-  txt(c, 'DEPTH', 7 * s, 15 * s, 9 * s, dim, 'left', SANS, 700);
-  txt(c, st.depth.toFixed(1), w - 7 * s, 38 * s, 19 * s, col, 'right', MONO, 600); txt(c, 'm', w - 7 * s, 50 * s, 9 * s, dim, 'right');
-  c.fillStyle = 'rgba(125,255,168,.25)'; c.fillRect(7 * s, 57 * s, w - 14 * s, 1);
-  txt(c, 'P', 7 * s, 78 * s, 9 * s, dim, 'left', SANS, 700); txt(c, `${(1 + st.depth / 10).toFixed(1)}`, w - 7 * s, 78 * s, 13 * s, col, 'right', MONO, 600); txt(c, 'bar', w - 7 * s, 90 * s, 8 * s, dim, 'right');
-  c.restore(); screenGlass(c, w, h);
-}
-
-// joystick + gloved hand; side -1 = left, +1 = right. tx/ty in -1..1 (right, forward)
-export function drawStick(c, w, h, side, tx, ty, press) {
-  c.clearRect(0, 0, w, h); const z = h / 214;
-  c.save(); if (side > 0) { c.translate(w, 0); c.scale(-1, 1); tx = -tx; }
-  const bx = 160 * z, by = 180 * z;
-  // base
-  c.fillStyle = 'rgba(0,0,0,.5)'; c.beginPath(); c.ellipse(bx + 6 * z, by + 8 * z, 70 * z, 24 * z, 0, 0, TAU); c.fill();
-  c.fillStyle = lin(c, bx - 64 * z, 0, bx + 64 * z, 0, [[0, '#1a2026'], [0.35, '#4a5560'], [1, '#12171b']]); c.beginPath(); c.ellipse(bx, by, 64 * z, 21 * z, 0, 0, TAU); c.fill();
-  c.fillStyle = '#0b0e11'; c.beginPath(); c.ellipse(bx, by - 2 * z, 44 * z, 14 * z, 0, 0, TAU); c.fill();
-  for (let i = 0; i < 4; i++) { const a = Math.PI / 4 + (i * Math.PI) / 2; screw(c, bx + Math.cos(a) * 55 * z, by + Math.sin(a) * 17 * z, 2.4 * z); }
-  // rubber boot
-  const ax = bx + tx * 10 * z, ay = by - 30 * z + ty * 3 * z;
-  c.fillStyle = lin(c, bx - 36 * z, 0, bx + 36 * z, 0, [[0, '#07090b'], [0.4, '#262c32'], [1, '#07090b']]); c.beginPath(); c.moveTo(bx - 38 * z, by - 2 * z); c.quadraticCurveTo(bx - 30 * z, by - 20 * z, ax - 11 * z, ay); c.lineTo(ax + 11 * z, ay); c.quadraticCurveTo(bx + 30 * z, by - 20 * z, bx + 38 * z, by - 2 * z); c.closePath(); c.fill();
-  c.strokeStyle = 'rgba(255,255,255,.06)'; c.lineWidth = 1; for (let i = 1; i < 4; i++) { const t = i / 4, yy = by - 2 * z + (ay - by + 2 * z) * t, hw = (38 - 27 * t) * z; c.beginPath(); c.ellipse(bx + (ax - bx) * t, yy, hw, hw * 0.3, 0, 0, Math.PI); c.stroke(); }
-  // grip
-  const len = 112 * z * (1 - ty * 0.1);
-  c.save(); c.translate(ax, ay); c.rotate(tx * 0.26);
-  c.fillStyle = lin(c, -10 * z, 0, 10 * z, 0, [[0, '#8a939b'], [0.5, '#d5dbe0'], [1, '#5b646c']]); c.fillRect(-6 * z, -12 * z, 12 * z, 14 * z);
-  c.beginPath(); c.moveTo(-15 * z, -10 * z); c.bezierCurveTo(-19 * z, -len * 0.35, -15 * z, -len * 0.55, -19 * z, -len * 0.8); c.quadraticCurveTo(-22 * z, -len - 6 * z, 0, -len - 8 * z); c.quadraticCurveTo(22 * z, -len - 6 * z, 19 * z, -len * 0.8); c.bezierCurveTo(15 * z, -len * 0.55, 19 * z, -len * 0.35, 15 * z, -10 * z); c.closePath();
-  c.fillStyle = lin(c, -20 * z, 0, 20 * z, 0, [[0, '#050607'], [0.3, '#2c3238'], [0.5, '#1a1e22'], [1, '#040506']]); c.fill();
-  c.fillStyle = '#1b1f23'; c.beginPath(); c.ellipse(0, -len - 3 * z, 19 * z, 7 * z, 0, 0, TAU); c.fill();
-  c.save(); if (press) { c.shadowColor = '#ff3b30'; c.shadowBlur = 14 * z; }
-  const g = c.createRadialGradient(-2 * z, -len - 7 * z, 1, 1 * z, -len - 4 * z, 10 * z); g.addColorStop(0, press ? '#ffb0a6' : '#ff7a6e'); g.addColorStop(1, press ? '#e3261c' : '#9c1d17'); c.fillStyle = g;
-  c.beginPath(); c.ellipse(2 * z, -len - 5 * z, 9 * z, 5.5 * z, 0, 0, TAU); c.fill(); c.restore();
-  hand(c, z, len);
-  c.restore(); c.restore();
-}
-function hand(c, z, len) {
-  const Z = (v) => v * z;
-  // sleeve and cuff
-  c.fillStyle = lin(c, Z(-90), Z(220), Z(10), Z(0), [[0, '#05080b'], [0.7, '#141d26'], [1, '#213040']]);
-  c.beginPath(); c.moveTo(Z(-46), Z(-4)); c.bezierCurveTo(Z(-60), Z(50), Z(-84), Z(120), Z(-110), Z(240)); c.lineTo(Z(6), Z(240)); c.bezierCurveTo(Z(4), Z(120), Z(8), Z(50), Z(12), Z(2)); c.closePath(); c.fill();
-  c.strokeStyle = 'rgba(150,185,220,.22)'; c.lineWidth = Z(1.5); c.beginPath(); c.moveTo(Z(12), Z(4)); c.bezierCurveTo(Z(8), Z(50), Z(4), Z(120), Z(6), Z(240)); c.stroke();
-  c.fillStyle = '#0c1116'; c.beginPath(); c.moveTo(Z(-50), Z(-12)); c.lineTo(Z(14), Z(-6)); c.lineTo(Z(13), Z(10)); c.lineTo(Z(-52), Z(4)); c.closePath(); c.fill();
-  c.fillStyle = 'rgba(150,185,220,.18)'; c.fillRect(Z(-50), Z(-12), Z(64), Z(1.2));
-  // back of the hand on the outer side of the grip
-  c.beginPath(); c.moveTo(Z(-46), Z(-10)); c.bezierCurveTo(Z(-60), Z(-34), Z(-58), Z(-68), Z(-42), Z(-86)); c.quadraticCurveTo(Z(-30), Z(-92), Z(-20), Z(-84)); c.lineTo(Z(-16), Z(-8)); c.closePath();
-  c.fillStyle = lin(c, Z(-60), Z(-90), Z(-16), Z(-10), [[0, '#626b75'], [0.4, '#3a4149'], [1, '#1a1e23']]); c.fill(); c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1; c.stroke();
-  // four fingers wrapped across the grip, index finger on top
-  for (const [y, t] of [[-73, 13], [-58, 14], [-43, 14], [-28, 13]]) {
-    const x0 = -44, x1 = 24, r = t / 2;
-    c.beginPath(); c.moveTo(Z(x0), Z(y - r)); c.bezierCurveTo(Z(-12), Z(y - r - 3), Z(10), Z(y - r - 1), Z(x1 - r), Z(y - r + 1)); c.arc(Z(x1 - r), Z(y + 1), Z(r), -Math.PI / 2, Math.PI / 2); c.bezierCurveTo(Z(10), Z(y + r + 2), Z(-12), Z(y + r + 2), Z(x0), Z(y + r)); c.closePath();
-    c.fillStyle = lin(c, 0, Z(y - r), 0, Z(y + r), [[0, '#6a737d'], [0.35, '#40474f'], [1, '#1b1f24']]); c.fill(); c.strokeStyle = 'rgba(0,0,0,.6)'; c.lineWidth = 1; c.stroke();
-    c.fillStyle = 'rgba(210,230,245,.16)'; c.beginPath(); c.ellipse(Z(x0 + 7), Z(y - r * 0.35), Z(5), Z(r * 0.35), 0, 0, TAU); c.fill();
-    c.strokeStyle = 'rgba(0,0,0,.35)'; c.beginPath(); c.moveTo(Z(-4), Z(y - r + 1)); c.lineTo(Z(-5), Z(y + r - 1)); c.stroke();
-  }
-  // thumb over the top of the grip, resting beside the button
-  const tip = [-7, -len / z - 1];
-  c.lineCap = 'round';
-  c.strokeStyle = '#1a1e23'; c.lineWidth = Z(19); c.beginPath(); c.moveTo(Z(-40), Z(-70)); c.quadraticCurveTo(Z(-36), Z(tip[1] + 2), Z(tip[0]), Z(tip[1])); c.stroke();
-  c.strokeStyle = '#48505a'; c.lineWidth = Z(16); c.beginPath(); c.moveTo(Z(-40), Z(-70)); c.quadraticCurveTo(Z(-36), Z(tip[1] + 2), Z(tip[0]), Z(tip[1])); c.stroke();
-  c.strokeStyle = 'rgba(210,230,245,.22)'; c.lineWidth = Z(3); c.beginPath(); c.moveTo(Z(-44), Z(-74)); c.quadraticCurveTo(Z(-40), Z(tip[1] - 2), Z(tip[0] - 2), Z(tip[1] - 5)); c.stroke();
-  c.lineCap = 'butt';
-}
-
 // ---------------------------------------------------------------- instrument manager
 export class CockpitUI {
   constructor(root) { this.root = root; this.cv = {}; this.acc = {}; this.sig = {}; this.L = null; this.dpr = 1; }
@@ -520,7 +334,7 @@ export class CockpitUI {
     for (const [id, q] of Object.entries(want)) {
       let el = this.cv[id]; if (!el) { el = document.createElement('canvas'); el.dataset.id = id; this.root.appendChild(el); this.cv[id] = el; }
       el.width = Math.max(1, Math.round(q.w * dpr)); el.height = Math.max(1, Math.round(q.h * dpr)); el.style.width = q.w + 'px'; el.style.height = q.h + 'px';
-      el.style.transform = `matrix(${quadMatrix(q).map((v) => +v.toFixed(5)).join(',')})`; el.style.zIndex = id.startsWith('stick') ? 2 : id === 'cam' ? 0 : 1; el._q = q;
+      el.style.transform = `matrix(${quadMatrix(q).map((v) => +v.toFixed(5)).join(',')})`; el.style.zIndex = id === 'cam' ? 0 : 1; el._q = q;
       if (id === 'cam') el.style.filter = 'grayscale(.55) contrast(1.2) brightness(.95)';
     }
     this.acc = {}; this.sig = {};
@@ -533,15 +347,8 @@ export class CockpitUI {
     this.run('scrL', 1 / 20, dt, (c, w, h) => drawRadarScr(c, w, h, st));
     this.run('scrC', 1 / 12, dt, (c, w, h) => drawNav(c, w, h, st));
     this.run('scrR', 1 / 4, dt, (c, w, h) => drawCamOverlay(c, w, h, st));
-    this.run('lcd', 1 / 5, dt, (c, w, h) => drawLcd(c, w, h, st));
     this.L.gauges.forEach((g, i) => this.run('g' + i, 1 / 30, dt, (c, w) => drawGauge(c, w, g.kind, st)));
-    const bl = blinkOn(st.t, 1.2) ? 1 : 0, bl2 = blinkOn(st.t, 1.4) ? 1 : 0;
+    const bl = blinkOn(st.t, 1.2) ? 1 : 0;
     this.once('annun', [st.bat < 0.1, st.bat < 0.25, st.hull < 0.3, st.hull < 0.6, st.depth > st.limit, st.depth > st.limit * 0.9, st.kg >= st.cargo * 0.92, st.beam, st.boost, st.sonarCd > 0, bl].join(), (c, w, h) => drawAnnun(c, w, h, st));
-    this.once('btn', [st.alive, st.sonarCd > 0, st.camOn, st.sys, bl].join(), (c, w, h) => drawBtnPanel(c, w, h, st));
-    this.once('bal', [Math.sign(Math.round((st.inp.u || 0) * 2)), !!st.alert, bl2].join(), (c, w, h) => drawBallast(c, w, h, st));
-    const r2 = (v) => Math.round(v * 40) / 40;
-    const sl = [r2(st.stickL[0]), r2(st.stickL[1]), st.boost], sr = [r2(st.stickR[0]), r2(st.stickR[1]), st.beam];
-    this.once('stickL', sl.join(), (c, w, h) => drawStick(c, w, h, -1, sl[0], sl[1], sl[2]));
-    this.once('stickR', sr.join(), (c, w, h) => drawStick(c, w, h, 1, sr[0], sr[1], sr[2]));
   }
 }

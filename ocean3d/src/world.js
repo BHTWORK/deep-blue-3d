@@ -1,6 +1,6 @@
 // Terrain, water, sky, decorations, set pieces. Deterministic world generation.
 import * as THREE from 'three';
-import { TAU, clamp, lerp, smooth, NZ, fbm, seed, rr, rpick, mixHex } from './util.js';
+import { TAU, clamp, lerp, smooth, NZ, fbm, seed, rr, rpick, wpick, mixHex } from './util.js';
 import { P, M, displace, lathe, vFin, hFin, MAT } from './models.js';
 import { POIS } from './data.js';
 
@@ -191,8 +191,22 @@ function kelpTexture() {
 }
 export function surfaceY(x, z) { return heightAt(x, z); }
 function placeOn(x, z, sink = 0) { return heightAt(x, z) - sink; }
+// reef patches [x0, x1, z0, z1, weight]: the east reef is the main one, smaller ones dot the shelf
+const REEF = [[60, 245, -120, 160, 5], [-40, 120, 150, 250, 2], [10, 170, -250, -140, 2], [-60, 30, 40, 120, 1], [180, 280, 170, 260, 1.5], [-240, -120, 160, 240, 1]];
+// Most reef growth clusters into coral heads with sand between them; the rest is scattered across the patch.
+let HEADS = null;
+function reefPoint(minY = -78) {
+  const patch = () => { for (let k = 0; k < 30; k++) { const p = wpick(REEF.map((r) => [r, r[4]])), x = rr(p[0], p[1]), z = rr(p[2], p[3]); if (Math.hypot(x - 3, z + 19) < 30) continue; const y = heightAt(x, z); if (y < -75 || y > -5) continue; return [x, z]; } return null; };
+  if (!HEADS) { HEADS = []; for (let i = 0; i < 400 && HEADS.length < 90; i++) { const p = patch(); if (p) HEADS.push([p[0], p[1], rr(4, 11)]); } }
+  for (let k = 0; k < 30; k++) {
+    let x, z; if (SRr() < 0.78) { const c = HEADS[(SRr() * HEADS.length) | 0], a = rr(0, TAU), d = Math.sqrt(SRr()) * c[2]; x = c[0] + Math.cos(a) * d; z = c[1] + Math.sin(a) * d; } else { const p = patch(); if (!p) continue; [x, z] = p; }
+    if (Math.hypot(x - 3, z + 19) < 30) continue; const y = heightAt(x, z); if (y < minY || y > -4) continue; return [x, y, z];
+  }
+  return null;
+}
+const lcg = (v) => () => (v = (v * 16807) % 2147483647) / 2147483647;
 export function buildFlora(scene, colliders) {
-  const out = {};
+  const out = { reefMeshes: [] };
   seed(777);
   // kelp — west shelf
   { const kg = new THREE.PlaneGeometry(1, 1, 1, 12).translate(0, 0.5, 0), kg2 = kg.clone().rotateY(Math.PI / 2);
@@ -212,19 +226,27 @@ export function buildFlora(scene, colliders) {
   // corals — reef east
   { const kinds = coralGeos(); out.corals = [];
     const palette = ['#ff5d8f', '#ff8c42', '#b15cff', '#ffd166', '#ef476f', '#2ec4b6', '#c792ea', '#ff6b6b', '#f78fb3'];
-    for (const [name, geo, cnt] of kinds) { const mat = addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 }), 0.4); const im = new THREE.InstancedMesh(geo, mat, cnt); const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(); const vivid = [], n0 = [];
-      let n = 0; for (let i = 0; i < cnt * 4 && n < cnt; i++) { const x = rr(60, 245), z = rr(-120, 160); const y = heightAt(x, z); if (y < -75) continue; const s = rr(0.8, 2.4) * (name === 'table' ? 1.3 : 1);
-        q.setFromEuler(new THREE.Euler(rr(-0.15, 0.15), rr(0, TAU), rr(-0.15, 0.15))); m4.compose(new THREE.Vector3(x, y - 0.2, z), q, new THREE.Vector3(s, s, s)); im.setMatrixAt(n, m4); vivid.push(new THREE.Color(rpick(palette))); im.setColorAt(n, vivid[n]); n++; }
-      im.count = n; im.frustumCulled = false; scene.add(im); out.corals.push({ im, vivid }); }
+    const PAL = { barrel: ['#c46a3c', '#8e4a8a', '#d9843b', '#a0522d', '#7a5c99'], pillar: ['#e8d8b0', '#d9c79a', '#f0e2c0', '#c9b98f'], whip: ['#ff5a36', '#ffb000', '#e63946', '#ff7f50', '#c77dff'],
+      bubble: ['#e6f5d0', '#ffd6e8', '#d8f3ff', '#fff3b0'], soft: ['#ff8fab', '#c77dff', '#ffd166', '#ff9e5e', '#9bf6ff', '#f15bb5'] };
+    const SCALE = { table: 1.3, barrel: 1.15, pillar: 1.1, whip: 1.1, soft: 1.1 };
+    // instances are bucketed into 200 m cells so the renderer can frustum-cull whole cells
+    const mat = addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 }), 0.4);
+    for (const [name, geo, cnt] of kinds) { const cells = new Map();
+      let n = 0; for (let i = 0; i < cnt * 4 && n < cnt; i++) { const pt = reefPoint(); if (!pt) continue; const [x, y, z] = pt; const s = rr(0.8, 2.4) * (SCALE[name] || 1);
+        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rr(-0.15, 0.15), rr(0, TAU), rr(-0.15, 0.15))), key = `${Math.floor(x / 200)},${Math.floor(z / 200)}`;
+        if (!cells.has(key)) cells.set(key, []); cells.get(key).push([new THREE.Matrix4().compose(new THREE.Vector3(x, y - 0.2, z), q, new THREE.Vector3(s, s, s)), new THREE.Color(rpick(PAL[name] || palette))]); n++; }
+      for (const list of cells.values()) { const im = new THREE.InstancedMesh(geo, mat, list.length), vivid = [];
+        list.forEach(([m4, c], i) => { im.setMatrixAt(i, m4); im.setColorAt(i, c); vivid.push(c); }); im.computeBoundingSphere(); scene.add(im); out.corals.push({ im, vivid }); out.reefMeshes.push(im); } }
     out.setCoralHealth = (h) => { const bl = new THREE.Color('#ece6da'), c = new THREE.Color(); for (const { im, vivid } of out.corals) { for (let i = 0; i < im.count; i++) { c.copy(bl).lerp(vivid[i], h); im.setColorAt(i, c); } im.instanceColor.needsUpdate = true; } };
   }
   // anemones (clownfish homes)
   { const tent = []; for (let i = 0; i < 26; i++) { const a = (i / 26) * TAU * 3, r = 0.08 + (i / 26) * 0.35; tent.push(P(new THREE.CylinderGeometry(0.02, 0.05, 1, 5).translate(0, 0.5, 0), '#fff', [Math.cos(a) * r, 0.2, Math.sin(a) * r], [Math.sin(a) * 0.5 * r * 2, 0, -Math.cos(a) * 0.5 * r * 2], [1, 0.6 + (i % 3) * 0.15, 1], (x, y) => (y > 0.7 ? [1, 1, 1] : [0.85, 0.85, 0.85]))); }
     tent.push(P(new THREE.CylinderGeometry(0.45, 0.5, 0.3, 12), '#b09080', [0, 0.1, 0]));
     const geo = M(...tent); const mat = addSway(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x220011, emissiveIntensity: 0.3 }), 0.25);
-    const im = new THREE.InstancedMesh(geo, mat, 8); const m4 = new THREE.Matrix4(); out.anems = []; const vivid = [];
-    for (let i = 0; i < 8; i++) { const x = 90 + i * 18 + rr(-5, 5), z = rr(-40, 60); const y = heightAt(x, z); m4.compose(new THREE.Vector3(x, y - 0.1, z), new THREE.Quaternion(), new THREE.Vector3(2.2, 1.6, 2.2)); im.setMatrixAt(i, m4); vivid.push(new THREE.Color(rpick(['#c04dff', '#ff4f8b', '#ff7a3a', '#6fe0ff']))); im.setColorAt(i, vivid[i]); out.anems.push(new THREE.Vector3(x, y + 1.2, z)); }
-    im.frustumCulled = false; scene.add(im); out.corals.push({ im, vivid }); }
+    const NA = 26, im = new THREE.InstancedMesh(geo, mat, NA); const m4 = new THREE.Matrix4(); out.anems = []; const vivid = [];
+    for (let i = 0; i < NA; i++) { let x, y, z; if (i < 8) { x = 90 + i * 18 + rr(-5, 5); z = rr(-40, 60); y = heightAt(x, z); } else { const pt = reefPoint(-60) || [150, heightAt(150, 20), 20]; [x, y, z] = pt; } m4.compose(new THREE.Vector3(x, y - 0.1, z), new THREE.Quaternion(), new THREE.Vector3(2.2, 1.6, 2.2)); im.setMatrixAt(i, m4); vivid.push(new THREE.Color(rpick(['#c04dff', '#ff4f8b', '#ff7a3a', '#6fe0ff']))); im.setColorAt(i, vivid[i]); out.anems.push(new THREE.Vector3(x, y + 1.2, z)); }
+    im.frustumCulled = false; scene.add(im); out.corals.push({ im, vivid }); out.reefMeshes.push(im); }
+  reefLife(scene, out, colliders);
   // rocks
   { const geos = [0, 1, 2].map((k) => displace(P(new THREE.IcosahedronGeometry(1, 2), '#fff', [0, 0, 0], [0, 0, 0], [1, 0.7 + k * 0.1, 1], (x, y, z) => { const n = NZ(x * 2 + k, z * 2 + y) * 0.5 + 0.5; const v = 0.42 + n * 0.25; return [v * 1.02, v * 0.95, v * 0.9]; }), 0.35, 1.2, k * 3.1));
     const mat = addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), 0.6); const m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
@@ -245,16 +267,60 @@ export function buildFlora(scene, colliders) {
   return out;
 }
 let SRr = () => rr(0, 1);
+// small reef dwellers on the sand, bioluminescent corals in the deep, and a sunken ruin on the shelf slope
+function reefLife(scene, out, colliders) {
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color();
+  const shelfPoint = (maxD, minY) => { for (let k = 0; k < 30; k++) { const a = rr(0, TAU), d = rr(20, maxD), x = Math.cos(a) * d, z = Math.sin(a) * d; if (Math.hypot(x - 3, z + 19) < 25) continue; const y = heightAt(x, z); if (y > minY && y < -3) return [x, y, z]; } return null; };
+  const star = (() => { const parts = [P(new THREE.CylinderGeometry(0.12, 0.14, 0.06, 10), '#fff')]; for (let i = 0; i < 5; i++) parts.push(P(new THREE.ConeGeometry(0.075, 0.42, 6).rotateZ(-Math.PI / 2).translate(0.23, 0, 0), '#fff', [0, 0, 0], [0, -(i / 5) * TAU, 0], [1, 0.45, 1], (x, y, z) => { const t = 1 - Math.hypot(x, z) * 0.6; return [t, t, t]; })); return M(...parts); })();
+  const urchin = (() => { const r = lcg(5), parts = [P(new THREE.IcosahedronGeometry(0.16, 1), '#fff', [0, 0.12, 0], [0, 0, 0], [1, 0.8, 1], () => [0.35, 0.3, 0.4])];
+    for (let i = 0; i < 26; i++) { const u = r() * 2 - 1, th = r() * TAU, s = Math.sqrt(1 - u * u); const dir = new THREE.Vector3(s * Math.cos(th), Math.abs(u) * 0.9 + 0.1, s * Math.sin(th)).normalize(); e.setFromQuaternion(q.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir));
+      parts.push(P(new THREE.ConeGeometry(0.012, 0.3, 3).translate(0, 0.15, 0), '#fff', [dir.x * 0.13, 0.12 + dir.y * 0.1, dir.z * 0.13], [e.x, e.y, e.z], [1, 1, 1], () => [0.55, 0.45, 0.6])); }
+    return M(...parts); })();
+  const clamShell = displace(P(new THREE.SphereGeometry(0.5, 16, 8, 0, TAU, 0, Math.PI / 2), '#fff', [0, 0, 0], [0, 0, 0], [1, 0.55, 0.65], (x, y, z) => { const t = 0.75 + 0.2 * Math.sin(Math.atan2(z, x) * 10); return [t, t * 0.97, t * 0.9]; }), 0.02, 6, 2);
+  const clamMantle = P(new THREE.CylinderGeometry(0.44, 0.44, 0.05, 20), '#fff', [0, 0.26, 0], [0, 0, 0], [1, 1, 0.52], (x, y, z) => (Math.sin(x * 22) * Math.sin(z * 26) > 0.35 ? [0.55, 1, 1] : [1, 1, 1]));
+  const conch = (() => { const pts = []; for (let i = 0; i <= 12; i++) { const t = i / 12; pts.push(new THREE.Vector2(0.03 + Math.sin(t * Math.PI) * 0.2 * (1 - t * 0.5), t * 0.6)); } return P(new THREE.LatheGeometry(pts, 10).rotateZ(Math.PI / 2).translate(0.3, 0.1, 0), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x) => { const t = 0.82 + 0.18 * Math.sin(x * 30); return [t, t * 0.9, t * 0.85]; }); })();
+  const mat = addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }), 0.4);
+  const scatter = (geos, n, pal, where, size, bright = 1) => { const ims = geos.map((g) => new THREE.InstancedMesh(g, mat, n)); let k = 0;
+    for (let i = 0; i < n * 3 && k < n; i++) { const pt = where(); if (!pt) continue; const s = rr(size[0], size[1]); q.setFromEuler(e.set(rr(-0.12, 0.12), rr(0, TAU), rr(-0.12, 0.12))); m4.compose(v.set(pt[0], pt[1] - 0.02, pt[2]), q, sc.set(s, s, s));
+      ims.forEach((im, j) => { im.setMatrixAt(k, m4); col.set(j === ims.length - 1 ? rpick(pal) : '#f2e8dc').multiplyScalar(j === ims.length - 1 ? bright : 1); im.setColorAt(k, col); }); k++; }
+    for (const im of ims) { im.count = k; im.frustumCulled = false; scene.add(im); out.reefMeshes.push(im); } };
+  scatter([star], 260, ['#ff7043', '#e63946', '#b5179e', '#f4a261', '#3a86ff', '#ffbe0b'], () => (SRr() < 0.5 ? reefPoint(-85) : shelfPoint(260, -85)), [0.7, 1.4]);
+  scatter([urchin], 200, ['#b39ddb', '#9575cd', '#ffffff', '#7e57c2'], () => (SRr() < 0.7 ? reefPoint(-85) : shelfPoint(260, -90)), [0.8, 1.5]);
+  scatter([clamShell, clamMantle], 60, ['#00b4d8', '#48cae4', '#7b2cbf', '#2ec4b6', '#4361ee'], () => reefPoint(-60), [0.8, 1.6], 1.15);
+  scatter([conch], 140, ['#ffd6c2', '#f7c59f', '#ffe5b4', '#e0bbe4', '#ffffff'], () => shelfPoint(280, -95), [0.7, 1.3]);
+  // bioluminescent deep corals: dark stalks, glowing tips (bloom picks them up)
+  { const tips = [], stalk = coralGeos.branch(313, 0.8, tips), tipGeo = M(...tips.map(([x, y, z, r]) => P(new THREE.OctahedronGeometry(r * 1.5, 0), '#fff', [x, y, z])));
+    const sm = new THREE.InstancedMesh(stalk, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, color: '#3a3346' }), 120), tm = new THREE.InstancedMesh(tipGeo, new THREE.MeshBasicMaterial({ color: '#ffffff' }), 120); let k = 0;
+    for (let i = 0; i < 1200 && k < 120; i++) { const x = rr(-860, 860), z = rr(-860, 860), y = heightAt(x, z); if (y > -250 || y < -840) continue; const s = rr(1.2, 3.2); q.setFromEuler(e.set(rr(-0.2, 0.2), rr(0, TAU), rr(-0.2, 0.2))); m4.compose(v.set(x, y - 0.2, z), q, sc.set(s, s, s));
+      sm.setMatrixAt(k, m4); tm.setMatrixAt(k, m4); tm.setColorAt(k, col.set(rpick(['#4df3ff', '#ff4fd8', '#7cff6b', '#6f8bff'])).multiplyScalar(2.2)); k++; }
+    for (const im of [sm, tm]) { im.count = k; im.frustumCulled = false; scene.add(im); } out.deepMeshes = [sm, tm]; }
+  // sunken ruin: a colonnade on a stepped platform, a few columns toppled, amphorae strewn about
+  { const rx = -120, rz = -260, base = heightAt(rx, rz), stone = (x, y, z) => { const n = NZ(x * 0.8 + 5, z * 0.8 + y) * 0.5 + 0.5; const t = 0.62 + n * 0.25; return [t * 1.02, t * 0.98, t * 0.9]; };
+    const g = new THREE.Group(); g.position.set(rx, base - 0.6, rz); g.rotation.y = 0.35;
+    const mt = addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), 0.5), add = (geo) => { const m = new THREE.Mesh(geo, mt); g.add(m); return m; };
+    add(displace(P(new THREE.BoxGeometry(26, 1.2, 16, 8, 1, 6), '#fff', [0, 0.6, 0], [0, 0, 0], [1, 1, 1], stone), 0.25, 0.8, 2));
+    add(displace(P(new THREE.BoxGeometry(22, 1, 12, 8, 1, 4), '#fff', [0, 1.7, 0], [0, 0, 0], [1, 1, 1], stone), 0.2, 0.8, 3));
+    const r = lcg(71), col3 = (x, z, h, tilt) => { add(displace(M(P(new THREE.CylinderGeometry(0.75, 0.85, h, 12, 4), '#fff', [0, h / 2, 0], [0, 0, 0], [1, 1, 1], stone), P(new THREE.BoxGeometry(2, 0.5, 2), '#fff', [0, 0.25, 0], [0, 0, 0], [1, 1, 1], stone), P(new THREE.BoxGeometry(1.9, 0.5, 1.9), '#fff', [0, h, 0], [0, 0, 0], [1, 1, 1], stone)), 0.08, 2, x).translate(0, 0, 0).rotateZ(tilt).translate(x, 2.2, z)); };
+    for (let i = 0; i < 5; i++) for (const side of [-1, 1]) { const x = -8 + i * 4, z = side * 4.5, broken = r() < 0.35; if (broken && r() < 0.5) continue; col3(x, z, broken ? 2 + r() * 3 : 7.5, broken ? rr(-0.15, 0.15) : 0); }
+    add(displace(P(new THREE.BoxGeometry(18, 1.2, 2.2, 6, 1, 1), '#fff', [-2, 10.4, 4.5], [0, 0, 0.04], [1, 1, 1], stone), 0.12, 1, 4));
+    for (const [x, z, a] of [[10, 7, 0.4], [-11, -8, 1.9], [4, -9, 2.7]]) add(displace(P(new THREE.CylinderGeometry(0.75, 0.8, 7, 12, 4).rotateZ(Math.PI / 2), '#fff', [x, 1.9, z], [0, a, 0], [1, 1, 1], stone), 0.1, 2, x));
+    const amph = []; for (let i = 0; i < 14; i++) { const a = r() * TAU, d = 9 + r() * 10, h = 1.1 + r() * 0.5; amph.push(P(new THREE.LatheGeometry([[0.01, 0], [0.25, 0.1], [0.42, 0.5], [0.38, 0.85], [0.14, 1.05], [0.12, 1.3], [0.2, 1.36]].map(([rr0, y]) => new THREE.Vector2(rr0, y * h)), 12), '#fff', [Math.cos(a) * d, 1.2, Math.sin(a) * d], [r() < 0.5 ? Math.PI / 2 - 0.2 : 0, r() * TAU, 0], [1, 1, 1], () => [0.72, 0.42, 0.26])); }
+    add(M(...amph));
+    scene.add(g); g.updateMatrixWorld(true);
+    for (let i = 0; i < 5; i++) for (const side of [-1, 1]) colliders.push({ ...(() => { const w = new THREE.Vector3(-8 + i * 4, 5, side * 4.5).applyMatrix4(g.matrixWorld); return { x: w.x, y: w.y, z: w.z }; })(), r: 1.4 });
+    colliders.push({ x: rx, y: base + 1, z: rz, r: 6 });
+    out.ruin = new THREE.Vector3(rx, base + 4, rz); }
+}
 function mergeUV(geos) { // merge keeping uv
   const pos = [], uv = [], nrm = []; for (const g0 of geos) { const g = g0.index ? g0.toNonIndexed() : g0; pos.push(...g.attributes.position.array); uv.push(...g.attributes.uv.array); nrm.push(...g.attributes.normal.array); }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); return g;
 }
-function coralGeos() {
-  const branch = (seedv, thick) => { const parts = []; const rng = (() => { let s = seedv; return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; })();
+export function coralGeos() {
+  const branch = (seedv, thick, tips) => { const parts = []; const rng = (() => { let s = seedv; return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; })();
     const br = (x, y, z, dx, dy, dz, len, r, d) => { const ex = x + dx * len, ey = y + dy * len, ez = z + dz * len; const mid = new THREE.Vector3(x + ex, y + ey, z + ez).multiplyScalar(0.5);
-      const g = new THREE.CylinderGeometry(r * 0.75, r, len, 6); const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz).normalize()); const e = new THREE.Euler().setFromQuaternion(q);
+      const g = new THREE.CylinderGeometry(r * 0.75, r, len, 5, 1, true); const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz).normalize()); const e = new THREE.Euler().setFromQuaternion(q);
       parts.push(P(g, '#ffffff', [mid.x, mid.y, mid.z], [e.x, e.y, e.z], [1, 1, 1], (px, py) => { const v = 0.75 + Math.min(0.25, py * 0.15); return [v, v, v]; }));
-      if (d <= 0) { parts.push(P(new THREE.SphereGeometry(r * 0.9, 6, 4), '#ffffff', [ex, ey, ez])); return; }
+      if (d <= 0) { if (tips) tips.push([ex, ey, ez, r]); else parts.push(P(new THREE.SphereGeometry(r * 0.9, 5, 3), '#ffffff', [ex, ey, ez])); return; }
       const n = 2 + (rng() < 0.4 ? 1 : 0); for (let i = 0; i < n; i++) { const nd = new THREE.Vector3(dx + (rng() - 0.5) * 1.2, dy + 0.2, dz + (rng() - 0.5) * 1.2).normalize(); br(ex, ey, ez, nd.x, nd.y, nd.z, len * 0.72, r * 0.72, d - 1); } };
     for (let k = 0; k < 3; k++) { const a = k * 2.1; br(0, 0, 0, Math.cos(a) * 0.3, 1, Math.sin(a) * 0.3, 0.55, 0.09 * thick, 3); }
     return M(...parts); };
@@ -265,7 +331,31 @@ function coralGeos() {
   const tubes = []; for (let i = 0; i < 5; i++) { const a = i * 1.26, h = 0.5 + (i % 3) * 0.35; tubes.push(P(new THREE.CylinderGeometry(0.12, 0.1, h, 10, 1, true).translate(0, h / 2, 0), '#fff', [Math.cos(a) * 0.2, 0, Math.sin(a) * 0.2], [0, 0, 0], [1, 1, 1], (x, y) => (y > h * 0.9 ? [0.4, 0.3, 0.35] : [0.9, 0.9, 0.9]))); }
   const tube = M(...tubes);
   const table = M(P(new THREE.CylinderGeometry(0.08, 0.14, 0.6, 6).translate(0, 0.3, 0), '#fff'), displace(P(new THREE.CylinderGeometry(1.0, 0.8, 0.1, 18).translate(0, 0.65, 0), '#fff'), 0.05, 4, 1));
-  return [['branch', branch(7, 1), 70], ['stag', branch(99, 1.8), 40], ['brain', brain, 45], ['fan', fan, 40], ['tube', tube, 40], ['table', table, 25]];
+  coralGeos.branch = branch;
+  // soft coral: short trunk under a bushy crown of lobes
+  const soft = (() => { const r = lcg(11), parts = [P(new THREE.CylinderGeometry(0.08, 0.15, 0.5, 6).translate(0, 0.25, 0), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], () => [0.7, 0.7, 0.7])];
+    for (let i = 0; i < 14; i++) { const a = r() * TAU, e = r() * 1.2, d = 0.3 + r() * 0.25; parts.push(P(new THREE.SphereGeometry(0.15 + r() * 0.1, 7, 5), '#fff', [Math.cos(a) * Math.sin(e) * d, 0.5 + Math.cos(e) * d * 0.7, Math.sin(a) * Math.sin(e) * d], [0, 0, 0], [1, 1.25, 1], (x, y) => { const v = Math.min(1, 0.78 + Math.max(0, y - 0.4) * 0.4); return [v, v, v]; })); }
+    return M(...parts); })();
+  // barrel sponge: thick-walled open vase, darker inside
+  const barrel = (() => { const out = [[0.28, 0], [0.42, 0.25], [0.52, 0.7], [0.55, 1.05]], prof = [...out, [0.47, 1.08], [0.42, 0.75], [0.3, 0.3], [0.001, 0.12]];
+    const outerR = (y) => { for (let i = 1; i < out.length; i++) if (y <= out[i][1]) { const t = (y - out[i - 1][1]) / (out[i][1] - out[i - 1][1]); return out[i - 1][0] + (out[i][0] - out[i - 1][0]) * t; } return 0.55; };
+    return displace(P(new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 18), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => { const inner = Math.hypot(x, z) < outerR(y) - 0.05 && y > 0.1; const v = 0.82 + 0.16 * Math.sin(Math.atan2(z, x) * 9); return inner ? [0.3, 0.26, 0.28] : [v, v * 0.95, v * 0.9]; }), 0.025, 5, 3); })();
+  // pillar coral: a cluster of upright rounded columns
+  const pillar = (() => { const r = lcg(23), parts = []; for (let i = 0; i < 6; i++) { const a = r() * TAU, d = r() * 0.35, h = 0.6 + r() * 1.1, rad = 0.09 + r() * 0.05;
+      parts.push(P(new THREE.CylinderGeometry(rad, rad * 1.15, h, 8).translate(0, h / 2, 0), '#fff', [Math.cos(a) * d, 0, Math.sin(a) * d], [0, 0, 0], [1, 1, 1], (x, y) => { const v = 0.72 + Math.min(0.25, y * 0.14); return [v, v, v]; }));
+      parts.push(P(new THREE.SphereGeometry(rad, 8, 5), '#fff', [Math.cos(a) * d, h, Math.sin(a) * d], [0, 0, 0], [1, 1, 1], () => [0.97, 0.97, 0.97])); }
+    return M(...parts); })();
+  // bubble coral: a mound of translucent-looking vesicles
+  const bubble = (() => { const r = lcg(31), parts = [P(new THREE.SphereGeometry(0.35, 10, 6, 0, TAU, 0, Math.PI / 2), '#fff', [0, 0, 0], [0, 0, 0], [1, 0.5, 1], () => [0.55, 0.55, 0.55])];
+    for (let i = 0; i < 14; i++) { const a = r() * TAU, d = r() * 0.3, rad = 0.09 + r() * 0.08; parts.push(P(new THREE.SphereGeometry(rad, 8, 6), '#fff', [Math.cos(a) * d, 0.12 + r() * 0.2 + rad * 0.5, Math.sin(a) * d], [0, 0, 0], [1, 1, 1], () => [1, 1, 1])); }
+    return M(...parts); })();
+  // sea whips: tall, thin, gently curving rods
+  const whip = (() => { const r = lcg(47), parts = []; for (let i = 0; i < 7; i++) { const a = r() * TAU, lean = 0.15 + r() * 0.25, h = 1.2 + r() * 1.4, pts = [];
+      for (let j = 0; j <= 8; j++) { const t = j / 8; pts.push(new THREE.Vector3(Math.cos(a) * lean * t * h + Math.sin(t * 5 + i) * 0.06, t * h, Math.sin(a) * lean * t * h)); }
+      parts.push(P(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 10, 0.028, 4, false), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y) => { const v = 0.7 + Math.min(0.3, y * 0.15); return [v, v, v]; })); }
+    return M(...parts); })();
+  return [['branch', branch(7, 1), 190], ['stag', branch(99, 1.8), 110], ['brain', brain, 120], ['fan', fan, 110], ['tube', tube, 100], ['table', table, 70],
+    ['soft', soft, 140], ['barrel', barrel, 60], ['pillar', pillar, 55], ['bubble', bubble, 90], ['whip', whip, 100]];
 }
 
 // ---------------------------------------------------------------- set pieces

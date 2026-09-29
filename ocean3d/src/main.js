@@ -14,6 +14,7 @@ import { WORLD, heightAt, normalAt, U, buildTerrain, buildWater, buildSky, build
 const V3 = THREE.Vector3, UPV = new V3(0, 1, 0), ZERO = new V3();
 const OPV = new V3(), tv1 = new V3(), tv2 = new V3(), tv3 = new V3(), tm = new THREE.Matrix4(), tq = new THREE.Quaternion(), ts = new V3(1, 1, 1);
 const depthOf = (y) => Math.max(0, -y);
+const SURF_Y = 0.8; // highest the sub can rise: surfaced, with the cockpit just above the water
 
 // =====================================================================
 // RENDERER / SCENE
@@ -207,6 +208,7 @@ const creatures = [], schools = [];
 const CDEF = { clownfish: { r: 0.3, spd: 2 }, tang: { r: 0.4, spd: 3 }, turtle: { r: 1.2, spd: 3 }, seahorse: { r: 0.4, spd: 0.6 }, crab: { r: 0.4, spd: 1.2 }, jelly: { r: 0.9, spd: 0.6 }, manta: { r: 2.5, spd: 4 },
   dolphin: { r: 1.3, spd: 9 }, shark: { r: 1.8, spd: 6.5 }, whale: { r: 6, spd: 3 }, octopus: { r: 0.8, spd: 1 }, angler: { r: 0.8, spd: 1 }, dumbo: { r: 0.6, spd: 1.2 }, squid: { r: 3, spd: 3 } };
 const SMALL = { clownfish: 1, tang: 1 };
+const FISH_KINDS = ['sardine', 'lantern', 'clownfish', 'tang', 'reef'];
 const FISHIM = {};
 function Z(cx, cz, rad, y0, y1) { return { cx, cz, rad, y0, y1 }; }
 function zonePoint(z, r = 1, out = new V3()) { for (let k = 0; k < 20; k++) { const a = rr(0, TAU), d = Math.sqrt(SR.r()) * z.rad, x = z.cx + Math.cos(a) * d, zz = z.cz + Math.sin(a) * d; const fl = heightAt(x, zz) + r + 1.5; const lo = Math.max(fl, z.y0), hi = Math.min(-r - 0.8, z.y1); if (hi > lo) return out.set(x, rr(lo, hi), zz); } return out.set(z.cx, Math.max(heightAt(z.cx, z.cz) + r + 2, z.y0), z.cz); }
@@ -216,15 +218,21 @@ function addC(sp, z, o = {}) {
   if (!SMALL[sp]) { const b = BUILD[sp](e); e.model = b; e.root = b.root; e.root.position.copy(e.pos); e.root.scale.setScalar(0.001); e.root.visible = false; scene.add(e.root); }
   creatures.push(e); return e;
 }
-function addSchool(sp, z, n, extra) { const c = zonePoint(z, 3); const s = { sp, z, pos: c.clone(), vel: new V3(), tgt: c.clone(), timer: 0, m: [], rad: sp === 'sardine' ? 5 : 4.5 };
+function addSchool(sp, z, n, extra, o = {}) { const c = zonePoint(z, 3); const s = { sp, z, pos: c.clone(), vel: new V3(), tgt: c.clone(), timer: 0, m: [], rad: o.rad || (sp === 'sardine' ? 5 : 4.5), hug: o.hug, col: o.col };
+  if (s.hug) { c.y = heightAt(c.x, c.z) + rr(s.hug[0], s.hug[1]); s.pos.copy(c); s.tgt.copy(c); }
   for (let i = 0; i < n + extra; i++) { const o = new V3(rr(-1, 1), rr(-0.5, 0.5), rr(-1, 1)).multiplyScalar(s.rad); s.m.push({ o, pos: c.clone().add(o), vel: new V3(), need: i < n ? 0 : rr(0.08, 0.85), a: 0 }); }
   schools.push(s); }
 function genCreatures() {
   seed(8080);
-  [[-150, -20, 120, -30, -4], [150, 0, 120, -30, -4], [0, 180, 150, -40, -5], [60, -240, 140, -50, -5], [-260, 180, 140, -60, -6], [330, -600, 120, -20, -3]].forEach((z, i) => addSchool('sardine', Z(...z), i < 3 ? 26 : 18, 22));
-  [[-520, 250, 150, -340, -170], [470, -330, 150, -340, -170], [-380, -300, 150, -320, -170], [380, 330, 150, -320, -170]].forEach((z) => addSchool('lantern', Z(...z), 20, 16));
+  [[-150, -20, 120, -30, -4], [150, 0, 120, -30, -4], [0, 180, 150, -40, -5], [60, -240, 140, -50, -5], [-260, 180, 140, -60, -6], [330, -600, 120, -20, -3],
+    [120, 60, 90, -25, -4], [-40, 260, 130, -45, -5], [240, -160, 130, -45, -5], [-300, -120, 140, -55, -6], [220, 220, 120, -35, -4]].forEach((z, i) => addSchool('sardine', Z(...z), i < 3 || i > 5 ? 34 : 22, 26));
+  [[-520, 250, 150, -340, -170], [470, -330, 150, -340, -170], [-380, -300, 150, -320, -170], [380, 330, 150, -320, -170], [0, -480, 150, -330, -170], [-600, -520, 150, -340, -180]].forEach((z) => addSchool('lantern', Z(...z), 22, 16));
+  // small colourful reef fish that hug the coral heads (ambient: not a codex species)
+  const REEFC = ['#ffd23f', '#3fa7ff', '#ff7b54', '#9b5de5', '#c5e063', '#ff5d8f', '#00f5d4', '#f15bb5'];
+  [[150, 20, 70], [120, -60, 60], [200, 90, 60], [60, 200, 60], [90, -200, 60], [230, 210, 50], [-180, 200, 50], [-20, 80, 40], [180, -20, 50], [100, 120, 50], [30, -150, 50], [210, -90, 50]].forEach(([x, z, rad], i) => {
+    addSchool('reef', Z(x, z, rad, -70, -3), 18 + (i % 3) * 6, 10, { rad: 2.6, hug: [1.5, 5], col: REEFC[i % REEFC.length] }); });
   flora.anems.forEach((a) => { for (let k = 0; k < 2; k++) addC('clownfish', Z(a.x, a.z, 3, a.y - 1, a.y + 2), { at: a.clone().add(new V3(rr(-1, 1), 0.8, rr(-1, 1))), need: k ? rr(0.1, 0.5) : 0, extra: { home: a.clone().add(new V3(0, 0.8, 0)) } }); });
-  for (let i = 0; i < 16; i++) addC('tang', Z(150, 20, 90, -60, -8), { need: i < 6 ? 0 : rr(0.1, 0.8) });
+  for (let i = 0; i < 32; i++) addC('tang', i < 20 ? Z(150, 20, 90, -60, -8) : Z(rpick([60, 90, 200]), rpick([-200, 200, 120]), 60, -60, -8), { need: i < 10 ? 0 : rr(0.1, 0.8) });
   for (let i = 0; i < 4; i++) addC('turtle', Z(0, 0, 360, -70, -3), { need: i < 2 ? 0 : rr(0.2, 0.6) });
   for (let i = 0; i < 10; i++) { const x = rr(-230, -80), z = rr(-150, 130), y = heightAt(x, z) + rr(4, 12); addC('seahorse', Z(x, z, 2, y - 2, y + 2), { at: new V3(x, y, z), need: i < 5 ? 0 : rr(0.1, 0.7) }); }
   for (let i = 0; i < 18; i++) { const [x, z] = polar(0, 0, 20, 420); addC('crab', Z(x, z, 40, -1000, 0), { at: new V3(x, heightAt(x, z) + 0.2, z), need: i < 10 ? 0 : rr(0.1, 0.7) }); }
@@ -237,11 +245,12 @@ function genCreatures() {
   for (let i = 0; i < 6; i++) { const [x, z] = polar(0, 0, 260, 560); if (heightAt(x, z) < -380) { i--; continue; } addC('octopus', Z(x, z, 30, -1000, 0), { at: new V3(x, heightAt(x, z) + 0.3, z), need: i < 3 ? 0 : rr(0.2, 0.6), extra: { col: rpick(['#c0553a', '#b8462e', '#d06a40']) } }); }
   for (let i = 0; i < 5; i++) addC('dumbo', i < 3 ? Z(-760, 60, 90, -860, -600) : Z(760, 60, 90, -660, -480));
   addC('squid', Z(-770, 80, 90, -840, -640));
-  for (const sp of ['sardine', 'lantern', 'clownfish', 'tang']) { const cnt = sp === 'clownfish' || sp === 'tang' ? creatures.filter((c) => c.sp === sp).length : schools.filter((s) => s.sp === sp).reduce((s, sc) => s + sc.m.length, 0);
+  for (const sp of FISH_KINDS) { const cnt = sp === 'clownfish' || sp === 'tang' ? creatures.filter((c) => c.sp === sp).length : schools.filter((s) => s.sp === sp).reduce((s, sc) => s + sc.m.length, 0);
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: sp === 'sardine' ? 0.5 : 0.1, side: THREE.DoubleSide });
     mat.onBeforeCompile = (sh) => { sh.uniforms.uTime = U.time; sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n float fph = float(gl_InstanceID)*1.7; float tk = smoothstep(0.05, -0.3, position.z); transformed.x += sin(uTime*11.0 + fph + position.z*14.0) * tk * 0.09;'); };
     mat.customProgramCacheKey = () => 'fishwiggle';
     const im = new THREE.InstancedMesh(fishGeo(sp), mat, Math.max(1, cnt)); im.frustumCulled = false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(im); FISHIM[sp] = { im, n: 0 }; }
+  { let i = 0; const c = new THREE.Color(), im = FISHIM.reef.im; for (const s of schools) if (s.sp === 'reef') for (const m of s.m) { c.set(s.col).offsetHSL(rr(-0.03, 0.03), 0, rr(-0.08, 0.06)); im.setColorAt(i++, c); } im.instanceColor.needsUpdate = true; }
   FISHIM.lanternDots = new THREE.InstancedMesh(lanternDotsGeo(), new THREE.MeshBasicMaterial({ color: new THREE.Color('#6fe8ff').multiplyScalar(3), fog: false }), FISHIM.lantern.im.count); FISHIM.lanternDots.frustumCulled = false; scene.add(FISHIM.lanternDots);
 }
 function fishMatrix(pos, dir, scale, out) { tv2.copy(dir); if (tv2.lengthSq() < 1e-6) tv2.set(0, 0, 1); tv2.normalize(); tm.lookAt(tv2, ZERO, UPV); tq.setFromRotationMatrix(tm); out.compose(pos, tq, ts.setScalar(scale)); return out; }
@@ -313,11 +322,11 @@ function updateCreature(e, dt) {
 }
 function updateSchool(s, dt) {
   const near = s.pos.distanceTo(camera.position) < 320; if (!near && G.state !== 'title') return;
-  s.timer -= dt; if (s.timer <= 0 || s.pos.distanceToSquared(s.tgt) < 25) { zonePoint(s.z, 4, s.tgt); s.timer = rnd(6, 12); }
-  tv3.subVectors(s.pos, P.pos); const dp = tv3.length() || 1; let spd = s.sp === 'sardine' ? 4 : 2.5;
+  s.timer -= dt; if (s.timer <= 0 || s.pos.distanceToSquared(s.tgt) < 25) { zonePoint(s.z, 4, s.tgt); if (s.hug) s.tgt.y = Math.min(-2, heightAt(s.tgt.x, s.tgt.z) + rnd(s.hug[0], s.hug[1])); s.timer = rnd(6, 12); }
+  tv3.subVectors(s.pos, P.pos); const dp = tv3.length() || 1; let spd = s.sp === 'sardine' ? 4 : s.hug ? 1.6 : 2.5;
   if (dp < 18 && G.state === 'play') { s.tgt.copy(s.pos).addScaledVector(tv3, 30 / dp); s.tgt.y = clamp(s.tgt.y, heightAt(s.tgt.x, s.tgt.z) + 4, -2); spd *= 2.3; s.timer = 1.5; }
   tv1.subVectors(s.tgt, s.pos); tv1.multiplyScalar(spd / (tv1.length() || 1)).sub(s.vel).multiplyScalar(Math.min(1, 1.1 * dt)); s.vel.add(tv1);
-  const fl = heightAt(s.pos.x + s.vel.x, s.pos.z + s.vel.z) + 5; if (s.pos.y < fl) s.vel.y += (fl - s.pos.y) * dt * 3;
+  const fl = heightAt(s.pos.x + s.vel.x, s.pos.z + s.vel.z) + (s.hug ? 1.5 : 5); if (s.pos.y < fl) s.vel.y += (fl - s.pos.y) * dt * 3;
   s.pos.addScaledVector(s.vel, dt); if (s.pos.y > -2) s.pos.y = -2;
   const rot = G.t * 0.3, c = Math.cos(rot), si = Math.sin(rot);
   for (const m of s.m) { m.a += ((G.clean >= m.need ? 1 : 0) - m.a) * Math.min(1, dt * 0.7);
@@ -333,7 +342,7 @@ function writeFish() {
   for (const s of schools) { const R = FISHIM[s.sp]; const vis = s.pos.distanceTo(camera.position) < 200;
     for (const m of s.m) { const i = R.n++; if (!vis || m.a < 0.02) { tm.makeScale(0, 0, 0); } else { tv3.copy(m.vel).add(s.vel); fishMatrix(m.pos, tv3, m.a, tm); } R.im.setMatrixAt(i, tm); if (s.sp === 'lantern') dots.setMatrixAt(dn++, tm); } }
   for (const e of creatures) { if (!SMALL[e.sp]) continue; const R = FISHIM[e.sp]; const i = R.n++; if (e.a < 0.02 || e.pos.distanceTo(camera.position) > 160) tm.makeScale(0, 0, 0); else fishMatrix(e.pos, e.vel.lengthSq() > 0.01 ? e.vel : fwdOf(e.ph, 0, tv3), e.sp === 'tang' ? 1.3 : 1.2, tm); R.im.setMatrixAt(i, tm); }
-  for (const k of ['sardine', 'lantern', 'clownfish', 'tang']) { FISHIM[k].im.instanceMatrix.needsUpdate = true; }
+  for (const k of FISH_KINDS) { FISHIM[k].im.instanceMatrix.needsUpdate = true; }
   dots.instanceMatrix.needsUpdate = true;
 }
 
@@ -400,7 +409,8 @@ function updatePlayer(dt) {
   let impact = 0; const fl = heightAt(P.pos.x, P.pos.z) + 1.5;
   if (P.pos.y < fl) { const n = normalAt(P.pos.x, P.pos.z); P.pos.y = fl; const vn = P.vel.dot(n); if (vn < 0) { impact = Math.max(impact, -vn); P.vel.addScaledVector(n, -vn * 1.2); } }
   for (const c of nearColliders(P.pos.x, P.pos.z)) { tv2.set(P.pos.x - c.x, P.pos.y - c.y, P.pos.z - c.z); const d = tv2.length(), m = c.r + 1.4; if (d < m && d > 0.001) { tv2.divideScalar(d); P.pos.addScaledVector(tv2, m - d); const vn = P.vel.dot(tv2); if (vn < 0) { impact = Math.max(impact, -vn); P.vel.addScaledVector(tv2, -vn * 1.2); } } }
-  if (P.pos.y > -1.1) { P.pos.y = -1.1; if (P.vel.y > 0) P.vel.y = 0; }
+  if (P.pos.y > SURF_Y) { P.pos.y = SURF_Y; if (P.vel.y > 0) P.vel.y = 0; } // surfaced: the sail rides above the waterline
+  if ((op.y < -0.3) !== (P.pos.y < -0.3) && Math.abs(P.vel.y) > 0.8) { for (let i = 0; i < 40; i++) FXA.emit(PT.SPLASH, P.pos.x + rnd(-1.5, 1.5), 0.2, P.pos.z + rnd(-1.5, 1.5), rnd(-2, 2), rnd(2, 6), rnd(-2, 2), rnd(0.8, 1.4), rnd(0.2, 0.5), 0.85, 0.95, 1, 0.8); AU.splash(0.25); }
   const lim = 875; P.pos.x = clamp(P.pos.x, -lim, lim); P.pos.z = clamp(P.pos.z, -lim, lim);
   if (impact > 7) { damage((impact - 7) * 2.2, '충돌'); AU.thud(impact / 30); G.shake = Math.max(G.shake, impact / 40); for (let i = 0; i < 20; i++) FXN.emit(PT.SAND, P.pos.x + rnd(-1, 1), P.pos.y - 1, P.pos.z + rnd(-1, 1), rnd(-2, 2), rnd(0, 2), rnd(-2, 2), rnd(2, 4), rnd(0.8, 1.6), 0.55, 0.48, 0.38, 0.5); }
   ST().dist += P.pos.distanceTo(op);
@@ -523,7 +533,7 @@ function discoverPOI(p) { SV.pois[p.id] = true; SV.money += 100; AU.discover(); 
 function discoveryTick() {
   frustum.setFromProjectionMatrix(tm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
   for (const c of creatures) { if (c.a < 0.5 || SV.species[c.sp]) continue; if (c.pos.distanceTo(P.pos) < discR(c.sp) && frustum.containsPoint(c.pos)) discover(c.sp); }
-  for (const s of schools) { if (SV.species[s.sp]) continue; if (s.pos.distanceTo(P.pos) < discR(s.sp) && frustum.containsPoint(s.pos)) discover(s.sp); }
+  for (const s of schools) { if (!SPECIES[s.sp] || SV.species[s.sp]) continue; if (s.pos.distanceTo(P.pos) < discR(s.sp) && frustum.containsPoint(s.pos)) discover(s.sp); }
   if (!SV.species.tubeworm && Math.hypot(P.pos.x - POI.vents.x, P.pos.z - POI.vents.z) < 60 && P.pos.y < POI.vents.y + 40) discover('tubeworm');
   for (const p of POIS) if (!SV.pois[p.id] && Math.hypot(P.pos.x - p.x, P.pos.y - p.y, P.pos.z - p.z) < p.r) discoverPOI(p);
 }
@@ -650,6 +660,9 @@ function updateEnv(dt) {
   scene.fog.color.copy(fogCol); if (cy <= 0) scene.background = fogCol; else scene.background = skyHor;
   amb.intensity = 0.05 + (1 - smooth(0, 400, dep)) * 0.05;
   const wu = water.material.uniforms; wu.uCam.value.copy(camera.position); wu.uFogC.value.copy(fogCol); wu.uFogD.value = cy > 0 ? 0.0009 : scene.fog.density; wu.uNight.value = G.night; wu.uSky.value.copy(skyHor).lerp(skyTop, 0.3); wu.uDeep.value.set('#0b4f78').multiplyScalar(0.4 + 0.6 * day); wu.uSun.value.copy(sunDir);
+  snow.visible = cy < 0.2; // marine snow only below the waterline
+  // distance culling: reef growth only near the shelf reefs, glowing corals only in the deep
+  { const reef = Math.hypot(camera.position.x - 90, camera.position.z - 30) < 560 && cy > -260; for (const m of flora.reefMeshes) m.visible = reef; for (const m of flora.deepMeshes) m.visible = cy < -140; }
   const su = snow.material.uniforms; su.uCam.value.copy(camera.position); su.uLP.value.copy(P.nose); su.uLD.value.copy(P.fwd); su.uLR.value = S.light || 50; su.uAmb.value = hemi.intensity * 0.5 + 0.1; su.uPR.value = renderer.getPixelRatio();
   // god rays follow the camera near the surface
   const ra = rays.userData; ra.mat.opacity = 0.05 * day * (1 - smooth(10, 140, dep)) * (0.6 + 0.4 * cv); rays.visible = ra.mat.opacity > 0.003 && cy < 0;
@@ -678,7 +691,7 @@ function drawOverlay() {
   c.save(); drawOverlayIn(c, W, H); c.restore();
 }
 function drawOverlayIn(c, W, H) {
-  const ck = inCockpit() && G.ck; if (ck) { const P = ck.port; c.beginPath(); c.rect(0, 0, W, ck.hoodTop); c.clip(); c.beginPath(); c.arc(P.cx, P.cy, P.r, 0, TAU); c.clip(); }
+  const ck = inCockpit() && G.ck; if (ck) { const g = ck.glass; c.beginPath(); c.rect(g.x0, g.y0, g.x1 - g.x0, g.y1 - g.y0); c.clip(); }
   c.textAlign = 'center';
   // revealed items
   for (const it of items) { if (it.col || it.locked || it.rev < G.t) continue; const d = it.pos.distanceTo(camera.position); if (d > 260) continue; const s = project(it.pos, pv); if (s.behind || s.x < -20 || s.x > W + 20 || s.y < -20 || s.y > H + 20) continue;
@@ -698,14 +711,12 @@ function drawOverlayIn(c, W, H) {
   if ((P.bat < S.bat * 0.3 || P.kg >= S.cargo * 0.92) && !(mt && mt.distanceTo(DOCK) < 1)) T.push({ p: DOCK, col: '#8fcf9b', label: '기지선', big: true });
   const near = []; for (const it of items) { if (it.col || it.locked || it.rev < G.t) continue; near.push([it.pos.distanceToSquared(P.pos), it]); } near.sort((a, b) => a[0] - b[0]);
   for (let i = 0; i < Math.min(5, near.length); i++) T.push({ p: near[i][1].pos, col: near[i][1].tr ? '#f0d98c' : '#e8925a' });
-  // arrows for off-view targets sit on the viewport edge: a rectangle in third person, an ellipse inside the porthole in first
-  const R = G.win || { x: 12, y: 12, w: W - 24, h: H - 24 }, pad = 22, E = ck ? ck.ell : null, cx = E ? E.cx : R.x + R.w / 2, cy = E ? E.cy : R.y + R.h / 2;
-  for (const t of T) { const s = project(t.p, pv); let sx = s.x, sy = s.y;
-    const on = !s.behind && (E ? ((sx - cx) / (E.rx - pad)) ** 2 + ((sy - cy) / (E.ry - pad)) ** 2 < 1 : sx > R.x + pad && sx < R.x + R.w - pad && sy > R.y + pad && sy < R.y + R.h - pad);
+  const R = G.win || { x: 12, y: 12, w: W - 24, h: H - 24 }, pad = 22, cx = R.x + R.w / 2, cy = R.y + R.h / 2;
+  for (const t of T) { const s = project(t.p, pv); let sx = s.x, sy = s.y; const on = !s.behind && sx > R.x + pad && sx < R.x + R.w - pad && sy > R.y + pad && sy < R.y + R.h - pad;
     const dm = Math.round(t.p.distanceTo(P.pos));
     if (on) { if (t.big) { const b = Math.sin(G.t * 4) * 5; c.fillStyle = t.col; c.beginPath(); c.moveTo(sx, sy - 16 + b); c.lineTo(sx - 9, sy - 32 + b); c.lineTo(sx + 9, sy - 32 + b); c.closePath(); c.fill(); c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; c.strokeText(`${t.label} ${dm}m`, sx, sy - 38 + b); c.fillText(`${t.label} ${dm}m`, sx, sy - 38 + b); } continue; }
     if (s.behind) { sx = W - sx; sy = H - sy; }
-    let dx = sx - cx, dy = sy - cy; if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3) dy = 1; const k = E ? 1 / Math.hypot(dx / (E.rx - pad), dy / (E.ry - pad)) : Math.min((R.w / 2 - pad) / Math.max(1e-6, Math.abs(dx)), (R.h / 2 - pad) / Math.max(1e-6, Math.abs(dy)));
+    let dx = sx - cx, dy = sy - cy; if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3) dy = 1; const k = Math.min((R.w / 2 - pad) / Math.max(1e-6, Math.abs(dx)), (R.h / 2 - pad) / Math.max(1e-6, Math.abs(dy)));
     const ax = cx + dx * k, ay = cy + dy * k, ang = Math.atan2(dy, dx);
     c.save(); c.translate(ax, ay); c.rotate(ang); c.globalAlpha = t.big ? 0.95 : 0.55; c.fillStyle = t.col; const sz = t.big ? 12 : 7; c.beginPath(); c.moveTo(sz, 0); c.lineTo(-sz * 0.8, -sz * 0.75); c.lineTo(-sz * 0.4, 0); c.lineTo(-sz * 0.8, sz * 0.75); c.closePath(); c.fill(); c.restore(); c.globalAlpha = 1;
     if (t.big) { const lx = ax - Math.cos(ang) * 36, ly = ay - Math.sin(ang) * 26; c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; const txt = `${t.label} ${dm}m`; c.strokeText(txt, lx, ly + 4); c.fillStyle = t.col; c.fillText(txt, lx, ly + 4); } }
@@ -717,11 +728,10 @@ function drawOverlayIn(c, W, H) {
 const inCockpit = () => G.fp && G.state !== 'title';
 const CK = new CockpitUI($('ckdyn'));
 function redrawCockpit() { if (!inCockpit() || !G.ck) return; drawCockpit($('cockpit'), G.ck, Math.min(devicePixelRatio || 1, 2), G.fpTier < 0 ? 0 : G.fpTier); }
-// Third person: the HUD hugs the screen edges. First person: the mission line and map sit on the hull
-// walls beside the round porthole, and only the hint bar is lifted above the console.
+// HUD lives inside the visible viewport: the canopy glass above the console in first person, the screen in third person
 function layoutHUD() {
   const st = document.documentElement.style, W = G.VW, H = G.VH, ins = 12; let x0 = 0, y0 = 0, x1 = W, y1 = H;
-  if (inCockpit() && G.ck) y1 = G.ck.glass.y1;
+  if (inCockpit() && G.ck) ({ x0, y0, x1, y1 } = G.ck.glass);
   st.setProperty('--hx', `${x0 + ins}px`); st.setProperty('--hy', `${y0 + ins}px`); st.setProperty('--hr', `${W - x1 + ins}px`); st.setProperty('--hb', `${H - y1 + ins}px`);
   st.setProperty('--ppy', inCockpit() && G.ck ? `${G.ck.ppY}px` : '50%');
   // touch buttons sit on the console in first person, inside the screen edge otherwise
@@ -921,13 +931,13 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 // LOOP
 // =====================================================================
 function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; const pr = Math.min(devicePixelRatio || 1, q === 2 ? 1.75 : q === 1 ? 1.25 : 0.85);
-  // in first person only the porthole is visible, so the scene is rendered into its bounding box alone
+  // in first person the scene only has to cover the glass above the console desk
   const L = G.ck = inCockpit() ? cockpitLayout(G.VW, G.VH, IN.touch) : null, vp = G.vp = L ? L.view : { x: 0, y: 0, w: G.VW, h: G.VH };
   renderer.setPixelRatio(pr); renderer.setSize(vp.w, vp.h, false); Object.assign(canvas.style, { left: vp.x + 'px', top: vp.y + 'px', width: vp.w + 'px', height: vp.h + 'px' });
   composer.setPixelRatio(pr); composer.setSize(vp.w, vp.h); bloom.enabled = q > 0; bloom.strength = q === 2 ? 0.55 : 0.45;
   let f;
   if (L) { // principal point at the middle of the visible glass; F is the virtual frame height
-    const py = L.ppY - vp.y, F = 2 * Math.max(py, vp.h - py); f = L.port.r * 1.3;
+    const py = L.ppY - vp.y, F = 2 * Math.max(py, vp.h - py); f = Math.max(0.72 * G.VH, 0.42 * G.VW);
     camera.fov = (2 * Math.atan(F / 2 / f) * 180) / Math.PI; camera.aspect = vp.w / F; camera.setViewOffset(vp.w, F, 0, F / 2 - py, vp.w, vp.h);
   } else { camera.clearViewOffset(); camera.fov = 68; camera.aspect = vp.w / vp.h; f = vp.h / (2 * Math.tan((68 * Math.PI) / 360)); }
   camera.updateProjectionMatrix(); overlay.width = Math.round(G.VW * pr); overlay.height = Math.round(G.VH * pr);
