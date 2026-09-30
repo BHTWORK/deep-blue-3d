@@ -27,7 +27,7 @@ function heightRaw(x, z) {
   h += Math.sin(x * 0.06 + NZ(x * 0.01, z * 0.01) * 4) * 0.7 * (1 - smooth(150, 260, d));
   // relief: hills, dunes, canyons and seamounts, kept calm around the base ship and the wreck sites
   let calm = smooth(25, 75, Math.hypot(x - 3, z + 19));
-  for (const p of POIS) if (p.id !== 'patch' && p.id !== 'reef' && p.id !== 'kelp') calm = Math.min(calm, smooth(p.r * 0.35, p.r * 0.9, Math.hypot(x - p.x, z - p.z)));
+  for (const p of POIS) if (p.id !== 'patch' && p.id !== 'reef' && p.id !== 'kelp' && p.id !== 'bleach') calm = Math.min(calm, smooth(p.r * 0.35, p.r * 0.9, Math.hypot(x - p.x, z - p.z)));
   const shelf = 1 - smooth(200, 300, d), deepZone = smooth(300, 480, d);
   h += calm * shelf * (fbm(x * 0.011 + 3.1, z * 0.011 - 5.2, 4) * 22 + (ridged(x * 0.02, z * 0.02, 3) - 0.45) * 12);
   h += shelf * 8 * Math.exp(-((x - 150) ** 2 + (z - 20) ** 2) / (2 * 70 * 70)); // the east reef sits on a low plateau
@@ -258,7 +258,7 @@ export function buildFlora(scene, colliders) {
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rr(0, TAU)); m4.compose(new THREE.Vector3(x, y - 0.1, z), q, new THREE.Vector3(s * 1.4, s, s * 1.4)); im.setMatrixAt(n, m4); c.set(rpick(['#8fcf6a', '#a6d77a', '#79b85a', '#b8d86a'])); im.setColorAt(n, c); n++; }
     im.count = n; im.frustumCulled = false; scene.add(im); out.grass = im; }
   // corals — reef east
-  { const kinds = coralGeos(); out.corals = [];
+  { const kinds = coralGeos(); out.corals = []; out.coralKinds = kinds;
     const palette = ['#ff5d8f', '#ff8c42', '#b15cff', '#ffd166', '#ef476f', '#2ec4b6', '#c792ea', '#ff6b6b', '#f78fb3'];
     const PAL = { whip: ['#ff5a36', '#ffb000', '#e63946', '#ff7f50', '#c77dff'], bubble: ['#e6f5d0', '#ffd6e8', '#d8f3ff', '#fff3b0'], soft: ['#ff8fab', '#c77dff', '#ffd166', '#ff9e5e', '#9bf6ff', '#f15bb5'] };
     const SCALE = { whip: 1.1, soft: 1.1 }, FOOT = { branch: 0.55, stag: 0.8, brain: 0.7, fan: 0.45, soft: 0.5, bubble: 0.4, whip: 0.35 }; // footprint radius at scale 1
@@ -570,6 +570,55 @@ export function buildSetPieces(scene, colliders) {
     for (const im of [sponges, lilies, pigs]) { im.computeBoundingSphere(); scene.add(im); out.far.push({ o: im, x: cx, z: cz }); } }
   return out;
 }
+
+// ---------------------------------------------------------------- bleached reef
+// North of the base ship a patch of reef has turned white: a broken wastewater outfall pours hot, dirty
+// water over it and litter smothers the corals. Built with its own generator (and without touching the
+// shared footprint registry) so nothing generated after it moves.
+export function buildBleach(scene, colliders, flora) {
+  const B = POIS.find((p) => p.id === 'bleach'), R = lcg(90210), rnd = (a, b) => a + (b - a) * R(), pick = (a) => a[Math.floor(R() * a.length)];
+  const out = { corals: [], tops: [] }, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const palette = ['#ff5d8f', '#ff8c42', '#b15cff', '#ffd166', '#ef476f', '#2ec4b6', '#c792ea', '#ff6b6b', '#f78fb3'];
+  const PAL = { whip: ['#ff5a36', '#ffb000', '#e63946', '#ff7f50', '#c77dff'], bubble: ['#e6f5d0', '#ffd6e8', '#d8f3ff', '#fff3b0'], soft: ['#ff8fab', '#c77dff', '#ffd166', '#ff9e5e', '#9bf6ff', '#f15bb5'] };
+  const SCALE = { whip: 1.1, soft: 1.1 }, FOOT = { branch: 0.55, stag: 0.8, brain: 0.7, fan: 0.45, soft: 0.5, bubble: 0.4, whip: 0.35 };
+  const heads = []; for (let k = 0; k < 40 && heads.length < 9; k++) { const a = rnd(0, TAU), d = Math.sqrt(R()) * 36, x = B.x + Math.cos(a) * d, z = B.z + Math.sin(a) * d; if (heads.some((h) => Math.hypot(h[0] - x, h[1] - z) < 13)) continue; heads.push([x, z, rnd(5, 9)]); }
+  const occ = [], free = (x, z, r) => occ.every(([px, pz, pr]) => (px - x) ** 2 + (pz - z) ** 2 >= (pr + r) ** 2) && reefFree(x, z, r);
+  const mat = addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }), 0.4);
+  for (const [name, geo, cnt] of flora.coralKinds) { const list = [], want = Math.round(cnt * 0.3);
+    for (let n = 0, g = 0; n < want && g < want * 25; g++) { const c = pick(heads), a = rnd(0, TAU), d = Math.sqrt(R()) * c[2], x = c[0] + Math.cos(a) * d, z = c[1] + Math.sin(a) * d, y = heightAt(x, z);
+      const sc = rnd(0.8, 2.2) * (SCALE[name] || 1), fr = sc * FOOT[name]; if (!free(x, z, fr)) continue; occ.push([x, z, fr]); n++;
+      q.setFromEuler(new THREE.Euler(rnd(-0.15, 0.15), rnd(0, TAU), rnd(-0.15, 0.15))); list.push([new THREE.Matrix4().compose(V(x, y - 0.2, z), q, V(sc, sc, sc)), new THREE.Color(pick(PAL[name] || palette)), R() < 0.22]);
+      if (sc > 1.3 && name !== 'whip' && name !== 'fan') out.tops.push(V(x, y + sc * 0.55, z)); }
+    const im = new THREE.InstancedMesh(geo, mat, list.length), vivid = [], pale = [];
+    list.forEach(([mm, c, dead], i) => { im.setMatrixAt(i, mm); vivid.push(c); pale.push(new THREE.Color(dead ? '#b3aa94' : '#f3f0e8')); im.setColorAt(i, pale[i]); });
+    im.computeBoundingSphere(); scene.add(im); out.corals.push({ im, vivid, pale }); flora.reefMeshes.push(im); }
+  // 0 = bleached white, 1 = fully recovered colour
+  out.set = (h) => { const c = new THREE.Color(); for (const { im, vivid, pale } of out.corals) { for (let i = 0; i < im.count; i++) im.setColorAt(i, c.copy(pale[i]).lerp(vivid[i], h)); im.instanceColor.needsUpdate = true; } };
+  // the outfall: a concrete pipe half-buried in the sand, running in from the north-west, with a hand-wheel valve near its broken mouth
+  const dir = V(0.83, 0, 0.56), from = V(B.x - dir.x * 90, 0, B.z - dir.z * 90), mouthXZ = V(B.x - dir.x * 13, 0, B.z - dir.z * 13), parts = [];
+  const pipeY = (x, z) => heightAt(x, z) + 0.45, conc = (x, y, z) => { const n = NZ(x * 0.8 + 3, z * 0.8 + y) * 0.5 + 0.5; return NZ(x * 1.7, z * 1.7 + 4) > 0.35 ? [0.28, 0.36, 0.22] : [0.42 + n * 0.12, 0.41 + n * 0.11, 0.38 + n * 0.1]; };
+  const L = from.distanceTo(mouthXZ), N = Math.ceil(L / 3);
+  for (let k = 0; k < N; k++) { const a = from.clone().lerp(mouthXZ, k / N), b = from.clone().lerp(mouthXZ, (k + 1) / N); a.y = pipeY(a.x, a.z); b.y = pipeY(b.x, b.z);
+    const mid = a.clone().add(b).multiplyScalar(0.5), len = a.distanceTo(b), g = new THREE.CylinderGeometry(0.9, 0.9, len + 0.05, 14, 1, true);
+    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), b.clone().sub(a).normalize())); parts.push(P(g, '#fff', [mid.x, mid.y, mid.z], [0, 0, 0], [1, 1, 1], conc));
+    if (k % 2 === 0) { const f = new THREE.CylinderGeometry(1.08, 1.08, 0.35, 14); f.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), b.clone().sub(a).normalize())); parts.push(P(f, '#fff', [a.x, a.y, a.z], [0, 0, 0], [1, 1, 1], conc)); }
+    colliders.push({ x: mid.x, y: mid.y, z: mid.z, r: 1.1 }); }
+  const my = pipeY(mouthXZ.x, mouthXZ.z), up = V(0, 1, 0), dq = new THREE.Quaternion().setFromUnitVectors(up, dir);
+  const lip = new THREE.CylinderGeometry(1.0, 1.15, 0.5, 14, 1, true); lip.applyQuaternion(dq); parts.push(P(lip, '#fff', [mouthXZ.x, my, mouthXZ.z], [0, 0, 0], [1, 1, 1], (x, y, z) => rustyish(x, y, z)));
+  const hole = new THREE.CircleGeometry(0.88, 14); hole.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), dir.clone().negate())); parts.push(P(hole, '#0a0806', [mouthXZ.x - dir.x * 0.1, my, mouthXZ.z - dir.z * 0.1]));
+  const vxz = from.clone().lerp(mouthXZ, 1 - 6 / L), vy = pipeY(vxz.x, vxz.z);
+  parts.push(P(new THREE.BoxGeometry(1.6, 1.0, 1.6), '#7a3a22', [vxz.x, vy + 1.1, vxz.z], [0, Math.atan2(dir.x, dir.z), 0], [1, 1, 1], rustyish), P(new THREE.CylinderGeometry(0.1, 0.1, 1.0, 6), '#5a4a3a', [vxz.x, vy + 2.0, vxz.z]));
+  const pipe = new THREE.Mesh(M(...parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide })); scene.add(pipe); flora.reefMeshes.push(pipe);
+  const wg = [P(new THREE.TorusGeometry(0.62, 0.07, 6, 20), '#b0321e', [0, 0, 0], [Math.PI / 2, 0, 0])]; for (let k = 0; k < 4; k++) wg.push(P(new THREE.BoxGeometry(1.2, 0.06, 0.06), '#b0321e', [0, 0, 0], [0, (k * Math.PI) / 4, 0]));
+  const wheel = new THREE.Mesh(M(...wg), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x2a0600, emissiveIntensity: 0.5 })); wheel.position.set(vxz.x, vy + 2.5, vxz.z); scene.add(wheel);
+  colliders.push({ x: vxz.x, y: vy + 1.2, z: vxz.z, r: 1.3 });
+  out.valve = { pos: V(vxz.x, vy + 2.5, vxz.z), wheel, prog: 0 };
+  // cleanup site: litter draped on the larger coral heads plus debris on the sand; the "leak" is the outfall mouth
+  const tops = out.tops.slice().sort(() => R() - 0.5).slice(0, 12);
+  out.site = { center: V(B.x, heightAt(B.x, B.z), B.z), r: 55, spots: tops, leaks: [V(mouthXZ.x + dir.x * 0.6, my, mouthXZ.z + dir.z * 0.6)], dir };
+  return out;
+}
+const rustyish = (x, y, z) => { const n = NZ(x * 1.4 + 2, y * 1.4 + z) * 0.5 + 0.5; return [0.4 + n * 0.2, 0.2 + n * 0.08, 0.12 + n * 0.04]; };
 
 // ---------------------------------------------------------------- base ship (surface)
 export function buildBaseShip() {

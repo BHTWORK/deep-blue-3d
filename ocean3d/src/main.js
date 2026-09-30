@@ -9,7 +9,7 @@ import { TRASH, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS } from './data.js';
 import { AU, Music } from './audio.js';
 import { MAT, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO } from './models.js';
 import { drawCockpit, cockpitLayout, CockpitUI } from './cockpit.js';
-import { WORLD, heightAt, heightAt0, normalAt, reefPoint, reefFree, U, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBaseShip, buildDockRing, gradTex } from './world.js';
+import { WORLD, heightAt, heightAt0, normalAt, reefPoint, reefFree, U, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBleach, buildBaseShip, buildDockRing, gradTex } from './world.js';
 
 const V3 = THREE.Vector3, UPV = new V3(0, 1, 0), ZERO = new V3();
 const OPV = new V3(), tv1 = new V3(), tv2 = new V3(), tv3 = new V3(), tm = new THREE.Matrix4(), tq = new THREE.Quaternion(), ts = new V3(1, 1, 1);
@@ -38,13 +38,13 @@ const overlay = $('overlay'), octx = overlay.getContext('2d');
 // GAME STATE
 // =====================================================================
 const G = { vp: { x: 0, y: 0, w: innerWidth, h: innerHeight }, state: 'title', t: 0, dayT: 0.12, night: 0, sunH: 1, clean: 0, poll: 1, shake: 0, flash: 0, flashCol: '255,60,60', combo: 0, comboT: 0, sonar: null, sonarCd: 0, autosave: 0, tick: 0,
-  alert: '', alertPri: 0, fullT: 0, creakT: 0, alarmT: 0, lowWarned: false, pendingWin: 0, quality: 2, shakeOn: true, lastMTip: -99, sens: 1, fp: true, fpTier: -1, glowSrc: [], coralH: -1, VW: innerWidth, VH: innerHeight };
+  alert: '', alertPri: 0, fullT: 0, creakT: 0, alarmT: 0, lowWarned: false, pendingWin: 0, quality: 2, shakeOn: true, lastMTip: -99, sens: 1, fp: true, fpTier: -1, glowSrc: [], coralH: -1, bleachH: 0, bleachSet: -1, VW: innerWidth, VH: innerHeight };
 let SV = null; const S = {};
 const DOCK = new V3(2.6, -8, -19);
 const P = { pos: new V3(DOCK.x, DOCK.y - 3, DOCK.z - 15), vel: new V3(), yaw: Math.PI, pitch: -0.1, vyaw: Math.PI, vpitch: 0, roll: 0, bat: 100, hull: 100, kg: 0, cargo: [], beam: false, boost: false, thrust: 0, inv: 0, alive: true, deadT: 0, canDock: false, dmgT: 0, nose: new V3(), fwd: new V3(0, 0, -1) };
 const fwdOf = (yaw, pitch, out = new V3()) => out.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
 const rightOf = (yaw, out = new V3()) => out.set(-Math.cos(yaw), 0, Math.sin(yaw));
-function freshSave() { return { v: 1, money: 0, up: { engine: 0, battery: 0, hull: 0, depth: 0, cargo: 0, light: 0, beam: 0, sonar: 0 }, mission: 0, mv: 2, sites: {},
+function freshSave() { return { v: 1, money: 0, up: { engine: 0, battery: 0, hull: 0, depth: 0, cargo: 0, light: 0, beam: 0, sonar: 0 }, mission: 0, mv: 3, sites: {}, valve: false,
   stats: { collected: 0, kg: 0, earned: 0, sells: 0, upgrades: 0, rescues: 0, deepest: 0, time: 0, dist: 0, types: {}, fails: 0 }, species: {}, pois: {}, tips: {}, won: false, dayT: 0.12 }; }
 function calcStats() { const u = SV.up; S.speed = UP.engine.v[u.engine]; S.bat = UP.battery.v[u.battery]; S.hull = UP.hull.v[u.hull]; S.depth = UP.depth.v[u.depth]; S.cargo = UP.cargo.v[u.cargo];
   S.light = UP.light.v[u.light]; S.beam = UP.beam.v[u.beam]; S.beamPow = 7 + u.beam * 2.4; S.cut = 3.4 - u.beam * 0.4; S.sonar = UP.sonar.v[u.sonar]; S.sonarCd = 7.5 - u.sonar * 0.9;
@@ -67,6 +67,7 @@ const snow = buildSnow(); scene.add(snow);
 const rays = buildRays(); scene.add(rays);
 const flora = buildFlora(scene, colliders);
 const pieces = buildSetPieces(scene, colliders);
+const bleach = buildBleach(scene, colliders, flora); pieces.sites.bleach = bleach.site;
 const ship = buildBaseShip(); scene.add(ship);
 const dockRing = buildDockRing(); dockRing.position.copy(DOCK); scene.add(dockRing);
 const CGRID = new Map(); const CG = 40;
@@ -179,10 +180,12 @@ function genItems() {
 const SITES = [], SITE = {};
 const T_DECK = [['crate', 3], ['vest', 2.5], ['rope', 1.5], ['drum', 0.8], ['bottle', 1]];
 const T_WRECK = [['crate', 3], ['vest', 2.5], ['scrap', 1.2], ['rope', 1.5], ['bottle', 1.2], ['can', 1], ['battery', 0.5], ['tire', 0.5]];
+const T_BDECK = [['bag', 4], ['rope', 1.5], ['mask', 1.5], ['cup', 1], ['net', 0.5]];
+const T_BFLOOR = [['bottle', 3], ['can', 3], ['bag', 2], ['cup', 2], ['glass', 1.5], ['styro', 1], ['mask', 1]];
 const T_PLANE = [['seat', 3], ['luggage', 3], ['panel', 1.6], ['ewaste', 1], ['bottle', 1], ['cup', 0.8], ['mask', 0.6]];
 // older debris at the sites becomes cargo and cabin litter; re-typed by id (not the RNG) so later items keep their layout
 const RETYPE = { wreck: { scrap: ['crate', 'vest', 'scrap'], tire: ['rope'], ewaste: ['bottle'], battery: ['vest'] }, plane: { scrap: ['panel'], ewaste: ['luggage', 'seat'], battery: ['seat'] } };
-function retype(it, site) { const opts = RETYPE[site][it.type]; if (!opts) return; const t = opts[it.id % opts.length], D = TRASH[t]; Object.assign(it, { type: t, key: t, r: D.r, kg: D.kg, v: D.v }); }
+function retype(it, site) { const opts = RETYPE[site] && RETYPE[site][it.type]; if (!opts) return; const t = opts[it.id % opts.length], D = TRASH[t]; Object.assign(it, { type: t, key: t, r: D.r, kg: D.kg, v: D.v }); }
 function unstick(it) { // push floor debris out of the hulls so the sub can reach it
   it.pos.y = heightAt(it.pos.x, it.pos.z) + it.r * 0.45;
   for (let k = 0; k < 8; k++) { let hit = false;
@@ -193,26 +196,43 @@ function unstick(it) { // push floor debris out of the hulls so the sub can reac
 }
 function genSiteItems() {
   seed(2718); const first = items.length; // ids from here on are the site's own debris
-  const defs = { wreck: { n: '아틀란틱호', deck: T_DECK, floor: T_WRECK, ring: [8, 50], cnt: 12 }, plane: { n: '추락한 여객기', deck: T_PLANE, floor: T_PLANE, ring: [4, 36], cnt: 10 } };
-  for (const id in defs) { const D = defs[id], ps = pieces.sites[id]; const s = { id, n: D.n, c: ps.center.clone(), r: ps.r, leaks: ps.leaks, ids: [], total: 0, left: 0 };
+  const defs = { wreck: { n: '아틀란틱호', deck: T_DECK, floor: T_WRECK, ring: [8, 50], cnt: 12 }, plane: { n: '추락한 여객기', deck: T_PLANE, floor: T_PLANE, ring: [4, 36], cnt: 10 },
+    bleach: { n: '하얀 산호 지대', deck: T_BDECK, floor: T_BFLOOR, ring: [3, 44], cnt: 14, top: 12, valve: true, tip: '하얀 산호 지대: 뜨거운 폐수와 쓰레기 때문에 산호가 하얗게 죽어 갑니다. 배출관 밸브를 잠그고 쓰레기를 치우세요.' } };
+  for (const id in defs) { const D = defs[id], ps = pieces.sites[id]; const s = { id, n: D.n, c: ps.center.clone(), r: ps.r, leaks: ps.leaks, ids: [], total: 0, left: 0, top: D.top || 34, valve: !!D.valve, tip: D.tip || `${D.n}: 기름이 새고 있습니다. 주변 잔해를 모두 수거하면 유출이 멈춥니다.`, dir: ps.dir };
     s.depth = Math.ceil(-s.c.y) - 2; s.c.y += 6; SITES.push(s); SITE[id] = s;
     for (const p of ps.spots) { const t = wpick(D.deck); addItem(t, p.x, p.y + TRASH[t].r * 0.45, p.z).deck = true; }
     for (let k = 0; k < D.cnt; k++) { const [x, z] = polar(ps.center.x, ps.center.z, D.ring[0], D.ring[1]); floorItem(wpick(D.floor), x, z); } }
   for (const it of items) { if (it.locked) continue;
-    for (const s of SITES) if (Math.hypot(it.pos.x - s.c.x, it.pos.z - s.c.z) < s.r && it.pos.y < s.c.y + 34) { it.site = s.id; s.ids.push(it.id); if (it.id < first) retype(it, s.id); if (!it.deck) unstick(it); } }
+    for (const s of SITES) if (Math.hypot(it.pos.x - s.c.x, it.pos.z - s.c.z) < s.r && it.pos.y < s.c.y + s.top) { it.site = s.id; s.ids.push(it.id); if (it.id < first) retype(it, s.id); if (!it.deck) unstick(it); } }
   for (const s of SITES) s.total = s.left = s.ids.length;
 }
 // silent: sync the done flags after a load without toasts
 function siteTick(silent) {
   for (const s of SITES) { let left = 0; for (const id of s.ids) if (!items[id].col) left++; s.left = left;
-    if (!left && !SV.sites[s.id]) { SV.sites[s.id] = 1; if (!silent) { toast(`${s.n} 정화 완료`, 'big', '기름 유출이 멈췄습니다. 깨끗해진 잔해에 물고기들이 모여듭니다.'); AU.mission(); saveGame(); } } }
+    if (!left && (!s.valve || SV.valve) && !SV.sites[s.id]) { SV.sites[s.id] = 1; if (!silent) { toast(`${s.n} 정화 완료`, 'big', s.valve ? '오염원이 사라지자 산호가 다시 색을 되찾고, 물고기들이 돌아옵니다.' : '기름 유출이 멈췄습니다. 깨끗해진 잔해에 물고기들이 모여듭니다.'); AU.mission(); saveGame(); } } }
 }
 function updateSites(dt) {
   for (const s of SITES) { const d = Math.hypot(P.pos.x - s.c.x, P.pos.z - s.c.z);
-    if (d < s.r + 30 && G.state === 'play') tip('site_' + s.id, `${s.n}: 기름이 새고 있습니다. 주변 잔해를 모두 수거하면 유출이 멈춥니다.`);
+    if (d < s.r + 30 && G.state === 'play') tip('site_' + s.id, s.tip);
+    if (s.valve) { if (!SV.valve && camera.position.distanceToSquared(s.c) < 200 * 200) for (const L of s.leaks) { // hot, cloudy wastewater drifting over the reef
+      if (Math.random() < dt * 10) FXN.emit(PT.SMOKE, L.x + rnd(-0.4, 0.4), L.y + rnd(-0.3, 0.3), L.z + rnd(-0.4, 0.4), s.dir.x * rnd(1.5, 3) + rnd(-0.3, 0.3), rnd(0.1, 0.5), s.dir.z * rnd(1.5, 3) + rnd(-0.3, 0.3), rnd(6, 10), rnd(0.8, 1.6), 0.3, 0.27, 0.19, 0.4);
+      if (Math.random() < dt * 6) bubble(L.x + rnd(-0.5, 0.5), L.y + 0.4, L.z + rnd(-0.5, 0.5), rnd(-0.2, 0.2), rnd(0.8, 1.6), rnd(-0.2, 0.2), rnd(0.08, 0.16)); }
+      continue; }
     if (SV.sites[s.id] || camera.position.distanceToSquared(s.c) > 230 * 230) continue;
     for (const L of s.leaks) if (Math.random() < dt * 5) { const o = Math.random() < 0.3; FXN.emit(PT.SMOKE, L.x + rnd(-0.5, 0.5), L.y, L.z + rnd(-0.5, 0.5), rnd(-0.25, 0.25), rnd(0.4, 0.9), rnd(-0.25, 0.25), rnd(6, 9), rnd(0.4, 1), o ? 0.022 : 0.007, o ? 0.015 : 0.007, o ? 0.006 : 0.008, 0.85); } }
 }
+// the bleached reef's outfall valve: hold the tractor beam on the wheel to close it
+function updateValve(dt) {
+  const v = bleach.valve; if (SV.valve) return;
+  if (G.state === 'play' && P.pos.distanceTo(v.pos) < 30) tip('valve', '폐수 배출관 밸브입니다. 트랙터 빔을 계속 비추면 밸브가 잠깁니다.');
+  let on = false; if (P.beam && G.state === 'play') { tv1.subVectors(v.pos, P.nose); const ed = tv1.length(); on = ed < S.beam + 3 && tv1.dot(P.fwd) / ed > Math.cos(0.5); }
+  v.prog = on ? v.prog + dt / 3 : Math.max(0, v.prog - dt * 0.15); v.wheel.rotation.y = v.prog * TAU * 2;
+  if (on) { if (Math.random() < dt * 20) FXA.emit(PT.SPARK, v.pos.x + rnd(-0.6, 0.6), v.pos.y + rnd(-0.1, 0.2), v.pos.z + rnd(-0.6, 0.6), rnd(-2, 2), rnd(0, 3), rnd(-2, 2), 0.35, 0.15, 1, 0.9, 0.55, 1); if (Math.random() < dt * 6) AU.cut(); setAlert(`밸브 잠그는 중 ${Math.min(100, Math.round(v.prog * 100))}%`, 1); }
+  if (v.prog >= 1) { SV.valve = true; toast('폐수 배출관 차단', 'big', '뜨거운 폐수가 멈췄습니다. 이제 산호를 덮은 쓰레기를 치우면 색이 돌아옵니다.'); AU.mission(); saveGame(); }
+}
+// bleached (0) to recovered (1): closing the valve lets the corals start to recover, each piece of litter cleared brings back more colour
+function bleachTarget() { const s = SITE.bleach; if (SV.sites.bleach) return 1; const f = 1 - s.left / s.total; return SV.valve ? 0.15 + 0.5 * f : 0.05 * f; }
+function updateBleach(dt, snap) { const t = bleachTarget(); G.bleachH = snap ? t : G.bleachH + (t - G.bleachH) * Math.min(1, dt * 0.3); if (snap || Math.abs(G.bleachH - G.bleachSet) > 0.01) { G.bleachSet = G.bleachH; bleach.set(G.bleachH); } }
 const rescues = [];
 function genRescues() {
   seed(5150);
@@ -310,6 +330,7 @@ function genCreatures() {
   const site = (id, sp, n, o) => { const ps = pieces.sites[id]; addSchool(sp, Z(ps.center.x, ps.center.z, ps.r * 0.6, -900, -3), n, 0, { scale: 1.3, site: id, ...o }); };
   site('wreck', 'snapper', 30, { rad: 5, hug: [9, 16] }); site('wreck', 'reef', 22, { rad: 3, hug: [9, 15], col: '#ffd23f' }); site('wreck', 'barra', 10, { rad: 5, hug: [13, 22], spd: 2 });
   site('wreck', 'grouper', 3, { rad: 2, hug: [2, 6] }); site('wreck', 'butter', 6, { rad: 2, hug: [9, 13] });
+  site('bleach', 'reef', 24, { rad: 2.6, hug: [1.5, 5], col: '#ff7b54' }); site('bleach', 'reef', 20, { rad: 2.6, hug: [1.5, 5], col: '#3fa7ff' }); site('bleach', 'butter', 8, { rad: 1.8, hug: [1, 4] }); site('bleach', 'angel', 4, { rad: 1.2, hug: [1.5, 5] }); site('bleach', 'parrot', 3, { rad: 2, hug: [1, 3] });
   site('plane', 'snapper', 22, { rad: 4, hug: [4, 9] }); site('plane', 'reef', 18, { rad: 2.6, hug: [3, 7], col: '#ff7b54' }); site('plane', 'grouper', 2, { rad: 1.5, hug: [1.5, 4] }); site('plane', 'angel', 3, { rad: 1.4, hug: [2, 5] });
   for (const sp of FISH_KINDS) { const cnt = sp === 'clownfish' || sp === 'tang' ? creatures.filter((c) => c.sp === sp).length : schools.filter((s) => s.sp === sp).reduce((s, sc) => s + sc.m.length, 0);
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: sp === 'sardine' ? 0.5 : sp === 'barra' || sp === 'snapper' ? 0.35 : 0.1, side: THREE.DoubleSide });
@@ -440,6 +461,7 @@ const MISSIONS = [
   { t: '무지개 산호초', d: '기지선 동쪽의 산호초를 찾아가세요.', poi: 'reef', rw: 120 },
   { t: '구조 요청', d: '폐그물에 얽힌 바다생물을 찾아 빔을 비춰 그물을 끊어 주세요.', goal: 1, p: () => ST().rescues, rw: 150, tg: nearestRescue, tgl: '구조 대상' },
   { t: '켈프 숲', d: '기지선 서쪽의 켈프 숲을 탐험하세요.', poi: 'kelp', rw: 120 },
+  { t: '하얀 산호 지대', d: '기지선 북쪽 산호가 하얗게 죽어 가고 있습니다(백화). 뜨거운 폐수 배출관 밸브를 빔으로 잠그고, 산호를 덮은 쓰레기를 모두 치우세요.', site: 'bleach', rw: 250, kind: 'site' },
   { t: '더 깊은 바다로', d: '수심 150m에 도달하세요. 먼저 내압 선체를 업그레이드해야 합니다.', goal: 150, p: () => ST().deepest, rw: 150, kind: 'depth' },
   { t: '부지런한 청소부', d: '쓰레기를 누적 40개 수거하세요.', goal: 40, p: () => ST().collected, rw: 200, kind: 'trash' },
   { t: '생물 탐사', d: '해양생물 8종을 발견하세요. 가까이 다가가 화면에 담으면 도감(Tab)에 기록됩니다.', goal: 8, p: () => Object.keys(SV.species).length, rw: 200, kind: 'species' },
@@ -460,7 +482,7 @@ const MISSIONS = [
   { t: '정화율 70%', d: '바다 정화율 70%를 달성하세요.', goal: 70, p: cleanPct, rw: 600, kind: 'trash' },
   { t: '되살아난 바다', d: '바다 정화율 95%를 달성하세요. 소나와 지도로 남은 쓰레기를 찾으세요.', goal: 95, p: cleanPct, rw: 2000, kind: 'trash' },
 ];
-function mProg(m) { if (m.site) { const st = SITE[m.site]; return [SV.sites[m.site] ? st.total : st.total - st.left, st.total]; } if (m.poi) return [SV.pois[m.poi] ? 1 : 0, 1]; if (m.sp) return [SV.species[m.sp] ? 1 : 0, 1]; return [Math.min(m.p(), m.goal), m.goal]; }
+function mProg(m) { if (m.site) { const st = SITE[m.site], v = st.valve ? 1 : 0; return [SV.sites[m.site] ? st.total + v : st.total - st.left + (v && SV.valve ? 1 : 0), st.total + v]; } if (m.poi) return [SV.pois[m.poi] ? 1 : 0, 1]; if (m.sp) return [SV.species[m.sp] ? 1 : 0, 1]; return [Math.min(m.p(), m.goal), m.goal]; }
 // Where the current mission wants the player to go, with a short label for the HUD guide.
 // Recomputed every mission tick into G.guide.
 let DEEP_SPOTS = null; // coarse seabed samples for finding the nearest place deep enough
@@ -478,7 +500,7 @@ function mGuide(m) {
   if (m.tg) { const t = m.tg(); return t ? { p: t.isVector3 ? t : new V3(t.x, t.y, t.z), label: m.tgl || '목표' } : null; }
   if ((m.kind === 'trash' || m.kind === 'drum' || m.kind === 'site') && P.kg >= S.cargo * 0.92) return { p: DOCK, label: '화물 가득 · 기지선에서 판매' };
   if (m.kind === 'trash') { const it = nearestItem(() => true); return it && { p: it.pos, label: '가장 가까운 쓰레기' }; }
-  if (m.kind === 'site') { const st = SITE[m.site]; if (S.depth < st.depth) return { p: DOCK, label: '기지선 · 내압 선체 업그레이드' }; if (Math.hypot(P.pos.x - st.c.x, P.pos.z - st.c.z) > st.r + 40) return { p: st.c, label: st.n }; const it = nearestItem((i) => i.site === m.site); return it && { p: it.pos, label: `${st.n} 잔해 · ${st.left}개 남음` }; }
+  if (m.kind === 'site') { const st = SITE[m.site]; if (S.depth < st.depth) return { p: DOCK, label: '기지선 · 내압 선체 업그레이드' }; if (st.valve && !SV.valve) return { p: bleach.valve.pos, label: '폐수 배출관 밸브 · 빔으로 잠그기' }; if (Math.hypot(P.pos.x - st.c.x, P.pos.z - st.c.z) > st.r + 40) return { p: st.c, label: st.n }; const it = nearestItem((i) => i.site === m.site); return it && { p: it.pos, label: `${st.n} ${st.valve ? '쓰레기' : '잔해'} · ${st.left}개 남음` }; }
   if (m.kind === 'drum') { const it = nearestItem((i) => i.type === 'drum'); return it && { p: it.pos, label: '유해 드럼통' }; }
   if (m.kind === 'depth') { if (S.depth < m.goal) return { p: DOCK, label: '기지선 · 내압 선체 업그레이드' }; const d = nearestDeep(m.goal); return d && { p: d, label: `수심 ${m.goal}m 지점` }; }
   if (m.kind === 'species') { const p = nearestNewLife(); return p && { p, label: '미발견 생물' }; }
@@ -701,7 +723,8 @@ function resetWorld() {
 function applySave(d) {
   SV = Object.assign(freshSave(), d || {}); SV.stats = Object.assign(freshSave().stats, (d && d.stats) || {}); SV.up = Object.assign(freshSave().up, (d && d.up) || {}); SV.species = SV.species || {}; SV.pois = SV.pois || {}; SV.tips = SV.tips || {}; SV.sites = SV.sites || {};
   if (d && !d.mv && SV.mission >= 11) SV.mission += SV.mission >= 12 ? 2 : 1; // v1 saves predate the two site-cleanup missions
-  SV.mv = 2;
+  if (d && (d.mv || 1) < 3 && SV.mission >= 6) SV.mission += 1; // and v1/v2 saves predate the bleached reef
+  SV.mv = 3;
   for (const k of ['col', 'known', 'cargo', 'rescued', 'ex', 'p', 'bat', 'hull']) delete SV[k];
   resetWorld(); calcStats();
   if (d) { (d.col || []).forEach((id) => { if (items[id]) items[id].col = true; }); (d.known || []).forEach((id) => { if (items[id]) items[id].known = true; });
@@ -713,7 +736,7 @@ function applySave(d) {
     for (const it of items) writeItem(it); }
   else { P.pos.copy(DOCK).add(new V3(0, -3, -15)); P.yaw = Math.PI; P.bat = S.bat; P.hull = S.hull; }
   P.vel.set(0, 0, 0); P.pitch = -0.1; P.vyaw = P.yaw; P.alive = true; P.deadT = 0; P.canDock = false; G.lowWarned = false; G.dayT = SV.dayT || 0.12;
-  camera.position.copy(P.pos).add(new V3(0, 3, 9)); recount(); siteTick(true); G.coralH = -1;
+  camera.position.copy(P.pos).add(new V3(0, 3, 9)); recount(); siteTick(true); bleach.valve.prog = 0; bleach.valve.wheel.rotation.y = SV.valve ? TAU * 2 : 0; updateBleach(0, true); G.coralH = -1;
 }
 
 // =====================================================================
@@ -967,7 +990,7 @@ function updateHUD() {
   let site = null; for (const st of SITES) if (Math.hypot(P.pos.x - st.c.x, P.pos.z - st.c.z) < st.r + 90) site = st;
   H.hudSite.classList.toggle('hidden', !site);
   if (site) { const done = !!SV.sites[site.id], c = done ? site.total : site.total - site.left; H.hudSite.classList.toggle('done', done); H.sName.textContent = site.n; H.sProg.textContent = `${c}/${site.total}`;
-    H.sBar.style.width = (c / site.total) * 100 + '%'; H.sState.textContent = done ? '정화 완료 · 유출이 멈췄습니다' : `기름 유출 중 · 남은 잔해 ${site.left}개`; }
+    H.sBar.style.width = (c / site.total) * 100 + '%'; H.sState.textContent = site.valve ? (done ? '정화 완료 · 산호가 색을 되찾는 중' : !SV.valve ? '백화 진행 중 · 뜨거운 폐수 유입' : `수온 회복 중 · 남은 쓰레기 ${site.left}개`) : done ? '정화 완료 · 유출이 멈췄습니다' : `기름 유출 중 · 남은 잔해 ${site.left}개`; }
   if (G.alert) { H.alert.textContent = G.alert; H.alert.classList.add('on'); } else H.alert.classList.remove('on');
   const cd = G.sonarCd > 0; H.sonarInd.classList.toggle('cd', cd); H.sonarTxt.textContent = cd ? `소나 충전 중 ${G.sonarCd.toFixed(1)}s` : '소나 준비 (Q)'; H.tSonar.innerHTML = cd ? `<span>${Math.ceil(G.sonarCd)}</span>` : '소나';
   $('lockHint').classList.toggle('hidden', IN.locked || IN.touch || G.state !== 'play');
@@ -1078,7 +1101,7 @@ function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; 
 addEventListener('resize', resize);
 function update(dt) {
   G.dayT = (G.dayT + dt / 600) % 1; G.alert = ''; G.alertPri = 0; ST().time += dt;
-  updatePlayer(dt); updateItems(dt); updateSites(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
+  updatePlayer(dt); updateItems(dt); updateSites(dt); updateValve(dt); updateBleach(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
   for (const c of creatures) updateCreature(c, dt); for (const s of schools) updateSchool(s, dt);
   updateCamera(dt);
   G.shake *= Math.pow(0.02, dt); if (G.shake < 0.01) G.shake = 0; G.flash = Math.max(0, G.flash - dt * 1.4);
