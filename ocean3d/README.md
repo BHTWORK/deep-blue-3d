@@ -19,3 +19,16 @@ cd ocean3d
 npm install
 npm run build   # → ../ocean-cleanup-3d.html
 ```
+
+## 테스트
+```bash
+cd ocean3d
+npm install
+npx playwright install chromium   # 처음 한 번
+npm run build && npm test          # 전체 (core·sites·story·quality·touch)
+npm test -- story touch            # 일부만
+```
+`tests/e2e.mjs`는 빌드된 `../ocean-cleanup-3d.html`을 헤드리스 Chromium(소프트웨어 GPU)으로 열어 수거·빔·소나·도킹·업그레이드·구조·도감·지도·수압 실패·저장/이어하기, 하얀 산호 지대 정화, 스토리 모드 끝까지 진행과 퀴즈, 그래픽 품질 자동 조절과 WebGL 컨텍스트 복구, 태블릿 터치 버튼 배치를 확인합니다. GitHub에서는 `main`에 push할 때마다 `.github/workflows/game-tests.yml`이 빌드 결과가 커밋된 파일과 같은지와 이 테스트를 함께 돌립니다.
+
+## 그래픽 품질
+설정의 기본값은 **자동**입니다. 플레이 중 실제 프레임 시간을 재서, 4초 동안 약 40fps 아래면 한 단계 내리고(다시 올리지 않음), 6초 동안 55fps 이상이면 한 번 **최고**(픽셀 밀도 2배, 외부 카메라 화면 매 프레임 갱신)로 올립니다. Safari가 메모리 부족으로 WebGL 컨텍스트를 회수하면 저장·일시정지 후 안내를 띄우고, 복구되면 그대로 이어집니다.

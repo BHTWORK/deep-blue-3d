@@ -1,0 +1,28 @@
+name: Game tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ocean3d
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ocean3d/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Build, and check the committed game file is up to date
+        run: |
+          npm run build
+          git diff --exit-code -- ../ocean-cleanup-3d.html || { echo "::error::ocean-cleanup-3d.html is out of date: run 'npm run build' in ocean3d and commit it"; exit 1; }
+      - name: End-to-end tests (headless Chromium, software GPU)
+        run: npm test
