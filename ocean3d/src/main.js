@@ -9,7 +9,7 @@ import { TRASH, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS, STORY } from './data
 import { AU, Music } from './audio.js';
 import { MAT, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO } from './models.js';
 import { drawCockpit, cockpitLayout, CockpitUI } from './cockpit.js';
-import { WORLD, heightAt, heightAt0, normalAt, reefPoint, reefFree, U, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBleach, buildBaseShip, buildDockRing, gradTex } from './world.js';
+import { WORLD, heightAt, heightAt0, normalAt, reefPoint, reefFree, U, SEABED, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBleach, buildBaseShip, buildDockRing, gradTex } from './world.js';
 
 const V3 = THREE.Vector3, UPV = new V3(0, 1, 0), ZERO = new V3();
 const OPV = new V3(), tv1 = new V3(), tv2 = new V3(), tv3 = new V3(), tm = new THREE.Matrix4(), tq = new THREE.Quaternion(), ts = new V3(1, 1, 1);
@@ -33,6 +33,7 @@ const sun = new THREE.DirectionalLight(0xfff2d8, 2); sun.position.set(120, 300, 
 const amb = new THREE.AmbientLight(0x3050a0, 0.06); scene.add(amb);
 // glow sources (lures, jellies, vents, beacons) feed a few point lights; entries come from a pool so frames don't allocate
 const glowPool = [];
+const SPOT_K = Math.pow(16, 0.6 - 1); // keeps the lamp as bright as before at 16 m with the flatter falloff
 function addGlow(p, col, k) { const n = G.glowSrc.length, s = glowPool[n] || (glowPool[n] = [new V3(), 0, 0]); s[0].copy(p); s[1] = col; s[2] = k; G.glowSrc.push(s); }
 const glowLights = [0, 1, 2, 3].map(() => { const l = new THREE.PointLight(0xffffff, 0, 22, 1.4); scene.add(l); return l; });
 const overlay = $('overlay'), octx = overlay.getContext('2d');
@@ -79,7 +80,8 @@ function nearColliders(x, z) { const out = []; const i0 = Math.floor(x / CG), j0
 
 // ---- submarine
 const SUB = buildSub(); scene.add(SUB.root);
-SUB.spot = new THREE.SpotLight(0xfff1dc, 90, 60, 0.5, 0.8, 1.0); SUB.spot.position.set(0, -0.35, 1.6); SUB.root.add(SUB.spot);
+// decay 0.6, not 1: close surfaces no longer burn out to white
+SUB.spot = new THREE.SpotLight(0xfff1dc, 90, 60, 0.5, 0.8, 0.6); SUB.spot.position.set(0, -0.35, 1.6); SUB.root.add(SUB.spot);
 SUB.spotTarget = new THREE.Object3D(); SUB.spotTarget.position.set(0, -0.8, 20); SUB.root.add(SUB.spotTarget); SUB.spot.target = SUB.spotTarget;
 SUB.fill = new THREE.PointLight(0xfff1d6, 9, 13, 1.4); SUB.fill.position.set(1.8, 3, -3.5); SUB.root.add(SUB.fill);
 // volumetric headlight cone + tractor beam cone
@@ -618,11 +620,19 @@ function updateItems(dt) {
     if (G.state === 'play') { const pr = 1.8 + it.r; if (it.pos.distanceToSquared(P.pos) < pr * pr || it.pos.distanceToSquared(P.nose) < (1.2 + it.r) ** 2) tryCollect(it); }
   }
 }
+// a collected item shrinks and flies into the sub's nose over a quarter second, then pops
+const SUCK = [];
+function updateSuck(dt) {
+  for (let i = SUCK.length - 1; i >= 0; i--) { const s = SUCK[i], it = s.it; s.t += dt / 0.25; const r = IM[it.key];
+    if (s.t >= 1 || !it.col) { SUCK.splice(i, 1); writeItem(it); if (s.t >= 1) burst(P.nose, 8, 0.5, 1, 0.9, 3, 0.12); continue; }
+    const k = s.t * s.t; tv1.lerpVectors(s.from, P.nose, k); const sc = 1 - k * 0.9; tq.setFromAxisAngle(UPV, s.t * 6).multiply(it.q);
+    tm.compose(tv1, tq, ts.set(sc, sc, sc)); r.im.setMatrixAt(it.idx, tm); r.im.instanceMatrix.needsUpdate = true; }
+}
 const itemName = (it) => TRASH[it.type].n;
 function tryCollect(it) {
   if (P.kg + it.kg > S.cargo + 1e-6) { if (G.t - G.fullT > 2.5) { G.fullT = G.t; if (it.kg > S.cargo) toast(`${itemName(it)}은(는) 너무 무겁습니다 (${it.kg}kg)`, 'bad', '화물칸을 업그레이드하세요'); else toast('화물칸이 가득 찼습니다', 'bad', '기지선으로 돌아가 판매하세요.'); }
     tv1.subVectors(it.pos, P.pos).normalize().multiplyScalar(6); it.vel.copy(tv1); it.state = 2; return; }
-  it.col = true; writeItem(it); P.cargo.push(it.id); P.kg += it.kg;
+  it.col = true; SUCK.push({ it, t: 0, from: it.pos.clone() }); P.cargo.push(it.id); P.kg += it.kg; // shrinks into the sub's nose, see updateSuck
   G.combo = G.t - G.comboT < 1.6 ? G.combo + 1 : 0; G.comboT = G.t;
   const s = ST(); s.collected++; s.kg += it.kg; s.types[it.type] = (s.types[it.type] || 0) + 1;
   burst(it.pos, 18, 0.4, 1, 0.9, 5, 0.18);
@@ -725,7 +735,7 @@ function resetWorld() {
   for (const r of rescues) { r.freed = false; r.prog = 0; r.known = false; items[r.net].locked = true; if (!r.netMesh.parent) scene.add(r.netMesh); if (!r.model.root.parent) scene.add(r.model.root); }
   for (let i = creatures.length - 1; i >= 0; i--) if (creatures[i].freed) { scene.remove(creatures[i].root); creatures.splice(i, 1); }
   for (const p of POIS) p.pinged = false; for (const it of items) writeItem(it);
-  resetFog(); P.cargo = []; P.kg = 0;
+  resetFog(); P.cargo = []; P.kg = 0; SUCK.length = 0;
 }
 function applySave(d) {
   SV = Object.assign(freshSave(), d || {}); SV.stats = Object.assign(freshSave().stats, (d && d.stats) || {}); SV.up = Object.assign(freshSave().up, (d && d.up) || {}); SV.species = SV.species || {}; SV.pois = SV.pois || {}; SV.tips = SV.tips || {}; SV.sites = SV.sites || {};
@@ -793,16 +803,17 @@ const FOG_MURK = [[0, '#3c8676'], [60, '#2a6863'], [200, '#1a4a4e'], [400, '#123
 function palAt(pal, d) { if (d <= pal[0][0]) return pal[0][1]; for (let i = 1; i < pal.length; i++) if (d <= pal[i][0]) return mixHexSafe(pal[i - 1][1], pal[i][1], (d - pal[i - 1][0]) / (pal[i][0] - pal[i - 1][0])); return pal[pal.length - 1][1]; }
 function mixHexSafe(a, b, t) { const c1 = new THREE.Color(a), c2 = new THREE.Color(b); return '#' + c1.lerp(c2, clamp(t, 0, 1)).getHexString(); }
 const fogCol = new THREE.Color(), skyTop = new THREE.Color(), skyHor = new THREE.Color();
+const EC = { t0: new THREE.Color('#050a1f'), t1: new THREE.Color('#33407a'), t2: new THREE.Color('#3d9ee0'), h0: new THREE.Color('#1a2a55'), h1: new THREE.Color('#ff9a6a'), h2: new THREE.Color('#c6eaff'), tmp: new THREE.Color() }; // sky and fog colours, reused every frame
 function updateEnv(dt) {
   G.sunH = Math.sin(G.dayT * TAU); G.night = 1 - smooth(-0.25, 0.12, G.sunH); const day = 1 - G.night;
   const cy = camera.position.y, dep = Math.max(0, -cy), cv = 0.25 + 0.75 * smooth(0, 0.7, G.clean);
-  skyTop.set('#050a1f').lerp(new THREE.Color('#33407a'), smooth(-0.3, 0.05, G.sunH)).lerp(new THREE.Color('#3d9ee0'), smooth(0.05, 0.4, G.sunH));
-  skyHor.set('#1a2a55').lerp(new THREE.Color('#ff9a6a'), smooth(-0.3, 0.05, G.sunH)).lerp(new THREE.Color('#c6eaff'), smooth(0.05, 0.4, G.sunH));
+  skyTop.copy(EC.t0).lerp(EC.t1, smooth(-0.3, 0.05, G.sunH)).lerp(EC.t2, smooth(0.05, 0.4, G.sunH));
+  skyHor.copy(EC.h0).lerp(EC.h1, smooth(-0.3, 0.05, G.sunH)).lerp(EC.h2, smooth(0.05, 0.4, G.sunH));
   const sunDir = tv1.set(Math.cos(G.dayT * TAU) * 0.6, G.sunH, 0.35).normalize();
   sky.material.uniforms.uTop.value.copy(skyTop); sky.material.uniforms.uHor.value.copy(skyHor); sky.material.uniforms.uSun.value.copy(sunDir); sky.material.uniforms.uNight.value = G.night;
   sun.position.copy(sunDir).multiplyScalar(400).add(camera.position); sun.target.position.copy(camera.position);
   if (cy > 0) { fogCol.copy(skyHor); scene.fog.density = 0.0009; sky.visible = true; hemi.intensity = 0.3 + 1.2 * day; sun.intensity = 2.4 * day * smooth(-0.05, 0.2, G.sunH); U.caust.value = 0; }
-  else { fogCol.set(palAt(FOG_MURK, dep)).lerp(new THREE.Color(palAt(FOG_CLEAN, dep)), cv).multiplyScalar(1 - G.night * 0.72 * (1 - smooth(0, 300, dep)));
+  else { fogCol.set(palAt(FOG_MURK, dep)).lerp(EC.tmp.set(palAt(FOG_CLEAN, dep)), cv).multiplyScalar(1 - G.night * 0.72 * (1 - smooth(0, 300, dep)));
     scene.fog.density = lerp(0.0078, 0.0105, smooth(0, 300, dep)) * lerp(1.3, 0.85, cv); sky.visible = false;
     hemi.intensity = lerp(1.35, 0.22, smooth(0, 330, dep)) * (0.35 + 0.65 * day); sun.intensity = 2.2 * Math.exp(-dep / 55) * day * smooth(-0.05, 0.2, G.sunH); U.caust.value = day * smooth(-0.05, 0.25, G.sunH); }
   hemi.color.set(cy > 0 ? '#bfe6ff' : '#8fd6ff'); hemi.groundColor.set(cy > 0 ? '#50606a' : '#1a2e38');
@@ -818,7 +829,7 @@ function updateEnv(dt) {
   const ra = rays.userData; ra.mat.opacity = 0.05 * day * (1 - smooth(10, 140, dep)) * (0.6 + 0.4 * cv); rays.visible = ra.mat.opacity > 0.003 && cy < 0;
   if (rays.visible) for (const m of ra.rays) { const u = m.userData; m.position.set(Math.round(camera.position.x / 40) * 40 + u.ox, 0, Math.round(camera.position.z / 40) * 40 + u.oz); m.rotation.set(u.tilt + sunDir.x * 0.2, Math.atan2(camera.position.x - m.position.x, camera.position.z - m.position.z), 0); m.scale.x = 0.7 + 0.3 * Math.sin(G.t * 0.4 + u.ph); }
   const shallow = 1 - smooth(0, 60, dep); lightCone.material.uniforms.uA.value = P.alive ? (0.01 + 0.12 * (1 - shallow * 0.95)) * (inCockpit() ? 0.45 : 1) : 0; lightCone.scale.set(S.light * 0.42 * 0.55, S.light * 0.42 * 0.55, S.light * 0.55);
-  SUB.spot.intensity = P.alive ? (90 + SV.up.light * 35) * lerp(0.25, 1, smooth(10, 120, dep)) * (P.bat < S.bat * 0.08 ? rnd(0.3, 1) : 1) : 0; SUB.lamps.visible = P.alive;
+  SUB.spot.intensity = P.alive ? (90 + SV.up.light * 35) * SPOT_K * lerp(0.25, 1, smooth(10, 120, dep)) * (P.bat < S.bat * 0.08 ? rnd(0.3, 1) : 1) : 0; SUB.lamps.visible = P.alive;
   // glow light pool: nearest emissive sources
   for (const v of pieces.vents) addGlow(tv2.set(v.x, v.top + 1, v.z), 0xff7a2a, 14);
   G.glowSrc.sort((a, b) => a[0].distanceToSquared(camera.position) - b[0].distanceToSquared(camera.position));
@@ -1222,7 +1233,7 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; const pr = Math.min(devicePixelRatio || 1, [0.85, 1.25, 1.75, 2][q]);
   const L = G.ck = inCockpit() ? cockpitLayout(G.VW, G.VH, IN.touch) : null, vp = G.vp = L ? L.view : { x: 0, y: 0, w: G.VW, h: G.VH };
   renderer.setPixelRatio(pr); renderer.setSize(vp.w, vp.h, false); Object.assign(canvas.style, { left: vp.x + 'px', top: vp.y + 'px', width: vp.w + 'px', height: vp.h + 'px' });
-  composer.setPixelRatio(pr); composer.setSize(vp.w, vp.h); bloom.enabled = q > 0; bloom.strength = q >= 2 ? 0.55 : 0.45;
+  composer.setPixelRatio(pr); composer.setSize(vp.w, vp.h); bloom.enabled = q > 0; bloom.strength = q >= 2 ? 0.55 : 0.45; SEABED.value = q > 0 ? 1 : 0;
   let f;
   if (L) { // principal point at the middle of the visible glass; F is the virtual frame height
     const py = L.ppY - vp.y, F = 2 * Math.max(py, vp.h - py); f = Math.max(0.72 * G.VH, 0.42 * G.VW);
@@ -1234,7 +1245,7 @@ function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; 
 addEventListener('resize', resize);
 function update(dt) {
   G.dayT = (G.dayT + dt / 600) % 1; G.alert = ''; G.alertPri = 0; ST().time += dt;
-  updatePlayer(dt); updateItems(dt); updateSites(dt); updateValve(dt); if (G.story) { storyUpdate(dt); updateBuddy(dt); } updateBleach(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
+  updatePlayer(dt); updateItems(dt); updateSuck(dt); updateSites(dt); updateValve(dt); if (G.story) { storyUpdate(dt); updateBuddy(dt); } updateBleach(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
   for (const c of creatures) updateCreature(c, dt); for (const s of schools) updateSchool(s, dt);
   updateCamera(dt);
   G.shake *= Math.pow(0.02, dt); if (G.shake < 0.01) G.shake = 0; G.flash = Math.max(0, G.flash - dt * 1.4);
@@ -1266,7 +1277,9 @@ function autoQuality(ms) {
   if (avg < 18 && !AQ.dropped && G.quality < 3) { if (++AQ.fast >= 3) { G.quality++; AQ.fast = 0; resize(); } } else AQ.fast = 0;
 }
 // Safari may drop the WebGL context under memory pressure. three.js rebuilds its GPU resources when the
-// context comes back, so save, pause and say so in the meantime.
+// context comes back, so save, pause and say so in the meantime. The context is already gone before the
+// event arrives, so frames also ask it directly before rendering.
+const GL = renderer.getContext();
 canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); G.ctxLost = true; saveGame(); if (G.state === 'play') togglePause(); show('ctxLost'); });
 canvas.addEventListener('webglcontextrestored', () => { G.ctxLost = false; hide('ctxLost'); resize(); G.needRender = true; });
 function frame(now) {
@@ -1276,7 +1289,7 @@ function frame(now) {
     pollGamepad(dt);
     const live = G.state === 'play' || G.state === 'title';
     if (live) { G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); else updateAttract(dt); FXA.update(dt); FXN.update(dt); for (let i = ftexts.length - 1; i >= 0; i--) { const f = ftexts[i]; f.life -= dt; f.p.y += dt * 1.2; if (f.life <= 0) ftexts.splice(i, 1); } writeFish(); }
-    if ((live || G.needRender) && !G.ctxLost) { updateEnv(dt); if (inCockpit()) renderFeed(); if (bloom.enabled) composer.render(); else renderer.render(scene, camera); drawOverlay(); G.needRender = false; }
+    if ((live || G.needRender) && !G.ctxLost && !GL.isContextLost()) { updateEnv(dt); if (inCockpit()) renderFeed(); if (bloom.enabled) composer.render(); else renderer.render(scene, camera); drawOverlay(); G.needRender = false; }
     if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit() && G.ck) CK.update(cockpitState(), dt); }
     if (G.state === 'menu' && !$('mapm').classList.contains('hidden')) { mmAcc += dt; if (mmAcc > 0.3) { mmAcc = 0; drawBigMap(); } }
     AU.update(G.state === 'title' ? 20 : depthOf(P.pos.y), P.vel.length() * 12, G.state === 'play' ? P.thrust : 0, G.state === 'play' && P.beam, G.state === 'play');

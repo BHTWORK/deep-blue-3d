@@ -80,6 +80,36 @@ export function addCaustics(mat, strength = 0.6) {
   };
   return mat;
 }
+// ---- seabed detail: sand ripples (as a bump on the lighting) and fine grain/mottling (in the albedo) for the
+// close-up seabed the 5 m terrain grid cannot show; fades out with distance to stay free of shimmer. Apply
+// after addCaustics, which provides the world position and normal.
+export const SEABED = { value: 1 }; // 0 turns the detail off (low quality)
+export function addSeabed(mat) {
+  setKey(mat, 'seabed');
+  const prev = mat.onBeforeCompile;
+  mat.onBeforeCompile = (sh, r) => {
+    if (prev) prev(sh, r);
+    sh.uniforms.uSeabed = SEABED;
+    sh.fragmentShader = `uniform float uSeabed;
+      float sbHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+      float sbNoise(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(sbHash(i), sbHash(i + vec2(1.0, 0.0)), u.x), mix(sbHash(i + vec2(0.0, 1.0)), sbHash(i + vec2(1.0, 1.0)), u.x), u.y); }
+      ` + sh.fragmentShader
+      .replace('#include <color_fragment>', `#include <color_fragment>
+      float sbFade = uSeabed * (1.0 - smoothstep(15.0, 55.0, distance(cameraPosition, vWPos)));
+      float sbDep = clamp(-vWPos.y, 0.0, 900.0), sbFlat = smoothstep(0.8, 0.96, vWNrm.y);
+      float sbRip = sbFade * sbFlat * (1.0 - smoothstep(70.0, 240.0, sbDep)); // ripples on the shallower sand
+      float sbTurn = 0.4 + sbNoise(vWPos.xz * 0.045) * 1.6;
+      vec2 sbDir = vec2(cos(sbTurn), sin(sbTurn));
+      float sbPh = dot(vWPos.xz, sbDir) * 5.4 + sbNoise(vWPos.xz * 0.32) * 3.6 + sbNoise(vWPos.xz * 1.1) * 0.8;
+      vec2 sbGrad = sbDir * (5.4 * 0.035 * cos(sbPh) * sbRip);
+      float sbGrain = sbNoise(vWPos.xz * 3.3) * 0.6 + sbNoise(vWPos.xz * 10.0) * 0.4, sbMott = sbNoise(vWPos.xz * 0.55);
+      diffuseColor.rgb *= 1.0 + ((sbGrain - 0.5) * 0.18 + (sbMott - 0.5) * 0.14) * sbFade + sin(sbPh) * 0.03 * sbRip;`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      normal = normalize(normal + (viewMatrix * vec4(-sbGrad.x, 0.0, -sbGrad.y, 0.0)).xyz);`);
+  };
+  return mat;
+}
 // ---- vertex sway injection for instanced flora (uses local y as height 0..1)
 export function addSway(mat, amp = 1) {
   setKey(mat, 'sway' + amp);
@@ -121,7 +151,7 @@ export function buildTerrain() {
     cols[k * 3] = c.r; cols[k * 3 + 1] = c.g; cols[k * 3 + 2] = c.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-  const mat = addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0 }), 0.7);
+  const mat = addSeabed(addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0 }), 0.7));
   const mesh = new THREE.Mesh(geo, mat); mesh.receiveShadow = false; mesh.frustumCulled = false;
   return mesh;
 }
