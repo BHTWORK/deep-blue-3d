@@ -37,6 +37,7 @@ canvas#overlay{z-index:4}
 svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;display:block}
 
 /* ---------- loading ---------- */
+#ctxLost{position:fixed;inset:0;z-index:45;display:flex;align-items:center;justify-content:center;pointer-events:none}#ctxLost .glass{padding:14px 20px;font-size:15px;background:rgba(6,12,17,.88)}
 #loading{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:#071017;font-size:14px;color:var(--mute)}
 #loading i{width:28px;height:28px;border-radius:50%;border:2px solid var(--line2);border-top-color:var(--ink);animation:spin 1s linear infinite}
 #loading .lhint{max-width:420px;padding:0 20px;text-align:center;font-size:13px;line-height:1.7;color:var(--mute);opacity:0;animation:lfade .6s 7s forwards}
@@ -303,6 +304,7 @@ body.touch #sonarInd{display:none} /* the sonar button counts down itself */
 <div id="ckdyn" class="hidden"></div>
 <canvas id="overlay"></canvas>
 <div id="vign"></div><div id="dmgVig"></div><div id="flash"></div>
+<div id="ctxLost" class="hidden" role="status"><div class="glass">화면을 다시 준비하는 중이에요… 잠시만 기다려 주세요.</div></div>
 <div id="loading"><i></i><span id="loadMsg">심해를 불러오는 중</span><p class="lhint">이 화면이 계속된다면 지금 쓰는 앱의 파일 미리보기가 스크립트 실행을 막고 있습니다. 파일을 Safari나 Chrome 같은 브라우저로 열거나, 공유받은 게임 링크로 접속하세요.</p></div>
 
 <div id="hud" class="hidden">
@@ -427,7 +429,7 @@ body.touch #sonarInd{display:none} /* the sonar button counts down itself */
   <div class="setrow"><label for="sMaster">전체 볼륨</label><input type="range" id="sMaster" min="0" max="100" value="80"></div>
   <div class="setrow"><label for="sMusic">음악</label><input type="range" id="sMusic" min="0" max="100" value="60"></div>
   <div class="setrow"><label for="sSfx">효과음</label><input type="range" id="sSfx" min="0" max="100" value="90"></div>
-  <div class="setrow"><label for="sQuality">그래픽 품질</label><select id="sQuality"><option value="2">높음</option><option value="1">보통</option><option value="0">낮음</option></select></div>
+  <div class="setrow"><label for="sQuality">그래픽 품질</label><select id="sQuality"><option value="auto">자동 (권장)</option><option value="3">최고</option><option value="2">높음</option><option value="1">보통</option><option value="0">낮음</option></select></div>
   <div class="setrow"><label for="sView">시점</label><select id="sView"><option value="1">1인칭 조종석</option><option value="0">3인칭 추적</option></select></div>
   <div class="setrow"><label for="sSens">마우스 감도</label><input type="range" id="sSens" min="30" max="250" value="100"></div>
   <div class="setrow"><label for="sShake">화면 흔들림</label><select id="sShake"><option value="1">켜기</option><option value="0">끄기</option></select></div>

@@ -31,6 +31,9 @@ composer.addPass(new OutputPass());
 const hemi = new THREE.HemisphereLight(0x9fe3ff, 0x2a3a40, 1.2); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff2d8, 2); sun.position.set(120, 300, 80); scene.add(sun); scene.add(sun.target);
 const amb = new THREE.AmbientLight(0x3050a0, 0.06); scene.add(amb);
+// glow sources (lures, jellies, vents, beacons) feed a few point lights; entries come from a pool so frames don't allocate
+const glowPool = [];
+function addGlow(p, col, k) { const n = G.glowSrc.length, s = glowPool[n] || (glowPool[n] = [new V3(), 0, 0]); s[0].copy(p); s[1] = col; s[2] = k; G.glowSrc.push(s); }
 const glowLights = [0, 1, 2, 3].map(() => { const l = new THREE.PointLight(0xffffff, 0, 22, 1.4); scene.add(l); return l; });
 const overlay = $('overlay'), octx = overlay.getContext('2d');
 
@@ -38,7 +41,7 @@ const overlay = $('overlay'), octx = overlay.getContext('2d');
 // GAME STATE
 // =====================================================================
 const G = { vp: { x: 0, y: 0, w: innerWidth, h: innerHeight }, state: 'title', t: 0, dayT: 0.12, night: 0, sunH: 1, clean: 0, poll: 1, shake: 0, flash: 0, flashCol: '255,60,60', combo: 0, comboT: 0, sonar: null, sonarCd: 0, autosave: 0, tick: 0,
-  alert: '', alertPri: 0, fullT: 0, creakT: 0, alarmT: 0, lowWarned: false, pendingWin: 0, quality: 2, shakeOn: true, lastMTip: -99, sens: 1, fp: true, fpTier: -1, glowSrc: [], coralH: -1, bleachH: 0, bleachSet: -1, story: false, talk: false, VW: innerWidth, VH: innerHeight };
+  alert: '', alertPri: 0, fullT: 0, creakT: 0, alarmT: 0, lowWarned: false, pendingWin: 0, quality: 2, qualityPref: 'auto', ctxLost: false, shakeOn: true, lastMTip: -99, sens: 1, fp: true, fpTier: -1, glowSrc: [], coralH: -1, bleachH: 0, bleachSet: -1, story: false, talk: false, VW: innerWidth, VH: innerHeight };
 let SV = null; const S = {};
 const DOCK = new V3(2.6, -8, -19);
 const P = { pos: new V3(DOCK.x, DOCK.y - 3, DOCK.z - 15), vel: new V3(), yaw: Math.PI, pitch: -0.1, vyaw: Math.PI, vpitch: 0, roll: 0, bat: 100, hull: 100, kg: 0, cargo: [], beam: false, boost: false, thrust: 0, inv: 0, alive: true, deadT: 0, canDock: false, dmgT: 0, nose: new V3(), fwd: new V3(0, 0, -1) };
@@ -341,6 +344,7 @@ function genCreatures() {
   FISHIM.lanternDots = new THREE.InstancedMesh(lanternDotsGeo(), new THREE.MeshBasicMaterial({ color: new THREE.Color('#6fe8ff').multiplyScalar(3), fog: false }), FISHIM.lantern.im.count); FISHIM.lanternDots.frustumCulled = false; scene.add(FISHIM.lanternDots);
 }
 function fishMatrix(pos, dir, scale, out) { tv2.copy(dir); if (tv2.lengthSq() < 1e-6) tv2.set(0, 0, 1); tv2.normalize(); tm.lookAt(tv2, ZERO, UPV); tq.setFromRotationMatrix(tm); out.compose(pos, tq, ts.setScalar(scale)); return out; }
+const OCT_HIDE = new THREE.Color('#5a4a3a'); // an octopus fades to rock colour when the sub is close
 function faceVel(e, dt, rate = 4, maxPitch = 0.6) { tv2.copy(e.vel); if (tv2.lengthSq() < 0.01) return; tv2.y = clamp(tv2.y, -Math.hypot(tv2.x, tv2.z) * Math.tan(maxPitch), Math.hypot(tv2.x, tv2.z) * Math.tan(maxPitch)); tv2.normalize(); tm.lookAt(tv2, ZERO, UPV); tq.setFromRotationMatrix(tm); e.q.slerp(tq, 1 - Math.exp(-rate * dt)); }
 function steer(e, tx, ty, tz, spd, acc, dt) { tv1.set(tx - e.pos.x, ty - e.pos.y, tz - e.pos.z); const d = tv1.length() || 1; tv1.multiplyScalar(spd / d).sub(e.vel).multiplyScalar(Math.min(1, acc * dt)); e.vel.add(tv1); }
 function newTarget(e) { zonePoint(e.z, e.r, e.tgt); }
@@ -373,7 +377,7 @@ function updateCreature(e, dt) {
       if (e.state === 1) { e.lunge -= dt; if (play && dp < e.r + 1.5) { damage(12, '아귀'); AU.bite(); e.state = 0; e.cd = 4; } if (e.lunge <= 0) e.state = 0; }
       else { steer(e, e.home.x + Math.sin(e.t * 0.1 + e.ph) * 14, e.home.y + Math.sin(e.t * 0.13 + e.ph) * 3, e.home.z + Math.cos(e.t * 0.08 + e.ph) * 14, e.spd, 0.8, dt);
         if (play && dp < 9 && e.cd <= 0) { e.state = 1; e.lunge = 0.7; e.vel.copy(tv3).multiplyScalar(14 / dp); e.cd = 4; } }
-      avoid(e, dt); G.glowSrc.push([e.root.localToWorld(tv2.copy(e.model.lure.position)).clone(), 0x9ff6ff, 6]); break; }
+      avoid(e, dt); addGlow(e.root.localToWorld(tv2.copy(e.model.lure.position)), 0x9ff6ff, 6); break; }
     case 'squid': { e.cd -= dt;
       if (play && dp < 25 && e.cd <= 0) { for (let i = 0; i < 60; i++) FXN.emit(PT.INK, e.pos.x + rnd(-3, 3), e.pos.y + rnd(-2, 2), e.pos.z + rnd(-3, 3), rnd(-2, 2), rnd(-2, 2), rnd(-2, 2), rnd(3, 6), rnd(1.5, 3.5), 0.02, 0.01, 0.04, 0.85); e.vel.copy(tv3).multiplyScalar(-22 / dp); e.cd = 16; e.timer = 4; AU.noise(0.6, 0.2, 'lowpass', 400, 1); }
       else if (e.vel.length() < e.spd * 1.4) wander(e, dt, 1, 0.5); else e.vel.multiplyScalar(Math.pow(0.5, dt));
@@ -395,7 +399,7 @@ function updateCreature(e, dt) {
       steer(e, tx, ty, tz, sp, 2, dt); if (e.sp === 'dumbo') avoid(e, dt); break; }
     case 'crab': case 'octopus': { integrate = false; e.timer -= dt;
       if (e.timer <= 0) { e.timer = rnd(1.5, 5); e.walk = Math.random() < 0.65 ? 1 : 0; e.head = rnd(0, TAU); }
-      if (e.sp === 'octopus') { const near = play && dp < 8; e.hide = (e.hide || 0) + ((near ? 1 : 0) - (e.hide || 0)) * Math.min(1, dt * 3); e.model.mat.color.set(e.col).lerp(new THREE.Color('#5a4a3a'), e.hide * 0.8); e.cd -= dt; if (near && e.cd <= 0) { e.cd = 10; for (let i = 0; i < 24; i++) FXN.emit(PT.INK, e.pos.x + rnd(-1, 1), e.pos.y + rnd(0, 1), e.pos.z + rnd(-1, 1), rnd(-1, 1), rnd(0, 1), rnd(-1, 1), rnd(2, 4), rnd(0.6, 1.4), 0.02, 0.01, 0.04, 0.8); } }
+      if (e.sp === 'octopus') { const near = play && dp < 8; e.hide = (e.hide || 0) + ((near ? 1 : 0) - (e.hide || 0)) * Math.min(1, dt * 3); e.model.mat.color.set(e.col).lerp(OCT_HIDE, e.hide * 0.8); e.cd -= dt; if (near && e.cd <= 0) { e.cd = 10; for (let i = 0; i < 24; i++) FXN.emit(PT.INK, e.pos.x + rnd(-1, 1), e.pos.y + rnd(0, 1), e.pos.z + rnd(-1, 1), rnd(-1, 1), rnd(0, 1), rnd(-1, 1), rnd(2, 4), rnd(0.6, 1.4), 0.02, 0.01, 0.04, 0.8); } }
       if (e.walk) { const nx = e.pos.x + Math.sin(e.head) * e.spd * dt, nz = e.pos.z + Math.cos(e.head) * e.spd * dt; if (Math.hypot(nx - e.home.x, nz - e.home.z) > e.z.rad) e.head += Math.PI; else { e.vel.set(nx - e.pos.x, 0, nz - e.pos.z).divideScalar(dt); e.pos.x = nx; e.pos.z = nz; } } else e.vel.set(0, 0, 0);
       e.pos.y = heightAt(e.pos.x, e.pos.z) + 0.15; tq.setFromAxisAngle(UPV, e.sp === 'crab' ? e.head + Math.PI / 2 : e.head); e.q.slerp(tq, 1 - Math.exp(-3 * dt)); break; }
     default: { wander(e, dt, 1, e.sp === 'turtle' ? 0.8 : 1.2);
@@ -405,7 +409,7 @@ function updateCreature(e, dt) {
   }
   if (integrate) { e.pos.addScaledVector(e.vel, dt); if (e.pos.y > maxY) { e.pos.y = maxY; if (e.vel.y > 0) e.vel.y = 0; } if (e.sp !== 'jelly' && e.sp !== 'seahorse' && e.sp !== 'dumbo') faceVel(e, dt, e.sp === 'whale' ? 0.8 : 4, e.sp === 'dolphin' ? 1.2 : e.sp === 'whale' ? 0.25 : 0.6); }
   if (e.root && e.root.visible) { e.root.position.copy(e.pos); e.root.quaternion.copy(e.q); const s = e.a * (e.sp === 'whale' ? 1 : 1); e.root.scale.setScalar(Math.max(0.001, s)); e.model.anim(e.t, e, dc < 70); }
-  if (e.sp === 'jelly' && e.root.visible) G.glowSrc.push([e.pos, e.model.glow.getHex(), 3]);
+  if (e.sp === 'jelly' && e.root.visible) addGlow(e.pos, e.model.glow.getHex(), 3);
 }
 // Ambient schools keep company with the sub inside their depth band: once left behind they fade out
 // and reappear ahead of it, so there are always fish in view.
@@ -660,7 +664,7 @@ function updateVents(dt) {
   for (const v of pieces.smokers) { if ((cp.x - v.x) ** 2 + (cp.z - v.z) ** 2 > 190 * 190) continue;
     if (Math.random() < dt * 16 * v.k) FXN.emit(PT.SMOKE, v.x + rnd(-0.3, 0.3) * v.k, v.top + 0.2, v.z + rnd(-0.3, 0.3) * v.k, rnd(-0.35, 0.35), rnd(3, 5) * (0.6 + 0.4 * v.k), rnd(-0.35, 0.35), rnd(4, 6) * (0.5 + 0.5 * v.k), rnd(0.5, 0.9) * (0.5 + 0.5 * v.k), 0.018, 0.017, 0.02, 0.92);
     if (Math.random() < dt * 9 * v.k) FXA.emit(PT.SPARK, v.x + rnd(-0.25, 0.25), v.top + 0.15, v.z + rnd(-0.25, 0.25), rnd(-0.3, 0.3), rnd(2, 4), rnd(-0.3, 0.3), rnd(0.35, 0.7), rnd(0.25, 0.55) * v.k, 1, 0.42, 0.1, 1); }
-  const b = pieces.beacon, on = Math.sin(G.t * 3.2) > 0.55; b.mesh.visible = on; if (on && b.pos.distanceToSquared(cp) < 160 * 160) G.glowSrc.push([b.pos, 0xff3b30, 6]);
+  const b = pieces.beacon, on = Math.sin(G.t * 3.2) > 0.55; b.mesh.visible = on; if (on && b.pos.distanceToSquared(cp) < 160 * 160) addGlow(b.pos, 0xff3b30, 6);
 }
 function updateHazards(dt) { for (const v of pieces.vents) { if (Math.hypot(P.pos.x - v.x, P.pos.z - v.z) < 2.6 && P.pos.y > v.top - 1 && P.pos.y < v.top + 22) { damage(9 * dt, '열수', true); setAlert('열수 분출 · 고온 주의', 2); } } }
 
@@ -816,7 +820,7 @@ function updateEnv(dt) {
   const shallow = 1 - smooth(0, 60, dep); lightCone.material.uniforms.uA.value = P.alive ? (0.01 + 0.12 * (1 - shallow * 0.95)) * (inCockpit() ? 0.45 : 1) : 0; lightCone.scale.set(S.light * 0.42 * 0.55, S.light * 0.42 * 0.55, S.light * 0.55);
   SUB.spot.intensity = P.alive ? (90 + SV.up.light * 35) * lerp(0.25, 1, smooth(10, 120, dep)) * (P.bat < S.bat * 0.08 ? rnd(0.3, 1) : 1) : 0; SUB.lamps.visible = P.alive;
   // glow light pool: nearest emissive sources
-  for (const v of pieces.vents) G.glowSrc.push([tv2.set(v.x, v.top + 1, v.z).clone(), 0xff7a2a, 14]);
+  for (const v of pieces.vents) addGlow(tv2.set(v.x, v.top + 1, v.z), 0xff7a2a, 14);
   G.glowSrc.sort((a, b) => a[0].distanceToSquared(camera.position) - b[0].distanceToSquared(camera.position));
   for (let i = 0; i < glowLights.length; i++) { const L = glowLights[i], s = G.glowSrc[i]; if (s && s[0].distanceTo(camera.position) < 120) { L.position.copy(s[0]); L.color.setHex(s[1]); L.intensity = s[2]; L.distance = s[2] > 10 ? 40 : 16; } else L.intensity = 0; }
   G.glowSrc.length = 0;
@@ -909,7 +913,7 @@ function feedLayout() {
 function renderFeed() {
   if (!FEED.q) return;
   FEED.ok = G.quality > 0 && P.alive;
-  if (!FEED.ok || FEED.n++ % (G.quality === 2 ? 2 : 3) !== 0) return;
+  if (!FEED.ok || FEED.n++ % (G.quality >= 3 ? 1 : G.quality === 2 ? 2 : 3) !== 0) return;
   const cam = FEED.cam; SUB.root.updateMatrixWorld();
   if (FEED.mode === 0) { cam.position.set(0, -0.6, 1.9).applyMatrix4(SUB.root.matrixWorld); cam.rotation.set(P.pitch - 0.62, P.yaw + Math.PI, 0, 'YXZ'); }
   else { cam.position.set(0, 0.7, -3.4).applyMatrix4(SUB.root.matrixWorld); cam.rotation.set(-0.16 - P.pitch * 0.5, P.yaw, 0, 'YXZ'); }
@@ -1155,14 +1159,14 @@ $('bLaunch').onclick = () => launch(); $('bRespawn').onclick = () => respawn(); 
 $('bMap').onclick = () => openMap(); $('bCodex').onclick = () => openCodex(); $('bPause').onclick = () => togglePause();
 $('bReset').onclick = () => confirmBox('저장 데이터 삭제', '모든 진행 상황을 삭제합니다. 되돌릴 수 없습니다.', () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } hide('settings'); hide('pause'); modalBack = null; showTitle(); toast('저장 데이터를 삭제했습니다', ''); });
 // ---- settings
-function loadSettings() { try { const s = JSON.parse(localStorage.getItem(SET_KEY) || '{}'); if (s.master != null) AU.vol.master = s.master; if (s.music != null) AU.vol.music = s.music; if (s.sfx != null) AU.vol.sfx = s.sfx; if (s.quality != null) G.quality = s.quality; if (s.shake != null) G.shakeOn = !!s.shake; if (s.sens != null) G.sens = s.sens; if (s.fp != null) G.fp = !!s.fp; } catch (e) { /* ignore */ }
-  try { if (matchMedia('(pointer:coarse)').matches && !localStorage.getItem(SET_KEY)) G.quality = 1; } catch (e) { /* ignore */ }
-  $('sMaster').value = Math.round(AU.vol.master * 100); $('sMusic').value = Math.round(AU.vol.music * 100); $('sSfx').value = Math.round(AU.vol.sfx * 100); $('sQuality').value = G.quality; $('sShake').value = G.shakeOn ? 1 : 0; $('sSens').value = Math.round(G.sens * 100); $('sView').value = G.fp ? '1' : '0'; }
-function saveSettings() { try { localStorage.setItem(SET_KEY, JSON.stringify({ master: AU.vol.master, music: AU.vol.music, sfx: AU.vol.sfx, quality: G.quality, shake: G.shakeOn ? 1 : 0, sens: G.sens, fp: G.fp ? 1 : 0 })); } catch (e) { /* ignore */ } }
+function loadSettings() { try { const s = JSON.parse(localStorage.getItem(SET_KEY) || '{}'); if (s.master != null) AU.vol.master = s.master; if (s.music != null) AU.vol.music = s.music; if (s.sfx != null) AU.vol.sfx = s.sfx; if (s.quality != null) G.qualityPref = s.quality; if (s.shake != null) G.shakeOn = !!s.shake; if (s.sens != null) G.sens = s.sens; if (s.fp != null) G.fp = !!s.fp; } catch (e) { /* ignore */ }
+  G.quality = G.qualityPref === 'auto' ? 2 : clamp(+G.qualityPref || 0, 0, 3);
+  $('sMaster').value = Math.round(AU.vol.master * 100); $('sMusic').value = Math.round(AU.vol.music * 100); $('sSfx').value = Math.round(AU.vol.sfx * 100); $('sQuality').value = String(G.qualityPref); $('sShake').value = G.shakeOn ? 1 : 0; $('sSens').value = Math.round(G.sens * 100); $('sView').value = G.fp ? '1' : '0'; }
+function saveSettings() { try { localStorage.setItem(SET_KEY, JSON.stringify({ master: AU.vol.master, music: AU.vol.music, sfx: AU.vol.sfx, quality: G.qualityPref, shake: G.shakeOn ? 1 : 0, sens: G.sens, fp: G.fp ? 1 : 0 })); } catch (e) { /* ignore */ } }
 $('sMaster').oninput = (e) => { AU.vol.master = e.target.value / 100; AU.setVol(); saveSettings(); };
 $('sMusic').oninput = (e) => { AU.vol.music = e.target.value / 100; AU.setVol(); saveSettings(); };
 $('sSfx').oninput = (e) => { AU.vol.sfx = e.target.value / 100; AU.setVol(); saveSettings(); AU.click(); };
-$('sQuality').onchange = (e) => { G.quality = +e.target.value; resize(); saveSettings(); };
+$('sQuality').onchange = (e) => { const v = e.target.value; G.qualityPref = v === 'auto' ? 'auto' : +v; G.quality = v === 'auto' ? 2 : +v; Object.assign(AQ, { acc: 0, n: 0, slow: 0, fast: 0, dropped: false }); resize(); saveSettings(); };
 $('sShake').onchange = (e) => { G.shakeOn = e.target.value === '1'; saveSettings(); };
 $('sSens').oninput = (e) => { G.sens = e.target.value / 100; saveSettings(); };
 $('sView').onchange = (e) => { G.fp = e.target.value === '1'; applyView(); saveSettings(); };
@@ -1215,10 +1219,10 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 // =====================================================================
 // LOOP
 // =====================================================================
-function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; const pr = Math.min(devicePixelRatio || 1, q === 2 ? 1.75 : q === 1 ? 1.25 : 0.85);
+function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; const pr = Math.min(devicePixelRatio || 1, [0.85, 1.25, 1.75, 2][q]);
   const L = G.ck = inCockpit() ? cockpitLayout(G.VW, G.VH, IN.touch) : null, vp = G.vp = L ? L.view : { x: 0, y: 0, w: G.VW, h: G.VH };
   renderer.setPixelRatio(pr); renderer.setSize(vp.w, vp.h, false); Object.assign(canvas.style, { left: vp.x + 'px', top: vp.y + 'px', width: vp.w + 'px', height: vp.h + 'px' });
-  composer.setPixelRatio(pr); composer.setSize(vp.w, vp.h); bloom.enabled = q > 0; bloom.strength = q === 2 ? 0.55 : 0.45;
+  composer.setPixelRatio(pr); composer.setSize(vp.w, vp.h); bloom.enabled = q > 0; bloom.strength = q >= 2 ? 0.55 : 0.45;
   let f;
   if (L) { // principal point at the middle of the visible glass; F is the virtual frame height
     const py = L.ppY - vp.y, F = 2 * Math.max(py, vp.h - py); f = Math.max(0.72 * G.VH, 0.42 * G.VW);
@@ -1249,14 +1253,30 @@ function updateAttract(dt) {
   for (const it of items) if (it.buoy >= 0 && it.pos.distanceToSquared(camera.position) < 150 * 150) writeItem(it, 1);
 }
 let last = performance.now(), hudAcc = 0, mmAcc = 0;
+// Auto quality: start on 높음 and watch real frame times while playing. Two slow windows in a row
+// (under ~40 fps for 4 s) drop a tier for good; a device with headroom (~55+ fps for 6 s, e.g. a recent
+// iPad Pro) is raised once to 최고.
+const AQ = { acc: 0, n: 0, slow: 0, fast: 0, dropped: false };
+function autoQuality(ms) {
+  if (G.qualityPref !== 'auto' || G.state !== 'play' || document.hidden || !(ms > 0)) return;
+  // frames are capped at 1 s; one long hitch can't drop a tier alone, that takes two slow windows in a row
+  AQ.acc += Math.min(ms, 1000); AQ.n++; if (AQ.acc < 2000) return;
+  const avg = AQ.acc / AQ.n; AQ.acc = 0; AQ.n = 0;
+  if (avg > 25 && G.quality > 0) { if (++AQ.slow >= 2) { G.quality--; AQ.slow = 0; AQ.dropped = true; resize(); } } else AQ.slow = 0;
+  if (avg < 18 && !AQ.dropped && G.quality < 3) { if (++AQ.fast >= 3) { G.quality++; AQ.fast = 0; resize(); } } else AQ.fast = 0;
+}
+// Safari may drop the WebGL context under memory pressure. three.js rebuilds its GPU resources when the
+// context comes back, so save, pause and say so in the meantime.
+canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); G.ctxLost = true; saveGame(); if (G.state === 'play') togglePause(); show('ctxLost'); });
+canvas.addEventListener('webglcontextrestored', () => { G.ctxLost = false; hide('ctxLost'); resize(); G.needRender = true; });
 function frame(now) {
   requestAnimationFrame(frame);
-  let dt = (now - last) / 1000; last = now; if (!(dt > 0)) dt = 0.016; dt = Math.min(dt, 1 / 30);
+  let dt = (now - last) / 1000; last = now; autoQuality(dt * 1000); if (!(dt > 0)) dt = 0.016; dt = Math.min(dt, 1 / 30);
   try {
     pollGamepad(dt);
     const live = G.state === 'play' || G.state === 'title';
     if (live) { G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); else updateAttract(dt); FXA.update(dt); FXN.update(dt); for (let i = ftexts.length - 1; i >= 0; i--) { const f = ftexts[i]; f.life -= dt; f.p.y += dt * 1.2; if (f.life <= 0) ftexts.splice(i, 1); } writeFish(); }
-    if (live || G.needRender) { updateEnv(dt); if (inCockpit()) renderFeed(); if (bloom.enabled) composer.render(); else renderer.render(scene, camera); drawOverlay(); G.needRender = false; }
+    if ((live || G.needRender) && !G.ctxLost) { updateEnv(dt); if (inCockpit()) renderFeed(); if (bloom.enabled) composer.render(); else renderer.render(scene, camera); drawOverlay(); G.needRender = false; }
     if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit() && G.ck) CK.update(cockpitState(), dt); }
     if (G.state === 'menu' && !$('mapm').classList.contains('hidden')) { mmAcc += dt; if (mmAcc > 0.3) { mmAcc = 0; drawBigMap(); } }
     AU.update(G.state === 'title' ? 20 : depthOf(P.pos.y), P.vel.length() * 12, G.state === 'play' ? P.thrust : 0, G.state === 'play' && P.beam, G.state === 'play');
@@ -1269,6 +1289,6 @@ genItems(); genRescues(); genSiteItems(); buildItemMeshes(); genCreatures(); bui
 G.poll = items.length;
 loadSettings(); resize(); showTitle();
 function simulate(sec) { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) { const dt = 1 / 30; G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); FXA.update(dt); FXN.update(dt); } writeFish(); }
-window.__game = { AU, SITES, siteTick, startStory, storyEnd, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
+window.__game = { AU, SITES, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
 $('loading').classList.add('hidden');
 requestAnimationFrame((t) => { last = t; frame(t); });
