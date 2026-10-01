@@ -5,7 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { TAU, clamp, lerp, smooth, rnd, fmt, $, esc, seed, rr, rpick, wpick, SR } from './util.js';
-import { TRASH, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS } from './data.js';
+import { TRASH, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS, STORY } from './data.js';
 import { AU, Music } from './audio.js';
 import { MAT, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO } from './models.js';
 import { drawCockpit, cockpitLayout, CockpitUI } from './cockpit.js';
@@ -38,7 +38,7 @@ const overlay = $('overlay'), octx = overlay.getContext('2d');
 // GAME STATE
 // =====================================================================
 const G = { vp: { x: 0, y: 0, w: innerWidth, h: innerHeight }, state: 'title', t: 0, dayT: 0.12, night: 0, sunH: 1, clean: 0, poll: 1, shake: 0, flash: 0, flashCol: '255,60,60', combo: 0, comboT: 0, sonar: null, sonarCd: 0, autosave: 0, tick: 0,
-  alert: '', alertPri: 0, fullT: 0, creakT: 0, alarmT: 0, lowWarned: false, pendingWin: 0, quality: 2, shakeOn: true, lastMTip: -99, sens: 1, fp: true, fpTier: -1, glowSrc: [], coralH: -1, bleachH: 0, bleachSet: -1, VW: innerWidth, VH: innerHeight };
+  alert: '', alertPri: 0, fullT: 0, creakT: 0, alarmT: 0, lowWarned: false, pendingWin: 0, quality: 2, shakeOn: true, lastMTip: -99, sens: 1, fp: true, fpTier: -1, glowSrc: [], coralH: -1, bleachH: 0, bleachSet: -1, story: false, talk: false, VW: innerWidth, VH: innerHeight };
 let SV = null; const S = {};
 const DOCK = new V3(2.6, -8, -19);
 const P = { pos: new V3(DOCK.x, DOCK.y - 3, DOCK.z - 15), vel: new V3(), yaw: Math.PI, pitch: -0.1, vyaw: Math.PI, vpitch: 0, roll: 0, bat: 100, hull: 100, kg: 0, cargo: [], beam: false, boost: false, thrust: 0, inv: 0, alive: true, deadT: 0, canDock: false, dmgT: 0, nose: new V3(), fwd: new V3(0, 0, -1) };
@@ -225,14 +225,14 @@ function updateSites(dt) {
 function updateValve(dt) {
   const v = bleach.valve; if (SV.valve) return;
   if (G.state === 'play' && P.pos.distanceTo(v.pos) < 30) tip('valve', '폐수 배출관 밸브입니다. 트랙터 빔을 계속 비추면 밸브가 잠깁니다.');
-  let on = false; if (P.beam && G.state === 'play') { tv1.subVectors(v.pos, P.nose); const ed = tv1.length(); on = ed < S.beam + 3 && tv1.dot(P.fwd) / ed > Math.cos(0.5); }
+  let on = false; if (P.beam && G.state === 'play') { tv1.subVectors(v.pos, P.nose); const ed = tv1.length(); on = ed < 3.5 || (ed < S.beam + 3 && tv1.dot(P.fwd) / ed > Math.cos(0.5)); }
   v.prog = on ? v.prog + dt / 3 : Math.max(0, v.prog - dt * 0.15); v.wheel.rotation.y = v.prog * TAU * 2;
   if (on) { if (Math.random() < dt * 20) FXA.emit(PT.SPARK, v.pos.x + rnd(-0.6, 0.6), v.pos.y + rnd(-0.1, 0.2), v.pos.z + rnd(-0.6, 0.6), rnd(-2, 2), rnd(0, 3), rnd(-2, 2), 0.35, 0.15, 1, 0.9, 0.55, 1); if (Math.random() < dt * 6) AU.cut(); setAlert(`밸브 잠그는 중 ${Math.min(100, Math.round(v.prog * 100))}%`, 1); }
   if (v.prog >= 1) { SV.valve = true; toast('폐수 배출관 차단', 'big', '뜨거운 폐수가 멈췄습니다. 이제 산호를 덮은 쓰레기를 치우면 색이 돌아옵니다.'); AU.mission(); saveGame(); }
 }
 // bleached (0) to recovered (1): closing the valve lets the corals start to recover, each piece of litter cleared brings back more colour
-function bleachTarget() { const s = SITE.bleach; if (SV.sites.bleach) return 1; const f = 1 - s.left / s.total; return SV.valve ? 0.15 + 0.5 * f : 0.05 * f; }
-function updateBleach(dt, snap) { const t = bleachTarget(); G.bleachH = snap ? t : G.bleachH + (t - G.bleachH) * Math.min(1, dt * 0.3); if (snap || Math.abs(G.bleachH - G.bleachSet) > 0.01) { G.bleachSet = G.bleachH; bleach.set(G.bleachH); } }
+function bleachTarget() { const s = SITE.bleach; if (G.story) return SS.coralDone ? 1 : SV.valve ? Math.min(0.9, 0.2 + 0.14 * storyCoral()) : 0; if (SV.sites.bleach) return 1; const f = 1 - s.left / s.total; return SV.valve ? 0.15 + 0.5 * f : 0.05 * f; }
+function updateBleach(dt, snap) { const t = bleachTarget(); G.bleachH = snap ? t : G.bleachH + (t - G.bleachH) * Math.min(1, dt * (G.story ? 0.6 : 0.3)); if (snap || Math.abs(G.bleachH - G.bleachSet) > 0.01) { G.bleachSet = G.bleachH; bleach.set(G.bleachH); } }
 const rescues = [];
 function genRescues() {
   seed(5150);
@@ -511,7 +511,7 @@ function mGuide(m) {
 // INPUT
 // =====================================================================
 const IN = { keys: {}, mdx: 0, mdy: 0, lmb: false, locked: false, drag: false, lx: 0, ly: 0, touch: false, joy: { on: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 }, look: { id: null, x: 0, y: 0 }, tBeam: false, tBoost: false, tUp: false, tDown: false, gp: { mx: 0, my: 0, ax: 0, ay: 0, up: 0, beam: false, boost: false, prev: {} } };
-function inputVec() { const k = IN.keys; let f = 0, s = 0, u = 0;
+function inputVec() { if (G.talk) return { f: 0, s: 0, u: 0, beam: false, boost: false }; const k = IN.keys; let f = 0, s = 0, u = 0;
   if (k.KeyW || k.ArrowUp) f += 1; if (k.KeyS || k.ArrowDown) f -= 1; if (k.KeyD || k.ArrowRight) s += 1; if (k.KeyA || k.ArrowLeft) s -= 1; if (k.Space || IN.tUp) u += 1; if (k.KeyC || k.ControlLeft || IN.tDown) u -= 1;
   if (IN.joy.on) { f -= IN.joy.dy; s += IN.joy.dx; } f -= IN.gp.my; s += IN.gp.mx; u += IN.gp.up;
   return { f, s, u, beam: !!(k.KeyE || k.KeyF || IN.lmb || IN.tBeam || IN.gp.beam), boost: !!(k.ShiftLeft || k.ShiftRight || IN.tBoost || IN.gp.boost) }; }
@@ -524,7 +524,7 @@ function pollGamepad(dt) { const pads = navigator.getGamepads ? navigator.getGam
 // PLAYER
 // =====================================================================
 function setAlert(msg, pri) { if (pri >= G.alertPri) { G.alert = msg; G.alertPri = pri; } }
-function damage(v, cause, silent) { if (G.state !== 'play' || v <= 0) return; if (!silent && P.inv > 0) return;
+function damage(v, cause, silent) { if (G.state !== 'play' || v <= 0 || G.story) return; if (!silent && P.inv > 0) return;
   P.hull -= v; if (!silent) { P.inv = 0.7; G.flash = Math.min(0.6, 0.2 + v / 40); G.flashCol = '255,60,60'; G.shake = Math.max(G.shake, 0.15 + v * 0.015); AU.hurt(); P.dmgT = 0.4; burst(P.pos, 14, 1, 0.8, 0.5, 5, 0.18); ftext(P.pos.clone().add(new V3(0, 2, 0)), `-${Math.round(v)}`, '#e5645e', 14); }
   if (P.hull <= 0) { P.hull = 0; fail(cause === '수압' ? 'pressure' : 'hull'); } }
 function updatePlayer(dt) {
@@ -554,6 +554,7 @@ function updatePlayer(dt) {
   SUB.root.updateMatrixWorld(); P.nose.set(0, -0.3, 2.0).applyMatrix4(SUB.root.matrixWorld);
   P.thrust = ml; P.beam = inp.beam && P.alive;
   const drain = 0.2 + ml * 0.5 + (boosting ? 1.5 : 0) + (P.beam ? 1.3 : 0);
+  if (G.story) P.bat = S.bat; // story mode: no running out of power
   if (P.alive) { P.bat = Math.max(0, P.bat - drain * dt); if (P.bat <= 0) { P.deadT = 0; toast('배터리 방전', 'bad', '비상 부상 장치가 작동했습니다.'); AU.fail(); } }
   else { P.deadT += dt; if (P.deadT > 3.2) fail('battery'); }
   if (ml > 0.1 && Math.random() < dt * (20 + (boosting ? 30 : 0))) { tv2.set(rnd(-0.2, 0.2), rnd(-0.2, 0.2), -2.3).applyMatrix4(SUB.root.matrixWorld); bubble(tv2.x, tv2.y, tv2.z, rnd(-0.5, 0.5), rnd(0.5, 1.5), rnd(-0.5, 0.5), rnd(0.06, 0.16)); }
@@ -565,7 +566,7 @@ function updatePlayer(dt) {
   P.inv = Math.max(0, P.inv - dt); P.dmgT = Math.max(0, P.dmgT - dt);
   if (P.hull < S.hull * 0.35 && Math.random() < dt * 6) bubble(P.pos.x + rnd(-1, 1), P.pos.y + 0.8, P.pos.z + rnd(-1, 1));
   // entering the dock zone sells the cargo and opens the shop; leaving it re-arms, so every visit opens it again
-  if (!inDockZone(1.5)) P.canDock = true; if (P.canDock && P.alive && inDockZone(0)) { P.canDock = false; openDock(); }
+  if (!inDockZone(1.5)) P.canDock = true; if (P.canDock && P.alive && inDockZone(0) && !G.story) { P.canDock = false; openDock(); }
   exploreAt(P.pos.x, P.pos.z, Math.max(70, S.light * 1.1));
 }
 // the green ring and the light column under it, from the surface down to the bottom of the beam
@@ -627,11 +628,12 @@ function tryCollect(it) {
   if (!SV.tips['t_' + it.type]) { SV.tips['t_' + it.type] = 1; toast(`새로운 쓰레기: ${TRASH[it.type].n}`, 'tip', TRASH[it.type].fact); }
   recount();
 }
+// right up against a net the beam reaches it whatever the angle
 function updateRescues(dt) {
   for (const r of rescues) { if (r.freed) continue; r.t += dt; r.cutting = false;
     const d = r.pos.distanceTo(P.pos); if (d < 40) { r.known = true; tip('net', '그물에 걸린 생물입니다! 조준하고 트랙터 빔을 비춰 그물을 끊어 주세요.'); }
     if (d < 250) { r.model.anim(r.t * 0.5 + Math.sin(r.t * 6) * 0.3, null, true); r.model.root.rotation.z = Math.sin(r.t * 7) * 0.12 * (1 - r.prog * 0.5); r.netMesh.rotation.y += dt * 0.2; r.netMesh.material.opacity = 1 - r.prog * 0.6; }
-    if (P.beam && G.state === 'play') { tv1.subVectors(r.pos, P.nose); const ed = tv1.length(); if (ed < S.beam + 4 && tv1.dot(P.fwd) / ed > Math.cos(0.5)) { r.cutting = true; r.prog += dt / S.cut; if (Math.random() < dt * 25) FXA.emit(PT.SPARK, r.pos.x + rnd(-1.5, 1.5), r.pos.y + rnd(-1, 1), r.pos.z + rnd(-1.5, 1.5), rnd(-4, 4), rnd(-4, 4), rnd(-4, 4), 0.35, 0.15, 1, 0.9, 0.55, 1); if (Math.random() < dt * 8) AU.cut(); } }
+    if (P.beam && G.state === 'play') { tv1.subVectors(r.pos, P.nose); const ed = tv1.length(); if (ed < 4.5 || (ed < S.beam + 4 && tv1.dot(P.fwd) / ed > Math.cos(0.5))) { r.cutting = true; r.prog += dt / S.cut; if (Math.random() < dt * 25) FXA.emit(PT.SPARK, r.pos.x + rnd(-1.5, 1.5), r.pos.y + rnd(-1, 1), r.pos.z + rnd(-1.5, 1.5), rnd(-4, 4), rnd(-4, 4), rnd(-4, 4), 0.35, 0.15, 1, 0.9, 0.55, 1); if (Math.random() < dt * 8) AU.cut(); } }
     else r.prog = Math.max(0, r.prog - dt * 0.1);
     r.netMesh.scale.multiplyScalar(1); if (r.prog >= 1) freeAnimal(r); }
 }
@@ -677,6 +679,7 @@ function discoveryTick() {
   for (const p of POIS) if (!SV.pois[p.id] && Math.hypot(P.pos.x - p.x, P.pos.y - p.y, P.pos.z - p.z) < p.r) discoverPOI(p);
 }
 function missionTick() {
+  if (G.story) { storyTick(); return; }
   siteTick(); const m = MISSIONS[SV.mission]; G.guide = mGuide(m);
   if (m) { const [c, g] = mProg(m); if (c >= g) { SV.money += m.rw; toast(`임무 완료: ${m.t}`, 'big', `보상 +${fmt(m.rw)}`); AU.mission(); SV.mission++; saveGame();
     const n = MISSIONS[SV.mission]; if (n) setTimeout(() => { if (G.state === 'play') toast(`새 임무: ${n.t}`, 'tip', n.d); }, 2200); else setTimeout(() => toast('모든 임무 완료', 'big', '남은 쓰레기를 찾아 바다를 끝까지 되살려 보세요.'), 2200); } }
@@ -708,7 +711,7 @@ function fail(kind) {
 }
 function respawn() { hide('fail'); P.pos.copy(DOCK).add(new V3(0, -3, -15)); P.vel.set(0, 0, 0); P.deadT = 0; P.alive = true; P.bat = S.bat; P.hull = S.hull; updateCamera(1); openDock(); }
 const SAVE_KEY = 'deepblue3d-ocean-cleaner-v1', SET_KEY = 'deepblue3d-settings-v1';
-function saveGame() { if (!SV || G.state === 'title') return; try {
+function saveGame() { if (!SV || G.state === 'title' || G.story) return; try {
   const d = JSON.parse(JSON.stringify(SV)); d.dayT = G.dayT; d.col = []; d.known = []; for (const it of items) { if (it.col) d.col.push(it.id); else if (it.known) d.known.push(it.id); }
   d.cargo = P.cargo.slice(); d.rescued = rescues.filter((r) => r.freed).map((r) => r.id); d.ex = Array.from(EXP).join(''); d.p = [Math.round(P.pos.x * 10) / 10, Math.round(P.pos.y * 10) / 10, Math.round(P.pos.z * 10) / 10, +P.yaw.toFixed(3)]; d.bat = P.bat; d.hull = P.hull;
   localStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch (e) { /* storage unavailable */ } }
@@ -969,7 +972,7 @@ function renderCodex() {
 const H = {};
 const zoneName = (dm) => (dm < 60 ? '표층' : dm < 220 ? '중층' : dm < 500 ? '심층' : '심해');
 function updateHUD() {
-  if (!H.ok) { for (const id of ['hMoney', 'hBat', 'hBatV', 'hHull', 'hHullV', 'hCargo', 'hCargoV', 'hDepth', 'hLimit', 'hClean', 'mName', 'mProg', 'mBar', 'mProgRow', 'mDesc', 'mGuide', 'mArrow', 'mGuideTxt', 'hudSite', 'sName', 'sProg', 'sBar', 'sState', 'alert', 'sonarInd', 'sonarTxt', 'rBat', 'rHull', 'rCargo', 'tSonar']) H[id] = $(id); H.ok = true; }
+  if (!H.ok) { for (const id of ['hMoney', 'hBat', 'hBatV', 'hHull', 'hHullV', 'hCargo', 'hCargoV', 'hDepth', 'hLimit', 'hClean', 'mName', 'mProg', 'mBar', 'mProgRow', 'mDesc', 'mGuide', 'mArrow', 'mGuideTxt', 'mTag', 'hudSite', 'sName', 'sProg', 'sBar', 'sState', 'alert', 'sonarInd', 'sonarTxt', 'rBat', 'rHull', 'rCargo', 'tSonar']) H[id] = $(id); H.ok = true; }
   H.hMoney.textContent = fmt(SV.money);
   H.hBat.style.width = ((P.bat / S.bat) * 100).toFixed(1) + '%'; H.hBatV.textContent = `${Math.round((P.bat / S.bat) * 100)}%`;
   H.hHull.style.width = ((P.hull / S.hull) * 100).toFixed(1) + '%'; H.hHullV.textContent = `${Math.round((P.hull / S.hull) * 100)}%`;
@@ -978,8 +981,10 @@ function updateHUD() {
   const dm = depthOf(P.pos.y); H.hDepth.textContent = Math.floor(dm); H.hDepth.style.color = dm > S.depth ? 'var(--danger)' : dm > S.depth * 0.9 ? 'var(--accent2)' : '';
   H.hLimit.textContent = `한계 ${S.depth}m`;
   H.hClean.textContent = cleanPct().toFixed(1) + '%';
-  const m = MISSIONS[SV.mission];
-  if (m) { H.mName.textContent = m.t; H.mDesc.textContent = m.d; const [c, g] = mProg(m); H.mProgRow.style.display = ''; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = m.poi || m.sp ? (c ? '완료' : '탐색 중') : `${fmt(c)}/${fmt(g)}`; }
+  const m = MISSIONS[SV.mission], sg = G.story && STORY.steps[SS.i];
+  H.mTag.textContent = G.story ? '이야기' : '임무';
+  if (G.story) { const has = sg && sg.goal; H.mName.textContent = has ? sg.t : STORY.guide.n; H.mDesc.textContent = has ? sg.d : '푸른이의 이야기를 들어 보세요.'; const [c, g] = has ? storyProg(sg) : [0, 1]; H.mProgRow.style.display = has ? '' : 'none'; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = has ? `${c}/${g}` : ''; }
+  else if (m) { H.mName.textContent = m.t; H.mDesc.textContent = m.d; const [c, g] = mProg(m); H.mProgRow.style.display = ''; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = m.poi || m.sp ? (c ? '완료' : '탐색 중') : `${fmt(c)}/${fmt(g)}`; }
   else { H.mName.textContent = '자유 탐험'; H.mDesc.textContent = '남은 쓰레기를 찾아 바다를 끝까지 되살려 보세요.'; H.mProg.textContent = ''; H.mProgRow.style.display = 'none'; }
   // guide: arrow turned by the target's bearing relative to the sub's heading, plus distance and height difference
   const gd = G.guide; H.mGuide.style.display = gd ? '' : 'none';
@@ -988,6 +993,7 @@ function updateHUD() {
     H.mGuideTxt.textContent = `${gd.label} · ${dist}m${Math.abs(dy) > 8 ? ` ${dy > 0 ? '▲' : '▼'}${Math.round(Math.abs(dy))}m` : ''}`; }
   // cleanup-site panel while the sub is at the wreck or the airliner
   let site = null; for (const st of SITES) if (Math.hypot(P.pos.x - st.c.x, P.pos.z - st.c.z) < st.r + 90) site = st;
+  if (G.story) site = null;
   H.hudSite.classList.toggle('hidden', !site);
   if (site) { const done = !!SV.sites[site.id], c = done ? site.total : site.total - site.left; H.hudSite.classList.toggle('done', done); H.sName.textContent = site.n; H.sProg.textContent = `${c}/${site.total}`;
     H.sBar.style.width = (c / site.total) * 100 + '%'; H.sState.textContent = site.valve ? (done ? '정화 완료 · 산호가 색을 되찾는 중' : !SV.valve ? '백화 진행 중 · 뜨거운 폐수 유입' : `수온 회복 중 · 남은 쓰레기 ${site.left}개`) : done ? '정화 완료 · 유출이 멈췄습니다' : `기름 유출 중 · 남은 잔해 ${site.left}개`; }
@@ -997,6 +1003,96 @@ function updateHUD() {
   if (inCockpit()) { const tier = P.hull < S.hull * 0.25 ? 2 : P.hull < S.hull * 0.5 ? 1 : 0; if (tier !== G.fpTier) { G.fpTier = tier; redrawCockpit(); } }
   $('dmgVig').style.opacity = P.hull < S.hull * 0.3 ? 0.55 + 0.35 * Math.sin(G.t * 6) : 0; $('flash').style.opacity = G.flash; $('flash').style.background = `rgba(${G.flashCol},1)`;
 }
+// =====================================================================
+// STORY MODE: a guided run of about five minutes for classrooms. Nothing is saved and nothing can fail;
+// the guide talks between short goals (pick up trash, free a turtle, heal the bleached reef), then an
+// ending card with the results, everyday actions and a three-question OX quiz.
+// =====================================================================
+const SS = { i: -1, line: 0, base: 0, coralBase: 0, coralDone: false, turtle: null, wait: 0 };
+const storyCoral = () => SITE.bleach.ids.reduce((n, id) => n + (items[id].col ? 1 : 0), 0) - SS.coralBase;
+function storyProg(st) {
+  if (st.goal === 'trash') return [Math.min(st.n, ST().collected - SS.base), st.n];
+  if (st.goal === 'turtle') return [SS.turtle.freed ? 1 : 0, 1];
+  if (st.goal === 'reach') return [Math.hypot(P.pos.x - SITE.bleach.c.x, P.pos.z - SITE.bleach.c.z) < 42 ? 1 : 0, 1];
+  if (st.goal === 'valve') return [SV.valve ? 1 : 0, 1];
+  if (st.goal === 'coral') return [Math.min(st.n, storyCoral()), st.n];
+  return [0, 1];
+}
+function storyGuide(st) {
+  if (st.goal === 'trash') { const it = nearestItem(() => true); return it && { p: it.pos, label: '가까운 쓰레기' }; }
+  if (st.goal === 'turtle') return { p: SS.turtle.pos, label: '그물에 걸린 바다거북' };
+  if (st.goal === 'reach') return { p: SITE.bleach.c, label: '하얀 산호 지대' };
+  if (st.goal === 'valve') return { p: bleach.valve.pos, label: '빨간 밸브' };
+  if (st.goal === 'coral') { const it = nearestItem((i) => i.site === 'bleach'); return it && { p: it.pos, label: '산호 위 쓰레기' }; }
+  return null;
+}
+function storyTick() {
+  const st = STORY.steps[SS.i]; G.guide = st && st.goal && !G.talk ? storyGuide(st) : null;
+  const h = Math.round(clamp(0.12 + G.clean * 1.15, 0, 1) * 50) / 50; if (h !== G.coralH) { G.coralH = h; flora.setCoralHealth(h); }
+  if (!st || !st.goal || G.talk || SS.wait > 0) return;
+  const [c, n] = storyProg(st); if (c < n) return;
+  SS.wait = 1.3; AU.mission(); toast('잘했어요!', 'good', `${st.t} 완료`);
+  if (st.goal === 'coral') { SS.coralDone = true; SV.sites.bleach = 1; } // corals regain full colour and the reef fish come back
+}
+// a short beat of game time after each goal before the guide speaks again
+function storyUpdate(dt) { if (SS.wait > 0 && (SS.wait -= dt) <= 0) storyStep(SS.i + 1); }
+function storyStep(i) {
+  SS.i = i; const st = STORY.steps[i];
+  if (!st) { storyEnd(); return; }
+  if (st.talk) { storyTalk(st.talk); return; }
+  SS.base = ST().collected; if (st.goal === 'coral') SS.coralBase = storyCoral() + SS.coralBase;
+  toast(`할 일: ${st.t}`, 'tip', st.d); G.tick = 0.29;
+}
+function storyTalk(lines) {
+  G.talk = true; SS.line = 0; IN.keys = {}; IN.lmb = false; IN.tBeam = IN.tBoost = IN.tUp = IN.tDown = false; unlockPointer();
+  $('stDots').innerHTML = lines.map(() => '<i></i>').join(''); show('storyBox'); storyLine();
+}
+function storyLine() {
+  const lines = STORY.steps[SS.i].talk, t = lines[SS.line];
+  $('stText').textContent = t === '@controls' ? (IN.touch ? STORY.controls.touch : STORY.controls.keys) : t;
+  $('stDots').querySelectorAll('i').forEach((d, k) => d.classList.toggle('on', k === SS.line));
+  $('stNext').textContent = SS.line < lines.length - 1 ? '다음 ▶' : STORY.steps[SS.i + 1] ? '좋아! ▶' : '끝내기 ▶'; AU.click();
+}
+function storyNext() {
+  if (!G.talk) return; const lines = STORY.steps[SS.i].talk;
+  if (SS.line < lines.length - 1) { SS.line++; storyLine(); return; }
+  hide('storyBox'); G.talk = false; const nx = STORY.steps[SS.i + 1]; if (nx && nx.goal) requestLock(); // not before the ending card, which needs the cursor
+  storyStep(SS.i + 1);
+}
+function startStory() {
+  AU.init(); hide('storyEnd'); G.story = true; SS.coralDone = false; SS.coralBase = 0; SS.wait = 0;
+  startGame(null);
+  // a comfortable sub for a short lesson: quicker, a longer beam and a roomy hold
+  Object.assign(SV.up, { engine: 2, beam: 2, cargo: 3, light: 1 }); calcStats(); P.bat = S.bat; P.hull = S.hull;
+  for (const k of ['site_bleach', 'valve', 'net', 'depth', 'drum']) SV.tips[k] = 1; // the guide explains these instead
+  SS.turtle = rescues.filter((r) => r.sp === 'turtle').sort((a, b) => a.pos.distanceToSquared(DOCK) - b.pos.distanceToSquared(DOCK))[0];
+  document.querySelectorAll('#toasts .toast').forEach((t) => t.remove());
+  storyStep(0);
+}
+function storyEnd() {
+  G.state = 'menu'; G.talk = false; unlockPointer(); hide('storyBox'); AU.mission(); AU.whale(0.18);
+  const s = ST(), t = Math.round(s.time), kg = Math.round(s.kg * 10) / 10;
+  $('seBody').innerHTML = `<h2>바다를 지켜 줘서 고마워요!</h2><p class="lead">푸른이와 함께 바다를 다시 웃게 만들었어요.</p>
+    <div class="sstats"><div><b>${s.collected}개</b><span>주운 쓰레기 (${kg}kg)</span></div><div><b>${s.rescues}마리</b><span>구한 바다거북</span></div><div><b>1곳</b><span>되살린 산호 지대</span></div><div><b>${Math.floor(t / 60)}분 ${t % 60}초</b><span>걸린 시간</span></div></div>
+    <h3>우리도 바다를 지킬 수 있어요</h3><ul>${STORY.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>
+    <div class="row"><button class="btn primary" id="seQuiz">OX 퀴즈 풀기</button><button class="btn" id="seHome">처음으로</button></div>`;
+  show('storyEnd'); $('seQuiz').onclick = () => storyQuiz(0, 0); $('seHome').onclick = () => { hide('storyEnd'); showTitle(); };
+}
+function storyQuiz(i, score) {
+  const Q = STORY.quiz[i]; AU.click();
+  if (!Q) { $('seBody').innerHTML = `<h2>퀴즈 끝!</h2><p class="q">${STORY.quiz.length}문제 중 <b>${score}문제</b>를 맞혔어요.</p><p class="lead">${score === STORY.quiz.length ? '바다 박사님이네요!' : '오늘 배운 것을 친구들에게도 알려 주세요.'}</p>
+      <div class="row"><button class="btn primary" id="seAgain">다시 하기</button><button class="btn" id="seHome">처음으로</button></div>`;
+    $('seAgain').onclick = () => startStory(); $('seHome').onclick = () => { hide('storyEnd'); showTitle(); }; return; }
+  $('seBody').innerHTML = `<h2>OX 퀴즈 ${i + 1}/${STORY.quiz.length}</h2><p class="q">${esc(Q.q)}</p><div class="ox"><button class="ans-o" data-a="1" aria-label="O, 맞아요">O</button><button class="ans-x" data-a="0" aria-label="X, 아니에요">X</button></div><div id="seFb"></div>`;
+  $('seBody').querySelectorAll('.ox button').forEach((b) => { b.onclick = () => { const ok = (b.dataset.a === '1') === Q.a; $('seBody').querySelectorAll('.ox button').forEach((x) => { x.disabled = true; x.style.opacity = x === b ? 1 : 0.35; });
+    if (ok) AU.mission(); else AU.click();
+    $('seFb').innerHTML = `<p class="fb"><b>${ok ? '정답이에요!' : '아쉬워요!'}</b><br>정답은 ${Q.a ? 'O' : 'X'}. ${esc(Q.e)}</p><div class="row"><button class="btn primary" id="seNext">${i + 1 < STORY.quiz.length ? '다음 문제' : '결과 보기'}</button></div>`;
+    $('seNext').onclick = () => storyQuiz(i + 1, score + (ok ? 1 : 0)); }; });
+}
+$('bStory').onclick = () => startStory();
+const STORY_LINK = /[?&]story\b/.test(location.search); // class link: ocean-cleanup-3d.html?story (or story.html)
+if (STORY_LINK) { $('bStory').classList.add('primary'); $('bNew').classList.remove('primary'); }
+$('stNext').onclick = () => storyNext();
 // ---- flow
 let prevState = 'play', modalBack = null;
 function openModal(id) { if (G.state !== 'play') return; prevState = G.state; G.state = 'menu'; IN.keys = {}; IN.lmb = false; unlockPointer(); show(id); }
@@ -1006,13 +1102,13 @@ function openCodex() { if (G.state === 'menu' && !$('codex').classList.contains(
 function togglePause() { if (G.state === 'play') { G.state = 'pause'; IN.keys = {}; IN.lmb = false; unlockPointer(); show('pause'); saveGame(); AU.click(); } else if (G.state === 'pause') { hide('pause'); G.state = 'play'; requestLock(); AU.click(); } }
 function openSub(id, from) { modalBack = from; if (from) hide(from); show(id); AU.click(); }
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => { const id = b.dataset.close; AU.click(); if (id === 'mapm' || id === 'codex') { closeModal(id); return; } hide(id); if (modalBack) { show(modalBack); modalBack = null; } }));
-function showTitle() { G.state = 'title'; unlockPointer(); hide('hud'); hide('touch'); ['dock', 'codex', 'mapm', 'pause', 'fail', 'win', 'settings', 'help'].forEach(hide); show('title');
-  const d = loadGame(); $('bContinue').classList.toggle('hidden', !d); $('bNew').classList.toggle('primary', !d); SV = freshSave(); calcStats(); resetWorld(); G.clean = 0.6; G.coralH = -1; missionTickCoral(); SUB.root.visible = false; applyView(); }
+function showTitle() { G.state = 'title'; G.story = false; G.talk = false; hide('storyBox'); hide('storyEnd'); unlockPointer(); hide('hud'); hide('touch'); ['dock', 'codex', 'mapm', 'pause', 'fail', 'win', 'settings', 'help'].forEach(hide); show('title');
+  const d = loadGame(); $('bContinue').classList.toggle('hidden', !d); $('bNew').classList.toggle('primary', !d && !STORY_LINK); SV = freshSave(); calcStats(); resetWorld(); siteTick(true); bleach.valve.prog = 0; bleach.valve.wheel.rotation.y = 0; updateBleach(0, true); G.clean = 0.6; G.coralH = -1; missionTickCoral(); SUB.root.visible = false; applyView(); }
 function missionTickCoral() { const h = Math.round(clamp(0.12 + G.clean * 1.15, 0, 1) * 50) / 50; if (h !== G.coralH) { G.coralH = h; flora.setCoralHealth(h); } }
-function startGame(d) { AU.init(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); requestLock();
+function startGame(d) { AU.init(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); if (!G.story) requestLock();
   const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>빔으로 수거·절단</span>' : '<span><kbd>WASD</kbd>이동</span><span><kbd>Space</kbd><kbd>C</kbd>상승·하강</span><span><kbd>클릭</kbd>빔</span><span><kbd>Q</kbd>소나</span><span><kbd>Shift</kbd>가속</span><span><kbd>V</kbd>시점</span><span><kbd>F</kbd>카메라</span><span><kbd>M</kbd>지도</span><span><kbd>Tab</kbd>도감</span>';
   setTimeout(() => { hint.style.opacity = 0; }, 25000);
-  if (!d) { setTimeout(() => toast('해양 정화선 푸른바다호', 'big', '바다가 쓰레기로 병들고 있습니다. 잠수정으로 쓰레기를 수거해 주세요.'), 600); setTimeout(() => { const m = MISSIONS[0]; toast(`임무: ${m.t}`, 'tip', m.d); }, 4200); }
+  if (G.story) { /* the guide does the introductions */ } else if (!d) { setTimeout(() => toast('해양 정화선 푸른바다호', 'big', '바다가 쓰레기로 병들고 있습니다. 잠수정으로 쓰레기를 수거해 주세요.'), 600); setTimeout(() => { const m = MISSIONS[0]; toast(`임무: ${m.t}`, 'tip', m.d); }, 4200); }
   else toast('이어서 탐험을 시작합니다', '', `바다 정화율 ${cleanPct()}%`);
   saveGame(); }
 function showWin() { G.state = 'menu'; prevState = 'play'; unlockPointer(); const s = ST(); $('winStats').innerHTML = [['수거한 쓰레기', `${fmt(s.collected)}개`], ['수거 무게', `${fmt(s.kg)}kg`], ['구조한 생물', `${s.rescues}마리`], ['발견한 생물', `${Object.keys(SV.species).length}종`], ['플레이 시간', `${Math.floor(s.time / 60)}분`], ['총 수익', fmt(s.earned)]].map((r) => `<div class="stat"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
@@ -1043,13 +1139,14 @@ $('bView').onclick = () => toggleView();
 // =====================================================================
 // INPUT LISTENERS
 // =====================================================================
-function requestLock() { if (IN.touch || G.state !== 'play') return; try { const p = canvas.requestPointerLock && canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* not allowed (e.g. sandboxed iframe) */ } }
+function requestLock() { if (IN.touch || G.state !== 'play' || G.talk) return; try { const p = canvas.requestPointerLock && canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* not allowed (e.g. sandboxed iframe) */ } }
 function unlockPointer() { try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) { /* ignore */ } }
-document.addEventListener('pointerlockchange', () => { const was = IN.locked; IN.locked = document.pointerLockElement === canvas; if (!IN.locked) { IN.lmb = false; if (was && G.state === 'play') togglePause(); } });
+document.addEventListener('pointerlockchange', () => { const was = IN.locked; IN.locked = document.pointerLockElement === canvas; if (!IN.locked) { IN.lmb = false; if (was && G.state === 'play' && !G.talk) togglePause(); } });
 const BLOCK = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab']);
 addEventListener('keydown', (e) => {
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
   if (BLOCK.has(e.code)) e.preventDefault(); AU.init();
+  if (G.talk && !e.repeat && (e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter')) { storyNext(); return; }
   IN.keys[e.code] = true; if (e.repeat) return;
   if (G.state === 'play') { if (e.code === 'KeyQ' || e.code === 'KeyR') doSonar(); else if (e.code === 'KeyM') openMap(); else if (e.code === 'Tab' || e.code === 'KeyB') openCodex(); else if (e.code === 'Escape' || e.code === 'KeyP') togglePause(); else if (e.code === 'KeyV') toggleView(); else if (e.code === 'KeyF') cycleCam(); }
   else if (G.state === 'menu') { if (e.code === 'KeyM' && !$('mapm').classList.contains('hidden')) openMap(); else if ((e.code === 'Tab' || e.code === 'KeyB') && !$('codex').classList.contains('hidden')) openCodex(); else if (e.code === 'Escape') { if (!$('mapm').classList.contains('hidden')) closeModal('mapm'); else if (!$('codex').classList.contains('hidden')) closeModal('codex'); else if (!$('win').classList.contains('hidden')) { hide('win'); G.state = 'play'; } } }
@@ -1101,7 +1198,7 @@ function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; 
 addEventListener('resize', resize);
 function update(dt) {
   G.dayT = (G.dayT + dt / 600) % 1; G.alert = ''; G.alertPri = 0; ST().time += dt;
-  updatePlayer(dt); updateItems(dt); updateSites(dt); updateValve(dt); updateBleach(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
+  updatePlayer(dt); updateItems(dt); updateSites(dt); updateValve(dt); if (G.story) storyUpdate(dt); updateBleach(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
   for (const c of creatures) updateCreature(c, dt); for (const s of schools) updateSchool(s, dt);
   updateCamera(dt);
   G.shake *= Math.pow(0.02, dt); if (G.shake < 0.01) G.shake = 0; G.flash = Math.max(0, G.flash - dt * 1.4);
@@ -1140,6 +1237,6 @@ genItems(); genRescues(); genSiteItems(); buildItemMeshes(); genCreatures(); bui
 G.poll = items.length;
 loadSettings(); resize(); showTitle();
 function simulate(sec) { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) { const dt = 1 / 30; G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); FXA.update(dt); FXN.update(dt); } writeFish(); }
-window.__game = { AU, SITES, siteTick, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
+window.__game = { AU, SITES, siteTick, startStory, storyEnd, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
 $('loading').classList.add('hidden');
 requestAnimationFrame((t) => { last = t; frame(t); });

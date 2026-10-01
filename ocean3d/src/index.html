@@ -242,6 +242,32 @@ body.fp #vign,body.fp #sonarInd,body.fp #hudStats{display:none}
 #title .tag{font-size:clamp(14px,1.8vw,16px);color:var(--mute);margin:18px 0 28px;max-width:34em;line-height:1.7}
 #title .menu{display:flex;flex-wrap:wrap;gap:10px}
 #title .foot{margin-top:22px;font-size:12px;color:var(--dim)}
+.btn.story{border-color:#6fd3c1;color:#bff3ea}
+.btn.story.primary{background:#3fbfa8;border-color:#3fbfa8;color:#04201a}
+/* story mode: big, friendly dialogue and an ending card with a short OX quiz */
+#storyBox{position:fixed;left:50%;bottom:max(22vh,150px);transform:translateX(-50%);width:min(640px,calc(100vw - 32px));z-index:15}
+#storyBox .sbox{background:rgba(6,18,26,.92);border:2px solid #6fd3c1;border-radius:16px;padding:16px 18px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+#storyBox .who{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+#storyBox .face{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:28px;background:#123a44;border:2px solid #6fd3c1}
+#storyBox .who b{font-size:16px;color:#bff3ea}
+#storyBox p{font-size:clamp(16px,2.2vw,20px);line-height:1.6;color:#f2f7fa;min-height:3.2em}
+#storyBox .sfoot{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
+#storyBox .dots{display:flex;gap:6px}#storyBox .dots i{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.25)}#storyBox .dots i.on{background:#6fd3c1}
+#storyBox .btn{height:44px;font-size:16px;padding:0 22px}
+#storyEnd .send{text-align:center}
+#storyEnd h2{font-size:24px;margin-bottom:6px}
+#storyEnd .lead{font-size:15px;color:var(--mute);margin-bottom:14px}
+#storyEnd .sstats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0 16px}
+#storyEnd .sstats div{background:rgba(255,255,255,.05);border-radius:10px;padding:10px 6px}#storyEnd .sstats b{display:block;font-size:22px;color:#6fd3c1}#storyEnd .sstats span{font-size:13px;color:var(--mute)}
+#storyEnd ul{text-align:left;margin:6px auto 16px;padding-left:20px;max-width:340px;font-size:15px;line-height:1.8}
+#storyEnd .q{font-size:clamp(17px,2.4vw,21px);line-height:1.6;margin:12px 0 18px}
+#storyEnd .ox{display:flex;gap:14px;justify-content:center;margin-bottom:12px}
+#storyEnd .ox button{width:110px;height:90px;font-size:44px;font-weight:800;border-radius:16px;border:2px solid var(--line2);background:rgba(255,255,255,.04);color:var(--ink);cursor:pointer}
+#storyEnd .ox button.ans-o{color:#6fd3c1}#storyEnd .ox button.ans-x{color:#f08a7e}
+#storyEnd .fb{font-size:16px;line-height:1.6;margin:8px 0 14px}#storyEnd .fb b{font-size:20px}
+#storyEnd .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+#storyEnd .row .btn{height:44px;font-size:15px}
+@media (max-height:520px){#storyBox{bottom:8px;width:min(720px,calc(100vw - 32px))}#storyBox .sbox{padding:10px 14px}#storyBox .who{margin-bottom:4px}#storyBox .face{width:32px;height:32px;font-size:20px}#storyBox p{font-size:15px;line-height:1.5;min-height:0}#storyBox .sfoot{margin-top:6px}#storyBox .btn{height:36px;font-size:14px}#storyEnd .box{padding:12px 16px}#storyEnd h2{font-size:19px;margin-bottom:2px}#storyEnd .lead{font-size:13px;margin-bottom:6px}#storyEnd .sstats{grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 8px}#storyEnd .sstats div{padding:6px 4px}#storyEnd .sstats b{font-size:16px}#storyEnd .sstats span{font-size:11px}#storyEnd h3{font-size:14px}#storyEnd ul{font-size:13px;line-height:1.45;margin:4px auto 8px}#storyEnd .q{font-size:16px;margin:6px 0 10px}#storyEnd .ox button{width:90px;height:64px;font-size:34px}#storyEnd .fb{font-size:14px;margin:4px 0 8px}#storyEnd .row .btn{height:38px}}
 
 @media (max-width:760px),(max-height:520px){
   #hudLeft{width:200px;gap:5px}
@@ -286,7 +312,7 @@ body.fp #vign,body.fp #sonarInd,body.fp #hudStats{display:none}
       <div class="kv"><span>자금</span><b id="hMoney">0</b></div>
     </div>
     <div id="hudMission" class="glass">
-      <div class="mt"><span class="mtag">임무</span><span class="mn" id="mName"></span><span class="num" id="mProg"></span></div>
+      <div class="mt"><span class="mtag" id="mTag">임무</span><span class="mn" id="mName"></span><span class="num" id="mProg"></span></div>
       <div class="md" id="mDesc"></div>
       <div class="bar" id="mProgRow"><i id="mBar"></i></div>
       <div class="mg" id="mGuide"><svg class="arr" id="mArrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 20 20.5 12 15.8 4 20.5z"/></svg><span id="mGuideTxt"></span></div>
@@ -331,6 +357,7 @@ body.fp #vign,body.fp #sonarInd,body.fp #hudStats{display:none}
   <h1>딥 블루<span>3D</span></h1>
   <p class="tag">쓰레기로 병들어 가는 바다입니다. 작은 잠수정으로 수심 860m까지 내려가 쓰레기를 수거하고, 그물에 걸린 생물을 구하고, 바다를 되살리세요.</p>
   <div class="menu">
+    <button class="btn story" id="bStory">스토리 모드 · 5분</button>
     <button class="btn primary" id="bContinue">이어하기</button>
     <button class="btn" id="bNew">새 게임</button>
     <button class="btn" id="bHelpT">조작법</button>
@@ -427,6 +454,16 @@ body.fp #vign,body.fp #sonarInd,body.fp #hudStats{display:none}
   <p class="lead" id="failText" style="margin-top:8px"></p>
   <div class="losses" id="failLoss"></div>
   <button class="btn primary" id="bRespawn">기지선에서 재출항</button>
+</div></div>
+
+<div id="storyBox" class="hidden" role="dialog" aria-live="polite"><div class="sbox">
+  <div class="who"><span class="face" id="stFace">🐬</span><b id="stName">돌고래 푸른이</b></div>
+  <p id="stText"></p>
+  <div class="sfoot"><span class="dots" id="stDots"></span><button class="btn primary" id="stNext">다음 ▶</button></div>
+</div></div>
+
+<div id="storyEnd" class="modal hidden"><div class="box narrow send">
+  <div id="seBody"></div>
 </div></div>
 
 <div id="win" class="modal hidden"><div class="box narrow">
