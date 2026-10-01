@@ -7,14 +7,14 @@ import { dirname, resolve } from 'node:path';
 
 const GAME = 'file://' + resolve(dirname(fileURLToPath(import.meta.url)), '../../ocean-cleanup-3d.html');
 const SAVE_KEY = 'deepblue3d-ocean-cleaner-v1', SET_KEY = 'deepblue3d-settings-v1';
-let failed = 0; const OPEN = []; // contexts still open, closed after each suite even if it crashed
+let failed = 0; const OPEN = [], PAGES = []; // contexts still open, closed after each suite even if it crashed; their pages, for crash reports
 const check = (name, ok, info) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${info === undefined ? '' : ' ' + JSON.stringify(info)}`); if (!ok) failed++; };
 
 // a fresh browser context with fixed settings (low quality keeps the software renderer fast)
 async function open(browser, { query = '', settings = { quality: 0, master: 0, fp: 1 }, save = null, device = null } = {}) {
   const ctx = await browser.newContext(device ? { ...devices[device] } : { viewport: { width: 900, height: 560 } }); OPEN.push(ctx);
   const page = await ctx.newPage(); page.setDefaultTimeout(240000);
-  const errors = []; page.on('pageerror', (e) => errors.push(e.message)); page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  const errors = []; page.on('pageerror', (e) => errors.push(e.message)); page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); }); page.on('crash', () => errors.push('page crashed')); PAGES.push({ page, errors });
   await page.addInitScript(([sk, s, vk, v]) => { if (s) localStorage.setItem(sk, JSON.stringify(s)); if (v) localStorage.setItem(vk, JSON.stringify(v)); }, [SET_KEY, settings, SAVE_KEY, save]);
   await page.goto(GAME + query); await page.waitForFunction(() => window.__game, null, { timeout: 120000 });
   const E = (f, a) => page.evaluate(f, a), sim = (s) => E((s) => window.__game.simulate(s), s);
@@ -39,6 +39,12 @@ const SUITES = {
     await page.click('.tab[data-tab="dUp"]'); await page.click('[data-buy="depth"]:not([disabled])');
     check('upgrade bought', await E(() => window.__game.SV().up.depth === 1));
     await page.click('#bLaunch'); check('launch', await E(() => window.__game.G.state === 'play'));
+    // the lock is granted asynchronously: one landing outside play must be let go, and the jump it reports must not turn the sub
+    check('late pointer lock released, lock-jump mouse move ignored', await E(() => { const g = window.__game, IN = g.IN, d = document, c = g.renderer.domElement, ex = d.exitPointerLock; let exited = 0;
+      Object.defineProperty(d, 'pointerLockElement', { configurable: true, get: () => c }); d.exitPointerLock = () => { exited++; };
+      g.G.state = 'dock'; d.dispatchEvent(new Event('pointerlockchange')); g.G.state = 'play'; delete d.pointerLockElement; d.exitPointerLock = ex;
+      IN.locked = true; IN.mdx = 0; dispatchEvent(new MouseEvent('mousemove', { movementX: -772, movementY: -493 })); const spike = IN.mdx; dispatchEvent(new MouseEvent('mousemove', { movementX: 30 })); const hand = IN.mdx; IN.locked = false; IN.mdx = IN.mdy = 0;
+      return exited === 1 && spike === 0 && hand === 30; }));
     const cut = await E(() => { const g = window.__game, r = g.rescues[0]; g.P.yaw = g.P.vyaw = 0; g.P.pitch = 0; g.P.pos.set(r.pos.x, r.pos.y + 0.3, r.pos.z - 9); g.P.vel.set(0, 0, 0); return g.S.cut; });
     await page.keyboard.down('KeyE'); await sim(cut + 2); await page.keyboard.up('KeyE');
     check('rescue frees the animal', await E(() => window.__game.rescues[0].freed));
@@ -49,10 +55,12 @@ const SUITES = {
     await E(() => { const g = window.__game; g.P.pos.set(-760, g.heightAt(-760, 150) + 10, 150); }); await sim(2);
     check('pressure failure', await page.waitForFunction(() => window.__game.G.state === 'fail' && !document.getElementById('fail').classList.contains('hidden'), null, { timeout: 15000 }).then(() => true, () => false));
     await page.click('#bRespawn'); await page.waitForTimeout(300); check('respawn at the dock', await E(() => window.__game.G.state === 'dock'));
-    await page.click('#bLaunch'); await E(() => window.__game.saveGame()); const money = await E(() => window.__game.SV().money);
-    await page.reload(); await page.waitForFunction(() => window.__game); await page.click('#bContinue'); await page.waitForTimeout(400);
-    check('continue restores the save', await E((m) => { const g = window.__game; return g.SV().money === m && g.rescues[0].freed && g.SV().up.depth === 1; }, money));
+    await page.click('#bLaunch'); await E(() => window.__game.saveGame()); const saved = await E((k) => JSON.parse(localStorage.getItem(k)), SAVE_KEY);
     check('core: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close();
+    // a fresh boot from that save, with the first page closed (a reload instead can race Chromium's storage under load and come up without it)
+    const next = await open(browser, { save: saved }); await next.page.click('#bContinue'); await next.page.waitForTimeout(400);
+    check('continue restores the save', await next.E((m) => { const g = window.__game; return g.SV().money === m && g.rescues[0].freed && g.SV().up.depth === 1; }, saved.money));
+    check('continue: no page errors', next.errors.length === 0, next.errors.slice(0, 3)); await next.ctx.close();
   },
   // the bleached reef: the valve closes under the beam, the zone's trash is reachable, colour and fish come back
   async sites(browser) {
@@ -160,8 +168,15 @@ const SUITES = {
   },
 };
 
+// after a crash: what each open page was showing and any errors it logged, so a CI failure explains itself
+async function report() {
+  for (const { page, errors } of PAGES.splice(0)) {
+    const st = await Promise.race([page.evaluate(() => { const g = window.__game; return { state: g && g.G.state, ctxLost: g && g.G.ctxLost, shown: [...document.querySelectorAll('body > div[id]:not(.hidden)')].map((e) => e.id) }; }).catch((e) => e.message.split('\n')[0]), new Promise((r) => setTimeout(() => r('page not answering'), 5000))]);
+    console.log('     page:', JSON.stringify(st), '| errors:', JSON.stringify(errors.slice(0, 5)));
+  }
+}
 const want = process.argv.slice(2).filter((a) => SUITES[a]), run = want.length ? want : Object.keys(SUITES);
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-for (const name of run) { const t = Date.now(); console.log(`# ${name}`); try { await SUITES[name](browser); } catch (e) { check(`${name} crashed`, false, e.message.split('\n')[0]); } for (const c of OPEN.splice(0)) await c.close().catch(() => {}); console.log(`# ${name} done in ${Math.round((Date.now() - t) / 1000)}s`); }
+for (const name of run) { const t = Date.now(); console.log(`# ${name}`); try { await SUITES[name](browser); } catch (e) { check(`${name} crashed`, false, e.message.split('\n').filter((l) => l.trim()).slice(0, 12).join(' | ')); await report(); } PAGES.length = 0; for (const c of OPEN.splice(0)) await c.close().catch(() => {}); console.log(`# ${name} done in ${Math.round((Date.now() - t) / 1000)}s`); }
 await browser.close();
 console.log(failed ? `${failed} check(s) failed` : 'all checks passed'); process.exit(failed ? 1 : 0);

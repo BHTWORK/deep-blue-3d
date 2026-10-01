@@ -1201,7 +1201,8 @@ $('bView').onclick = () => toggleView();
 // =====================================================================
 function requestLock() { if (IN.touch || G.state !== 'play' || G.talk) return; try { const p = canvas.requestPointerLock && canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* not allowed (e.g. sandboxed iframe) */ } }
 function unlockPointer() { try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) { /* ignore */ } }
-document.addEventListener('pointerlockchange', () => { const was = IN.locked; IN.locked = document.pointerLockElement === canvas; if (!IN.locked) { IN.lmb = false; if (was && G.state === 'play' && !G.talk) togglePause(); } });
+// the browser grants the lock asynchronously: one that lands after the game left play (fail, dock, dialogue) would trap the cursor, so let it go
+document.addEventListener('pointerlockchange', () => { const was = IN.locked; IN.locked = document.pointerLockElement === canvas; if (IN.locked && (G.state !== 'play' || G.talk)) { unlockPointer(); return; } if (!IN.locked) { IN.lmb = false; if (was && G.state === 'play' && !G.talk) togglePause(); } });
 const BLOCK = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab']);
 addEventListener('keydown', (e) => {
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
@@ -1221,7 +1222,8 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sav
 for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) addEventListener(ev, () => AU.init(), { capture: true, passive: true });
 addEventListener('pageshow', () => AU.resume()); addEventListener('focus', () => AU.resume());
 canvas.addEventListener('mousedown', (e) => { AU.init(); if (IN.touch || G.state !== 'play') return; if (!IN.locked) { requestLock(); IN.drag = true; IN.lx = e.clientX; IN.ly = e.clientY; if (e.button === 0 && e.shiftKey) IN.lmb = true; return; } if (e.button === 0) IN.lmb = true; else if (e.button === 2) doSonar(); });
-addEventListener('mousemove', (e) => { if (IN.locked) { IN.mdx += e.movementX; IN.mdy += e.movementY; } else if (IN.drag) { IN.mdx += e.clientX - IN.lx; IN.mdy += e.clientY - IN.ly; IN.lx = e.clientX; IN.ly = e.clientY; } });
+// Chromium can report the cursor's whole jump to the lock point as one locked move; no hand moves 400 px in one event, so drop those
+addEventListener('mousemove', (e) => { if (IN.locked) { if (Math.abs(e.movementX) > 400 || Math.abs(e.movementY) > 400) return; IN.mdx += e.movementX; IN.mdy += e.movementY; } else if (IN.drag) { IN.mdx += e.clientX - IN.lx; IN.mdy += e.clientY - IN.ly; IN.lx = e.clientX; IN.ly = e.clientY; } });
 addEventListener('mouseup', (e) => { if (e.button === 0) IN.lmb = false; IN.drag = false; });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 function enableTouch() { if (IN.touch) return; IN.touch = true; document.body.classList.add('touch'); if (G.state !== 'title') show('touch'); resize(); }
