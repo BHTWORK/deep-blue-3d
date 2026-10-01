@@ -230,7 +230,7 @@ function updateSites(dt) {
 function updateValve(dt) {
   const v = bleach.valve; if (SV.valve) return;
   if (G.state === 'play' && P.pos.distanceTo(v.pos) < 30) tip('valve', '폐수 배출관 밸브입니다. 트랙터 빔을 계속 비추면 밸브가 잠깁니다.');
-  let on = false; if (P.beam && G.state === 'play') { tv1.subVectors(v.pos, P.nose); const ed = tv1.length(); on = ed < 3.5 || (ed < S.beam + 3 && tv1.dot(P.fwd) / ed > Math.cos(0.5)); }
+  let on = false; if (P.beam && G.state === 'play') { tv1.subVectors(v.pos, P.nose); const ed = tv1.length(); on = ed < 3.5 || (ed < S.beam + 3 && tv1.dot(P.fwd) / ed > Math.cos(0.5 + aimPad())); }
   v.prog = on ? v.prog + dt / 3 : Math.max(0, v.prog - dt * 0.15); v.wheel.rotation.y = v.prog * TAU * 2;
   if (on) { if (Math.random() < dt * 20) FXA.emit(PT.SPARK, v.pos.x + rnd(-0.6, 0.6), v.pos.y + rnd(-0.1, 0.2), v.pos.z + rnd(-0.6, 0.6), rnd(-2, 2), rnd(0, 3), rnd(-2, 2), 0.35, 0.15, 1, 0.9, 0.55, 1); if (Math.random() < dt * 6) AU.cut(); setAlert(`밸브 잠그는 중 ${Math.min(100, Math.round(v.prog * 100))}%`, 1); }
   if (v.prog >= 1) { SV.valve = true; toast('폐수 배출관 차단', 'big', '뜨거운 폐수가 멈췄습니다. 이제 산호를 덮은 쓰레기를 치우면 색이 돌아옵니다.'); AU.mission(); saveGame(); }
@@ -517,10 +517,18 @@ function mGuide(m) {
 // INPUT
 // =====================================================================
 const IN = { keys: {}, mdx: 0, mdy: 0, lmb: false, locked: false, drag: false, lx: 0, ly: 0, touch: false, joy: { on: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 }, look: { id: null, x: 0, y: 0 }, tBeam: false, tBoost: false, tUp: false, tDown: false, gp: { mx: 0, my: 0, ax: 0, ay: 0, up: 0, beam: false, boost: false, prev: {} } };
-function inputVec() { if (G.talk) return { f: 0, s: 0, u: 0, beam: false, boost: false }; const k = IN.keys; let f = 0, s = 0, u = 0;
+// touch joystick: a 12% dead zone and a gentle curve, so small thumb wobbles do nothing and half a push is a slow crawl
+const JOY_DZ = 0.12, joyCurve = (m) => (m < JOY_DZ ? 0 : Math.pow((m - JOY_DZ) / (1 - JOY_DZ), 1.3));
+// the turn axis gets its own small dead band, so pushing roughly forward doesn't drift the heading
+const joyTurn = (x) => Math.sign(x) * Math.max(0, Math.abs(x) - 0.1) / 0.9;
+const AIM_TOUCH = 0.15, TURN_RATE = 1.9;
+// on touch the beam takes targets a little further off-centre
+const aimPad = () => (IN.touch ? AIM_TOUCH : 0);
+const buzz = (ms) => { if (IN.touch && navigator.vibrate) try { navigator.vibrate(ms); } catch (e) {} };
+function inputVec() { if (G.talk) return { f: 0, s: 0, u: 0, t: 0, beam: false, boost: false }; const k = IN.keys; let f = 0, s = 0, u = 0, t = 0;
   if (k.KeyW || k.ArrowUp) f += 1; if (k.KeyS || k.ArrowDown) f -= 1; if (k.KeyD || k.ArrowRight) s += 1; if (k.KeyA || k.ArrowLeft) s -= 1; if (k.Space || IN.tUp) u += 1; if (k.KeyC || k.ControlLeft || IN.tDown) u -= 1;
-  if (IN.joy.on) { f -= IN.joy.dy; s += IN.joy.dx; } f -= IN.gp.my; s += IN.gp.mx; u += IN.gp.up;
-  return { f, s, u, beam: !!(k.KeyE || k.KeyF || IN.lmb || IN.tBeam || IN.gp.beam), boost: !!(k.ShiftLeft || k.ShiftRight || IN.tBoost || IN.gp.boost) }; }
+  if (IN.joy.on) { f -= IN.joy.dy; t += joyTurn(IN.joy.dx); } f -= IN.gp.my; s += IN.gp.mx; u += IN.gp.up;
+  return { f, s, u, t, beam: !!(k.KeyE || k.KeyF || IN.lmb || IN.tBeam || IN.gp.beam), boost: !!(k.ShiftLeft || k.ShiftRight || IN.tBoost || IN.gp.boost) }; }
 function pollGamepad(dt) { const pads = navigator.getGamepads ? navigator.getGamepads() : []; let gp = null; for (const p of pads) if (p && p.connected) { gp = p; break; } const g = IN.gp; if (!gp) { g.mx = g.my = g.up = 0; g.beam = g.boost = false; return; }
   const dz = (v) => (Math.abs(v) < 0.18 ? 0 : v); g.mx = dz(gp.axes[0] || 0); g.my = dz(gp.axes[1] || 0); const ax = dz(gp.axes[2] || 0), ay = dz(gp.axes[3] || 0); P.yaw -= ax * 2.4 * dt; P.pitch = clamp(P.pitch - ay * 1.8 * dt, -1.25, 1.25);
   const b = (i) => !!(gp.buttons[i] && gp.buttons[i].pressed); g.beam = b(7) || b(0); g.boost = b(4); g.up = (b(5) ? 1 : 0) - (b(6) ? 1 : 0);
@@ -531,11 +539,14 @@ function pollGamepad(dt) { const pads = navigator.getGamepads ? navigator.getGam
 // =====================================================================
 function setAlert(msg, pri) { if (pri >= G.alertPri) { G.alert = msg; G.alertPri = pri; } }
 function damage(v, cause, silent) { if (G.state !== 'play' || v <= 0 || G.story) return; if (!silent && P.inv > 0) return;
-  P.hull -= v; if (!silent) { P.inv = 0.7; G.flash = Math.min(0.6, 0.2 + v / 40); G.flashCol = '255,60,60'; G.shake = Math.max(G.shake, 0.15 + v * 0.015); AU.hurt(); P.dmgT = 0.4; burst(P.pos, 14, 1, 0.8, 0.5, 5, 0.18); ftext(P.pos.clone().add(new V3(0, 2, 0)), `-${Math.round(v)}`, '#e5645e', 14); }
+  P.hull -= v; if (!silent) { P.inv = 0.7; buzz(40); G.flash = Math.min(0.6, 0.2 + v / 40); G.flashCol = '255,60,60'; G.shake = Math.max(G.shake, 0.15 + v * 0.015); AU.hurt(); P.dmgT = 0.4; burst(P.pos, 14, 1, 0.8, 0.5, 5, 0.18); ftext(P.pos.clone().add(new V3(0, 2, 0)), `-${Math.round(v)}`, '#e5645e', 14); }
   if (P.hull <= 0) { P.hull = 0; fail(cause === '수압' ? 'pressure' : 'hull'); } }
 function updatePlayer(dt) {
   const sens = 0.0022 * G.sens; P.yaw -= IN.mdx * sens; P.pitch = clamp(P.pitch - IN.mdy * sens, -1.3, 1.3); IN.mdx = IN.mdy = 0;
-  const inp = inputVec(); P.inp = inp; const f = fwdOf(P.yaw, P.pitch, P.fwd), r = rightOf(P.yaw, tv2);
+  const inp = inputVec(); P.inp = inp; if (inp.t) P.yaw -= inp.t * TURN_RATE * dt;
+  // touch: a second after the look thumb lifts, cruising forward without the beam eases a steep pitch back to 26 degrees
+  if (IN.touch && IN.look.id == null) { G.lookIdle = (G.lookIdle || 0) + dt; const lim = 0.45; if (G.lookIdle > 1.2 && inp.f > 0.3 && !inp.beam && Math.abs(P.pitch) > lim) P.pitch += (Math.sign(P.pitch) * lim - P.pitch) * Math.min(1, dt * 1.2); } else G.lookIdle = 0;
+  const f = fwdOf(P.yaw, P.pitch, P.fwd), r = rightOf(P.yaw, tv2);
   tv1.set(0, 0, 0).addScaledVector(f, inp.f).addScaledVector(r, inp.s).addScaledVector(UPV, inp.u); let ml = tv1.length(); if (ml > 1) { tv1.divideScalar(ml); ml = 1; }
   P.alive = P.bat > 0; if (!P.alive) { tv1.set(0, 0.5, 0); ml = 0; }
   const boosting = inp.boost && P.alive && ml > 0.1; P.boost = boosting; const spd = S.speed * (boosting ? 1.55 : 1);
@@ -597,14 +608,16 @@ function updateCamera(dt) {
 // ITEMS UPDATE / COLLECT / RESCUE / SONAR
 // =====================================================================
 function updateItems(dt) {
-  const beamOn = P.beam && G.state === 'play', f = P.fwd;
+  const beamOn = P.beam && G.state === 'play', f = P.fwd, aim = aimPad(), nudge = IN.touch && !beamOn && !SV.tips.tbeam; G.beamNear = false;
   for (const it of items) {
     if (it.col || it.locked) continue;
     const dc2 = it.pos.distanceToSquared(camera.position); if (dc2 > 260 * 260 && it.state === 0) continue;
     let pulled = false;
-    if (beamOn) { tv1.subVectors(it.pos, P.nose); const ed = tv1.length() || 1; if (ed < S.beam + it.r) { const cosA = tv1.dot(f) / ed; if (cosA > Math.cos(0.36 + Math.min(0.5, it.r / ed))) {
+    if (beamOn) { tv1.subVectors(it.pos, P.nose); const ed = tv1.length() || 1; if (ed < S.beam + it.r) { const cosA = tv1.dot(f) / ed; if (cosA > Math.cos(0.36 + aim + Math.min(0.5, it.r / ed))) {
       const pw = S.beamPow / (1 + it.kg * 0.085); tv1.multiplyScalar(-pw / ed).sub(it.vel).multiplyScalar(Math.min(1, 5 * dt)); it.vel.add(tv1); it.state = 1; pulled = true; it.spin += dt * 3;
       if (Math.random() < dt * 12) FXA.emit(PT.SPARK, it.pos.x + rnd(-it.r, it.r), it.pos.y + rnd(-it.r, it.r), it.pos.z + rnd(-it.r, it.r), -tv1.x, -tv1.y, -tv1.z, 0.4, 0.15, 0.4, 1, 0.9, 1); } } }
+    // first touch play: trash right in front makes the beam button pulse until the beam has collected something
+    if (nudge && !G.beamNear && it.state === 0 && dc2 < 3600) { tv1.subVectors(it.pos, P.nose); const ed = tv1.length() || 1; if (ed < S.beam + it.r && tv1.dot(f) > ed * 0.8) G.beamNear = true; }
     if (it.state === 1 && !pulled) it.state = 2;
     if (it.state > 0) {
       if (!pulled) { const g = it.buoy > 0 ? 1.8 : it.buoy < 0 ? (it.kg > 5 ? -5 : -2.5) : 0; it.vel.y += g * dt; it.vel.multiplyScalar(Math.pow(0.4, dt)); }
@@ -638,7 +651,7 @@ function tryCollect(it) {
   burst(it.pos, 18, 0.4, 1, 0.9, 5, 0.18);
   FXA.emit(PT.BLIP, it.pos.x, it.pos.y, it.pos.z, 0, 0, 0, 0.5, it.r * 2, 0.4, 1, 0.9, 1, 1);
   ftext(it.pos.clone().add(new V3(0, it.r + 0.5, 0)), `+${it.v}`, '#e8edf1', 14);
-  AU.collect(G.combo, it.kg >= 9);
+  AU.collect(G.combo, it.kg >= 9); buzz(it.kg >= 9 ? 28 : 12); if (IN.tBeam) SV.tips.tbeam = 1;
   if (!SV.tips['t_' + it.type]) { SV.tips['t_' + it.type] = 1; toast(`새로운 쓰레기: ${TRASH[it.type].n}`, 'tip', TRASH[it.type].fact); }
   recount();
 }
@@ -647,7 +660,7 @@ function updateRescues(dt) {
   for (const r of rescues) { if (r.freed) continue; r.t += dt; r.cutting = false;
     const d = r.pos.distanceTo(P.pos); if (d < 40) { r.known = true; tip('net', '그물에 걸린 생물입니다! 조준하고 트랙터 빔을 비춰 그물을 끊어 주세요.'); }
     if (d < 250) { r.model.anim(r.t * 0.5 + Math.sin(r.t * 6) * 0.3, null, true); r.model.root.rotation.z = Math.sin(r.t * 7) * 0.12 * (1 - r.prog * 0.5); r.netMesh.rotation.y += dt * 0.2; r.netMesh.material.opacity = 1 - r.prog * 0.6; }
-    if (P.beam && G.state === 'play') { tv1.subVectors(r.pos, P.nose); const ed = tv1.length(); if (ed < 4.5 || (ed < S.beam + 4 && tv1.dot(P.fwd) / ed > Math.cos(0.5))) { r.cutting = true; r.prog += dt / S.cut; if (Math.random() < dt * 25) FXA.emit(PT.SPARK, r.pos.x + rnd(-1.5, 1.5), r.pos.y + rnd(-1, 1), r.pos.z + rnd(-1.5, 1.5), rnd(-4, 4), rnd(-4, 4), rnd(-4, 4), 0.35, 0.15, 1, 0.9, 0.55, 1); if (Math.random() < dt * 8) AU.cut(); } }
+    if (P.beam && G.state === 'play') { tv1.subVectors(r.pos, P.nose); const ed = tv1.length(); if (ed < 4.5 || (ed < S.beam + 4 && tv1.dot(P.fwd) / ed > Math.cos(0.5 + aimPad()))) { r.cutting = true; r.prog += dt / S.cut; if (Math.random() < dt * 25) FXA.emit(PT.SPARK, r.pos.x + rnd(-1.5, 1.5), r.pos.y + rnd(-1, 1), r.pos.z + rnd(-1.5, 1.5), rnd(-4, 4), rnd(-4, 4), rnd(-4, 4), 0.35, 0.15, 1, 0.9, 0.55, 1); if (Math.random() < dt * 8) AU.cut(); } }
     else r.prog = Math.max(0, r.prog - dt * 0.1);
     r.netMesh.scale.multiplyScalar(1); if (r.prog >= 1) freeAnimal(r); }
 }
@@ -1153,7 +1166,7 @@ function showTitle() { G.state = 'title'; G.story = false; G.talk = false; hide(
   const d = loadGame(); $('bContinue').classList.toggle('hidden', !d); $('bNew').classList.toggle('primary', !d && !STORY_LINK); SV = freshSave(); calcStats(); resetWorld(); siteTick(true); bleach.valve.prog = 0; bleach.valve.wheel.rotation.y = 0; updateBleach(0, true); G.clean = 0.6; G.coralH = -1; missionTickCoral(); SUB.root.visible = false; applyView(); }
 function missionTickCoral() { const h = Math.round(clamp(0.12 + G.clean * 1.15, 0, 1) * 50) / 50; if (h !== G.coralH) { G.coralH = h; flora.setCoralHealth(h); } }
 function startGame(d) { AU.init(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); if (!G.story) requestLock();
-  const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>빔으로 수거·절단</span>' : '<span><kbd>WASD</kbd>이동</span><span><kbd>Space</kbd><kbd>C</kbd>상승·하강</span><span><kbd>클릭</kbd>빔</span><span><kbd>Q</kbd>소나</span><span><kbd>Shift</kbd>가속</span><span><kbd>V</kbd>시점</span><span><kbd>F</kbd>카메라</span><span><kbd>M</kbd>지도</span><span><kbd>Tab</kbd>도감</span>';
+  const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽 드래그 이동·방향</span><span>오른쪽 드래그 시점</span><span>빔으로 수거·절단</span>' : '<span><kbd>WASD</kbd>이동</span><span><kbd>Space</kbd><kbd>C</kbd>상승·하강</span><span><kbd>클릭</kbd>빔</span><span><kbd>Q</kbd>소나</span><span><kbd>Shift</kbd>가속</span><span><kbd>V</kbd>시점</span><span><kbd>F</kbd>카메라</span><span><kbd>M</kbd>지도</span><span><kbd>Tab</kbd>도감</span>';
   setTimeout(() => { hint.style.opacity = 0; }, 25000);
   if (G.story) { /* the guide does the introductions */ } else if (!d) { setTimeout(() => toast('해양 정화선 푸른바다호', 'big', '바다가 쓰레기로 병들고 있습니다. 잠수정으로 쓰레기를 수거해 주세요.'), 600); setTimeout(() => { const m = MISSIONS[0]; toast(`임무: ${m.t}`, 'tip', m.d); }, 4200); }
   else toast('이어서 탐험을 시작합니다', '', `바다 정화율 ${cleanPct()}%`);
@@ -1215,7 +1228,7 @@ function enableTouch() { if (IN.touch) return; IN.touch = true; document.body.cl
 addEventListener('touchstart', () => { AU.init(); enableTouch(); }, { passive: true });
 const jz = $('joyZone'), joy = $('joy'), knob = $('joyKnob'), lz = $('lookZone');
 jz.addEventListener('touchstart', (e) => { e.preventDefault(); const t = e.changedTouches[0]; IN.joy.on = true; IN.joy.id = t.identifier; IN.joy.ox = t.clientX; IN.joy.oy = t.clientY; IN.joy.dx = IN.joy.dy = 0; joy.style.left = t.clientX + 'px'; joy.style.top = t.clientY + 'px'; joy.classList.add('on'); knob.style.transform = 'translate(0,0)'; }, { passive: false });
-jz.addEventListener('touchmove', (e) => { e.preventDefault(); for (const t of e.changedTouches) { if (t.identifier !== IN.joy.id) continue; let dx = t.clientX - IN.joy.ox, dy = t.clientY - IN.joy.oy; const d = Math.hypot(dx, dy), R = 56; if (d > R) { dx *= R / d; dy *= R / d; } IN.joy.dx = dx / R; IN.joy.dy = dy / R; knob.style.transform = `translate(${dx}px,${dy}px)`; } }, { passive: false });
+jz.addEventListener('touchmove', (e) => { e.preventDefault(); for (const t of e.changedTouches) { if (t.identifier !== IN.joy.id) continue; let dx = t.clientX - IN.joy.ox, dy = t.clientY - IN.joy.oy; const d = Math.hypot(dx, dy), R = 56; if (d > R) { dx *= R / d; dy *= R / d; } const m = Math.min(1, d / R), k = m > 0 ? joyCurve(m) / m : 0; IN.joy.dx = (dx / R) * k; IN.joy.dy = (dy / R) * k; knob.style.transform = `translate(${dx}px,${dy}px)`; } }, { passive: false });
 const joyEnd = (e) => { for (const t of e.changedTouches) { if (t.identifier !== IN.joy.id) continue; IN.joy.on = false; IN.joy.dx = IN.joy.dy = 0; joy.classList.remove('on'); } };
 jz.addEventListener('touchend', joyEnd); jz.addEventListener('touchcancel', joyEnd);
 lz.addEventListener('touchstart', (e) => { e.preventDefault(); const t = e.changedTouches[0]; IN.look.id = t.identifier; IN.look.x = t.clientX; IN.look.y = t.clientY; }, { passive: false });
@@ -1243,9 +1256,19 @@ function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; 
   FXA.mat.uniforms.uScale.value = f * pr; FXN.mat.uniforms.uScale.value = f * pr;
   snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); if (L) CK.setLayout(L, Math.min(devicePixelRatio || 1, 2)); feedLayout(); layoutHUD(); }
 addEventListener('resize', resize);
+// first touch play: ghost hints over the two drag zones until each has been used for a moment, and a pulsing beam button
+const TH = { joy: 0, look: 0, shown: '' };
+function updateTouchHints(dt) {
+  if (!IN.touch) return;
+  if (IN.joy.on && Math.abs(IN.joy.dx) + Math.abs(IN.joy.dy) > 0.15) { TH.joy += dt; if (TH.joy > 1.2) SV.tips.joy = 1; }
+  if (IN.look.id != null) { TH.look += dt; if (TH.look > 0.8) SV.tips.look = 1; }
+  const live = G.state === 'play' && !G.talk, key = (live && !SV.tips.joy ? 'j' : '') + (live && !SV.tips.look ? 'l' : '') + (live && G.beamNear ? 'b' : '');
+  if (key === TH.shown) return; TH.shown = key;
+  $('joyHint').classList.toggle('hidden', !key.includes('j')); $('lookHint').classList.toggle('hidden', !key.includes('l')); $('tBeam').classList.toggle('nudge', key.includes('b'));
+}
 function update(dt) {
   G.dayT = (G.dayT + dt / 600) % 1; G.alert = ''; G.alertPri = 0; ST().time += dt;
-  updatePlayer(dt); updateItems(dt); updateSuck(dt); updateSites(dt); updateValve(dt); if (G.story) { storyUpdate(dt); updateBuddy(dt); } updateBleach(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
+  updatePlayer(dt); updateItems(dt); updateSuck(dt); updateTouchHints(dt); updateSites(dt); updateValve(dt); if (G.story) { storyUpdate(dt); updateBuddy(dt); } updateBleach(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
   for (const c of creatures) updateCreature(c, dt); for (const s of schools) updateSchool(s, dt);
   updateCamera(dt);
   G.shake *= Math.pow(0.02, dt); if (G.shake < 0.01) G.shake = 0; G.flash = Math.max(0, G.flash - dt * 1.4);
@@ -1253,7 +1276,7 @@ function update(dt) {
   G.autosave += dt; if (G.autosave > 20) { G.autosave = 0; saveGame(); }
   if (G.pendingWin > 0) { G.pendingWin -= dt; if (G.pendingWin <= 0 && G.state === 'play') showWin(); }
   // beam visual
-  beamCone.visible = P.beam; if (P.beam) { beamCone.position.copy(P.nose); tv1.copy(P.nose).add(P.fwd); beamCone.lookAt(tv1); const R = S.beam; beamCone.scale.set(Math.tan(0.36) * R, Math.tan(0.36) * R, R); beamMat.uniforms.uA.value = 0.22; }
+  beamCone.visible = P.beam; if (P.beam) { beamCone.position.copy(P.nose); tv1.copy(P.nose).add(P.fwd); beamCone.lookAt(tv1); const R = S.beam, w = Math.tan(0.36 + aimPad()) * R; beamCone.scale.set(w, w, R); beamMat.uniforms.uA.value = 0.22; }
 }
 const attractPath = (t) => { const x = Math.sin(t * 0.05) * 140 + 60, z = Math.cos(t * 0.04) * 110; return new V3(x, Math.max(-14 + Math.sin(t * 0.09) * 6, heightAt(x, z) + 7), z); }; // keeps clear of the hills
 function updateAttract(dt) {
@@ -1288,6 +1311,8 @@ function frame(now) {
   try {
     pollGamepad(dt);
     const live = G.state === 'play' || G.state === 'title';
+    // the hints follow play state; outside play they are cleared here
+    if (G.state !== 'play' && TH.shown) updateTouchHints(0);
     if (live) { G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); else updateAttract(dt); FXA.update(dt); FXN.update(dt); for (let i = ftexts.length - 1; i >= 0; i--) { const f = ftexts[i]; f.life -= dt; f.p.y += dt * 1.2; if (f.life <= 0) ftexts.splice(i, 1); } writeFish(); }
     if ((live || G.needRender) && !G.ctxLost && !GL.isContextLost()) { updateEnv(dt); if (inCockpit()) renderFeed(); if (bloom.enabled) composer.render(); else renderer.render(scene, camera); drawOverlay(); G.needRender = false; }
     if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit() && G.ck) CK.update(cockpitState(), dt); }
@@ -1302,6 +1327,6 @@ genItems(); genRescues(); genSiteItems(); buildItemMeshes(); genCreatures(); bui
 G.poll = items.length;
 loadSettings(); resize(); showTitle();
 function simulate(sec) { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) { const dt = 1 / 30; G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); FXA.update(dt); FXN.update(dt); } writeFish(); }
-window.__game = { AU, SITES, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
+window.__game = { AU, IN, SITES, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
 $('loading').classList.add('hidden');
 requestAnimationFrame((t) => { last = t; frame(t); });

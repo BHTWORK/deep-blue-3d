@@ -146,6 +146,26 @@ body.fp #vign,body.fp #sonarInd,body.fp #hudStats{display:none}
 #tDown{right:calc(var(--tr) + var(--tbb) + var(--tbs) + var(--tbg) * 2);bottom:var(--tb)}
 #tSonar span{font:700 22px var(--mono)}
 body.touch #sonarInd{display:none} /* the sonar button counts down itself */
+/* first-play hints: a ghost stick, a drag trail and a pulsing beam button, each gone once used */
+.thint{position:absolute;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:10px;font:600 15px var(--font);color:var(--ink);text-align:center;text-shadow:0 1px 3px rgba(0,0,0,.8),0 0 10px rgba(0,0,0,.45);animation:thIn .5s ease-out}
+.thint small{display:block;margin-top:3px;font-size:13px;font-weight:600;color:rgba(232,237,241,.85)}
+.thint .dot{position:absolute;width:44px;height:44px;border-radius:50%;background:rgba(232,237,241,.28);border:1px solid rgba(232,237,241,.65)}
+/* over the glass, clear of the cockpit console and the mission cards */
+#joyHint{left:clamp(70px,15vw,180px);bottom:34vh;margin-left:-60px;--a:36px}
+#joyHint .ring{position:relative;width:120px;height:120px;border-radius:50%;border:1.5px dashed rgba(232,237,241,.45)}
+#joyHint .dot{left:38px;top:38px;animation:thJoy 2.6s ease-in-out infinite}
+#lookHint{right:clamp(170px,30vw,380px);top:42%}
+#lookHint .trail{position:relative;width:150px;height:44px;border-radius:22px;background:linear-gradient(90deg,transparent,rgba(232,237,241,.12),transparent)}
+#lookHint .dot{left:0;top:0;animation:thLook 2.2s ease-in-out infinite}
+#tBeam.nudge{border-color:var(--accent);animation:thPulse 1.2s ease-out infinite}
+#tBeam.nudge::after{content:'꾹 누르기';position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);white-space:nowrap;font:600 13px var(--font);color:var(--accent)}
+@keyframes thIn{from{opacity:0}to{opacity:1}}
+@keyframes thJoy{0%,100%{transform:translate(0,0)}22%{transform:translate(0,calc(var(--a) * -1))}48%{transform:translate(var(--a),calc(var(--a) * -.7))}74%{transform:translate(calc(var(--a) * -1),calc(var(--a) * -.7))}}
+@keyframes thLook{0%,100%{transform:translateX(0)}50%{transform:translateX(106px)}}
+@keyframes thPulse{0%{box-shadow:0 0 0 0 rgba(233,196,106,.6)}70%,100%{box-shadow:0 0 0 18px rgba(233,196,106,0)}}
+/* phones in landscape: a smaller stick with its label beside it, in the band between the cards and the console */
+@media (max-height:500px){#joyHint{flex-direction:row;text-align:left;bottom:26vh;margin-left:-42px;--a:22px;font-size:14px}#joyHint .ring{width:84px;height:84px}#joyHint .dot{left:20px;top:20px}}
+@media (prefers-reduced-motion:reduce){.thint .dot,#tBeam.nudge{animation:none}}
 
 /* ---------- buttons, modals ---------- */
 .btn{appearance:none;height:40px;padding:0 18px;border-radius:var(--r);border:1px solid var(--line2);background:transparent;color:var(--ink);font:600 14px var(--font);cursor:pointer;transition:background .15s,border-color .15s}
@@ -352,6 +372,8 @@ body.touch #sonarInd{display:none} /* the sonar button counts down itself */
   <div id="joyZone"></div>
   <div id="lookZone"></div>
   <div id="joy"><div id="joyKnob"></div></div>
+  <div id="joyHint" class="thint hidden"><div class="ring"><div class="dot"></div></div><span>끌어서 이동<small>옆으로 밀면 방향 전환</small></span></div>
+  <div id="lookHint" class="thint hidden"><div class="trail"><div class="dot"></div></div><span>끌어서 둘러보기</span></div>
   <button id="tBeam" class="tbtn">빔<small>수거</small></button>
   <button id="tSonar" class="tbtn">소나</button>
   <button id="tBoost" class="tbtn">가속</button>

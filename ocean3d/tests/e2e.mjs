@@ -121,7 +121,7 @@ const SUITES = {
       check('the game keeps running after a restore', await E(() => window.__game.G.state === 'play'));
       check('context loss: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close(); }
   },
-  // touch layout on a tablet: the five buttons are big enough, apart, on screen and on top
+  // touch on a tablet: the five buttons are big enough, apart, on screen and on top; then the stick, pitch assist, beam cone and hints
   async touch(browser) {
     const { ctx, page, errors, E } = await open(browser, { device: 'iPad Pro 11 landscape' });
     await page.tap('#bNew'); await page.waitForTimeout(500);
@@ -131,6 +131,31 @@ const SUITES = {
       return { small: Math.round(rs[1].width), overlap, hit, sonarText: getComputedStyle(document.getElementById('sonarInd')).display }; });
     check('touch buttons are large, separate and tappable', r.small >= 60 && r.overlap === 0 && r.hit === 5, r);
     check('sonar status text hidden on touch', r.sonarText === 'none');
+    // controls, driven by synthetic touches inside one evaluate so the live loop can't interleave
+    const c = await E(() => { const g = window.__game, P = g.P, IN = g.IN, hid = (id) => document.getElementById(id).classList.contains('hidden');
+      const ev = (id, type, x, y, n) => { const el = document.getElementById(id), t = new Touch({ identifier: n, target: el, clientX: x, clientY: y }); el.dispatchEvent(new TouchEvent(type, { changedTouches: [t], touches: type === 'touchend' ? [] : [t], bubbles: true, cancelable: true })); };
+      const o = {}, home = () => { P.pos.set(150, g.heightAt(150, 150) + 40, 150); P.vel.set(0, 0, 0); P.yaw = P.vyaw = 0; P.pitch = 0; };
+      home(); g.simulate(0.1); o.hints = !hid('joyHint') && !hid('lookHint');
+      ev('joyZone', 'touchstart', 200, 600, 1); ev('joyZone', 'touchmove', 205, 598, 1); o.dead = IN.joy.dx === 0 && IN.joy.dy === 0;
+      ev('joyZone', 'touchmove', 256, 600, 1); let y0 = P.yaw; const p0 = P.pos.clone(); g.simulate(1); o.turn = +(y0 - P.yaw).toFixed(2); o.drift = +P.pos.distanceTo(p0).toFixed(2);
+      ev('joyZone', 'touchmove', 200, 544, 1); P.pitch = -1.1; y0 = P.yaw; g.simulate(3); o.pitch = +P.pitch.toFixed(2); o.yawHeld = Math.abs(P.yaw - y0) < 1e-6;
+      ev('joyZone', 'touchend', 200, 544, 1); g.simulate(0.1); o.joyHintGone = hid('joyHint');
+      ev('lookZone', 'touchstart', 900, 400, 2); ev('lookZone', 'touchmove', 960, 400, 2); g.simulate(1); ev('lookZone', 'touchend', 960, 400, 2); g.simulate(0.1); o.lookHintGone = hid('lookHint');
+      // an item further off-centre than the mouse beam reaches, but inside the touch cone
+      const it = g.items.find((i) => !i.col && !i.locked && i.buoy < 0 && i.kg <= 2 && Math.hypot(i.pos.x, i.pos.z) > 40);
+      P.yaw = P.vyaw = 0; P.pitch = -0.2; P.pos.set(it.pos.x, it.pos.y + 10 * Math.sin(0.2) + 0.5, it.pos.z - 10 * Math.cos(0.2)); P.vel.set(0, 0, 0); g.simulate(1 / 30);
+      const off = (yaw) => { P.yaw = P.vyaw = yaw; g.simulate(1 / 30); const v = it.pos.clone().sub(P.nose), ed = v.length(); return { a: Math.acos(v.dot(P.fwd) / ed), lim: 0.36 + Math.min(0.5, it.r / ed) }; };
+      let yaw = 0.4, q = off(yaw); for (let k = 0; k < 8; k++) { yaw += q.lim + 0.07 - q.a; q = off(yaw); }
+      o.angle = +q.a.toFixed(2); o.mouseLimit = +q.lim.toFixed(2); o.nudge = document.getElementById('tBeam').classList.contains('nudge');
+      ev('tBeam', 'touchstart', 0, 0, 3); for (let t = 0; t < 3 && !it.col; t += 1 / 30) g.simulate(1 / 30); ev('tBeam', 'touchend', 0, 0, 3); g.simulate(0.1);
+      o.collected = it.col; o.tip = !!g.SV().tips.tbeam; o.nudgeGone = !document.getElementById('tBeam').classList.contains('nudge'); return o; });
+    check('touch: hints show on first play', c.hints, c);
+    check('joystick dead zone', c.dead);
+    check('sideways joystick steers instead of strafing', c.turn > 1.6 && c.turn < 2.1 && c.drift < 0.5, { turn: c.turn, drift: c.drift });
+    check('cruising relaxes a steep pitch', c.pitch > -0.5 && c.yawHeld, c.pitch);
+    check('move and look hints go once used', c.joyHintGone && c.lookHintGone);
+    check('touch beam reaches further off-centre', c.angle > c.mouseLimit && c.collected, { angle: c.angle, mouse: c.mouseLimit });
+    check('beam button pulses until the beam is used', c.nudge && c.tip && c.nudgeGone);
     check('touch: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close();
   },
 };
