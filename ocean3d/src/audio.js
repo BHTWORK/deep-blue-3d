@@ -99,6 +99,8 @@ export const AU={
   discover(){[79,83,86,91].forEach((m,i)=>this.tone(midiF(m),1.3,'triangle',0.07,0.01,this.revIn,i*0.11));[79,83,86,91].forEach((m,i)=>this.tone(midiF(m),0.9,'sine',0.06,0.005,null,i*0.11));},
   mission(){[67,72,76,79,84].forEach((m,i)=>this.tone(midiF(m),0.7,'triangle',0.1,0.01,null,i*0.09));this.tone(midiF(48),1.4,'sine',0.12,0.02,null,0.4);},
   click(){this.tone(1300,0.05,'sine',0.05);},
+  // 푸른이's chirp: two quick rising whistles
+  chirp(){if(!this.ready)return;const c=this.ctx,t=c.currentTime;for(let k=0;k<2;k++){const o=c.createOscillator(),g=c.createGain(),t0=t+k*0.13;o.type='sine';o.frequency.setValueAtTime(1700,t0);o.frequency.exponentialRampToValueAtTime(3100,t0+0.08);o.frequency.exponentialRampToValueAtTime(2300,t0+0.11);g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(0.045,t0+0.015);g.gain.exponentialRampToValueAtTime(0.001,t0+0.12);o.connect(g);g.connect(this.sfx);o.start(t0);o.stop(t0+0.13);}},
   creak(){this.noise(0.9,0.2,'bandpass',420,6,0,110);},
   cut(){this.noise(0.05,0.08,'bandpass',2400,5);},
   bubble(){const f=rnd(350,700);this.tone(f,0.08,'sine',0.03,0.004,null,0,f*2.2);},

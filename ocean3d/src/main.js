@@ -866,6 +866,12 @@ function drawOverlayIn(c, W, H) {
     const ax = cx + dx * k, ay = cy + dy * k, ang = Math.atan2(dy, dx);
     c.save(); c.translate(ax, ay); c.rotate(ang); c.globalAlpha = t.big ? 0.95 : 0.55; c.fillStyle = t.col; const sz = t.big ? 12 : 7; c.beginPath(); c.moveTo(sz, 0); c.lineTo(-sz * 0.8, -sz * 0.75); c.lineTo(-sz * 0.4, 0); c.lineTo(-sz * 0.8, sz * 0.75); c.closePath(); c.fill(); c.restore(); c.globalAlpha = 1;
     if (t.big) { const lx = ax - Math.cos(ang) * 36, ly = ay - Math.sin(ang) * 26; c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; const txt = `${t.label} ${dm}m`; c.strokeText(txt, lx, ly + 4); c.fillStyle = t.col; c.fillText(txt, lx, ly + 4); } }
+  // 푸른이's speech bubble above its head while the child plays
+  if (G.story && !G.talk && BUDDY.model && BUDDY.model.root.visible) { const txt = buddySay(); if (txt) { const s = project(BV[5].copy(BUDDY.pos).add(tv1.set(0, 1.5, 0)), pv);
+    if (!s.behind && s.x > 0 && s.x < W && s.y > 0 && s.y < H) { c.font = '700 15px sans-serif'; const w = c.measureText(txt).width + 24, h = 32, x = clamp(s.x - w / 2, 8, W - w - 8), y = s.y - h - 10;
+      c.fillStyle = 'rgba(255,255,255,.94)'; c.strokeStyle = '#3fbfa8'; c.lineWidth = 2; c.beginPath(); if (c.roundRect) c.roundRect(x, y, w, h, 14); else c.rect(x, y, w, h); c.fill(); c.stroke(); // roundRect is missing on older iPads
+      c.beginPath(); c.moveTo(s.x - 7, y + h - 1); c.lineTo(s.x, y + h + 9); c.lineTo(s.x + 7, y + h - 1); c.closePath(); c.fill();
+      c.fillStyle = '#0b2a33'; c.textAlign = 'center'; c.fillText(txt, x + w / 2, y + 21); } } }
 }
 
 // =====================================================================
@@ -1031,9 +1037,35 @@ function storyTick() {
   const h = Math.round(clamp(0.12 + G.clean * 1.15, 0, 1) * 50) / 50; if (h !== G.coralH) { G.coralH = h; flora.setCoralHealth(h); }
   if (!st || !st.goal || G.talk || SS.wait > 0) return;
   const [c, n] = storyProg(st); if (c < n) return;
-  SS.wait = 1.3; AU.mission(); toast('잘했어요!', 'good', `${st.t} 완료`);
+  SS.wait = 1.3; AU.mission(); BUDDY.party = 1.8; AU.chirp(); toast('잘했어요!', 'good', `${st.t} 완료`);
   if (st.goal === 'coral') { SS.coralDone = true; SV.sites.bleach = 1; } // corals regain full colour and the reef fish come back
 }
+// 푸른이 swims with the sub: in front of the glass while talking, ahead toward the goal while the child
+// plays (circling the target once it is close), and a loop of joy after each goal.
+const BUDDY = { model: null, pos: new V3(), vel: new V3(), q: new THREE.Quaternion(), t: 0, party: 0 }, BV = [new V3(), new V3(), new V3(), new V3(), new V3(), new V3()], ZAX = new V3(0, 0, 1);
+function buddyShow() {
+  if (!BUDDY.model) { const b = BUILD.dolphin(); b.root.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.set('#9fd0ff'); } });
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.04, 6, 18), new THREE.MeshStandardMaterial({ color: '#3fbfa8', emissive: 0x0d3a33, roughness: 0.5 })); collar.position.z = 0.55; collar.scale.x = 0.88; b.root.add(collar); scene.add(b.root); BUDDY.model = b; }
+  BUDDY.model.root.visible = true; BUDDY.pos.copy(P.pos).addScaledVector(P.fwd, 9); BUDDY.vel.set(0, 0, 0); BUDDY.party = 0;
+}
+function buddyHide() { if (BUDDY.model) BUDDY.model.root.visible = false; }
+function updateBuddy(dt) {
+  const B = BUDDY; if (!B.model) return; const [want, rt, dir, tmp] = BV, f = P.fwd, gd = G.guide; rightOf(P.yaw, rt); B.t += dt;
+  let look = null, spd = 14, roll = 0;
+  if (G.talk) { want.copy(P.pos).addScaledVector(f, 7).addScaledVector(rt, 1.4); want.y += 0.7 + Math.sin(B.t * 1.6) * 0.25; look = BV[4].copy(P.pos).addScaledVector(rt, 6); } // a three-quarter view, not head-on
+  else if (B.party > 0) { B.party -= dt; const a = (1 - B.party / 1.8) * TAU; want.copy(P.pos).addScaledVector(f, 8).addScaledVector(rt, Math.cos(a) * 2.5); want.y += 1 + Math.sin(a) * 2.5; spd = 20; roll = a * 2; }
+  else if (gd) { const d = gd.p.distanceTo(P.pos);
+    if (d < 14) want.set(gd.p.x + Math.cos(B.t * 0.9) * 5, gd.p.y + 2.5, gd.p.z + Math.sin(B.t * 0.9) * 5);
+    else { dir.subVectors(gd.p, P.pos).normalize(); want.copy(P.pos).addScaledVector(dir, Math.min(12, d * 0.5)).addScaledVector(rt, 2.5); want.y += 1.2; }
+    spd = Math.max(14, P.vel.length() + 8); }
+  else { want.copy(P.pos).addScaledVector(f, 8).addScaledVector(rt, 3); want.y += 1; }
+  want.y = clamp(want.y, heightAt(want.x, want.z) + 1.8, -1.2);
+  tmp.subVectors(want, B.pos); const dist = tmp.length(); if (dist > 0.01) tmp.multiplyScalar(Math.min(spd, dist * 2) / dist); B.vel.lerp(tmp, 1 - Math.exp(-3 * dt)); B.pos.addScaledVector(B.vel, dt);
+  tmp.subVectors(B.pos, P.pos); const sd = tmp.length(); if (sd < 3.5 && sd > 0.01) B.pos.addScaledVector(tmp, (3.5 - sd) / sd); // never inside the sub
+  if (look && B.vel.length() < 4) dir.subVectors(look, B.pos); else dir.copy(B.vel); if (dir.lengthSq() > 1e-4) { dir.normalize(); tm.lookAt(dir, ZERO, UPV); tq.setFromRotationMatrix(tm); if (roll) tq.multiply(new THREE.Quaternion().setFromAxisAngle(ZAX, roll)); B.q.slerp(tq, 1 - Math.exp(-5 * dt)); }
+  B.model.root.position.copy(B.pos); B.model.root.position.y += Math.sin(B.t * 2) * 0.12; B.model.root.quaternion.copy(B.q); B.model.anim(B.t * (0.6 + Math.min(1.4, B.vel.length() / 8)));
+}
+function buddySay() { const st = STORY.steps[SS.i]; if (BUDDY.party > 0 || SS.wait > 0) return STORY.hints.cheer; if (!st || !st.goal || !G.guide) return ''; const h = STORY.hints[st.goal]; return h ? h[G.guide.p.distanceTo(P.pos) < 20 ? 1 : 0] : ''; }
 // a short beat of game time after each goal before the guide speaks again
 function storyUpdate(dt) { if (SS.wait > 0 && (SS.wait -= dt) <= 0) storyStep(SS.i + 1); }
 function storyStep(i) {
@@ -1051,7 +1083,7 @@ function storyLine() {
   const lines = STORY.steps[SS.i].talk, t = lines[SS.line];
   $('stText').textContent = t === '@controls' ? (IN.touch ? STORY.controls.touch : STORY.controls.keys) : t;
   $('stDots').querySelectorAll('i').forEach((d, k) => d.classList.toggle('on', k === SS.line));
-  $('stNext').textContent = SS.line < lines.length - 1 ? '다음 ▶' : STORY.steps[SS.i + 1] ? '좋아! ▶' : '끝내기 ▶'; AU.click();
+  $('stNext').textContent = SS.line < lines.length - 1 ? '다음 ▶' : STORY.steps[SS.i + 1] ? '좋아! ▶' : '끝내기 ▶'; AU.chirp();
 }
 function storyNext() {
   if (!G.talk) return; const lines = STORY.steps[SS.i].talk;
@@ -1067,7 +1099,7 @@ function startStory() {
   for (const k of ['site_bleach', 'valve', 'net', 'depth', 'drum']) SV.tips[k] = 1; // the guide explains these instead
   SS.turtle = rescues.filter((r) => r.sp === 'turtle').sort((a, b) => a.pos.distanceToSquared(DOCK) - b.pos.distanceToSquared(DOCK))[0];
   document.querySelectorAll('#toasts .toast').forEach((t) => t.remove());
-  storyStep(0);
+  buddyShow(); storyStep(0);
 }
 function storyEnd() {
   G.state = 'menu'; G.talk = false; unlockPointer(); hide('storyBox'); AU.mission(); AU.whale(0.18);
@@ -1102,7 +1134,7 @@ function openCodex() { if (G.state === 'menu' && !$('codex').classList.contains(
 function togglePause() { if (G.state === 'play') { G.state = 'pause'; IN.keys = {}; IN.lmb = false; unlockPointer(); show('pause'); saveGame(); AU.click(); } else if (G.state === 'pause') { hide('pause'); G.state = 'play'; requestLock(); AU.click(); } }
 function openSub(id, from) { modalBack = from; if (from) hide(from); show(id); AU.click(); }
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => { const id = b.dataset.close; AU.click(); if (id === 'mapm' || id === 'codex') { closeModal(id); return; } hide(id); if (modalBack) { show(modalBack); modalBack = null; } }));
-function showTitle() { G.state = 'title'; G.story = false; G.talk = false; hide('storyBox'); hide('storyEnd'); unlockPointer(); hide('hud'); hide('touch'); ['dock', 'codex', 'mapm', 'pause', 'fail', 'win', 'settings', 'help'].forEach(hide); show('title');
+function showTitle() { G.state = 'title'; G.story = false; G.talk = false; hide('storyBox'); hide('storyEnd'); buddyHide(); unlockPointer(); hide('hud'); hide('touch'); ['dock', 'codex', 'mapm', 'pause', 'fail', 'win', 'settings', 'help'].forEach(hide); show('title');
   const d = loadGame(); $('bContinue').classList.toggle('hidden', !d); $('bNew').classList.toggle('primary', !d && !STORY_LINK); SV = freshSave(); calcStats(); resetWorld(); siteTick(true); bleach.valve.prog = 0; bleach.valve.wheel.rotation.y = 0; updateBleach(0, true); G.clean = 0.6; G.coralH = -1; missionTickCoral(); SUB.root.visible = false; applyView(); }
 function missionTickCoral() { const h = Math.round(clamp(0.12 + G.clean * 1.15, 0, 1) * 50) / 50; if (h !== G.coralH) { G.coralH = h; flora.setCoralHealth(h); } }
 function startGame(d) { AU.init(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); if (!G.story) requestLock();
@@ -1198,7 +1230,7 @@ function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; 
 addEventListener('resize', resize);
 function update(dt) {
   G.dayT = (G.dayT + dt / 600) % 1; G.alert = ''; G.alertPri = 0; ST().time += dt;
-  updatePlayer(dt); updateItems(dt); updateSites(dt); updateValve(dt); if (G.story) storyUpdate(dt); updateBleach(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
+  updatePlayer(dt); updateItems(dt); updateSites(dt); updateValve(dt); if (G.story) { storyUpdate(dt); updateBuddy(dt); } updateBleach(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
   for (const c of creatures) updateCreature(c, dt); for (const s of schools) updateSchool(s, dt);
   updateCamera(dt);
   G.shake *= Math.pow(0.02, dt); if (G.shake < 0.01) G.shake = 0; G.flash = Math.max(0, G.flash - dt * 1.4);
