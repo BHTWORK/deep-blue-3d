@@ -1074,7 +1074,7 @@ function storyTick() {
 }
 // 푸른이 swims with the sub: in front of the glass while talking, ahead toward the goal while the child
 // plays (circling the target once it is close), and a loop of joy after each goal.
-const BUDDY = { model: null, pos: new V3(), vel: new V3(), q: new THREE.Quaternion(), t: 0, party: 0 }, BV = [new V3(), new V3(), new V3(), new V3(), new V3(), new V3()], ZAX = new V3(0, 0, 1);
+const BUDDY = { model: null, pos: new V3(), vel: new V3(), q: new THREE.Quaternion(), t: 0, ph: 0, party: 0 }, BV = [new V3(), new V3(), new V3(), new V3(), new V3(), new V3()], ZAX = new V3(0, 0, 1);
 function buddyShow() {
   if (!BUDDY.model) { const b = BUILD.dolphin(); b.root.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.set('#9fd0ff'); } });
     const collar = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.04, 6, 18), new THREE.MeshStandardMaterial({ color: '#3fbfa8', emissive: 0x0d3a33, roughness: 0.5 })); collar.position.z = 0.55; collar.scale.x = 0.88; b.root.add(collar); scene.add(b.root); BUDDY.model = b; }
@@ -1095,7 +1095,7 @@ function updateBuddy(dt) {
   tmp.subVectors(want, B.pos); const dist = tmp.length(); if (dist > 0.01) tmp.multiplyScalar(Math.min(spd, dist * 2) / dist); B.vel.lerp(tmp, 1 - Math.exp(-3 * dt)); B.pos.addScaledVector(B.vel, dt);
   tmp.subVectors(B.pos, P.pos); const sd = tmp.length(); if (sd < 3.5 && sd > 0.01) B.pos.addScaledVector(tmp, (3.5 - sd) / sd); // never inside the sub
   if (look && B.vel.length() < 4) dir.subVectors(look, B.pos); else dir.copy(B.vel); if (dir.lengthSq() > 1e-4) { dir.normalize(); tm.lookAt(dir, ZERO, UPV); tq.setFromRotationMatrix(tm); if (roll) tq.multiply(new THREE.Quaternion().setFromAxisAngle(ZAX, roll)); B.q.slerp(tq, 1 - Math.exp(-5 * dt)); }
-  B.model.root.position.copy(B.pos); B.model.root.position.y += Math.sin(B.t * 2) * 0.12; B.model.root.quaternion.copy(B.q); B.model.anim(B.t * (0.6 + Math.min(1.4, B.vel.length() / 8)));
+  B.model.root.position.copy(B.pos); B.model.root.position.y += Math.sin(B.t * 2) * 0.12; B.model.root.quaternion.copy(B.q); B.ph += dt * (0.6 + Math.min(1.4, B.vel.length() / 8)); B.model.anim(B.ph);
 }
 function buddySay() { const st = STORY.steps[SS.i]; if (BUDDY.party > 0 || SS.wait > 0) return STORY.hints.cheer; if (!st || !st.goal || !G.guide) return ''; const h = STORY.hints[st.goal]; return h ? h[G.guide.p.distanceTo(P.pos) < 20 ? 1 : 0] : ''; }
 // a short beat of game time after each goal before the guide speaks again

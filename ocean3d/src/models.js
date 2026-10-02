@@ -251,14 +251,29 @@ export const BUILD = {
   },
   dolphin() {
     const g = new THREE.Group(); const tb = topBottom('#6f8497', '#e2eaef', -0.08, 0.1);
-    g.add(new THREE.Mesh(M(
+    const body = new THREE.Mesh(M(
       P(lathe([[0, -1.2], [0.12, -0.95], [0.26, -0.4], [0.32, 0.2], [0.27, 0.7], [0.12, 0.95], [0.07, 1.25], [0, 1.3]], 14), '#fff', [0, 0, 0], [0, 0, 0], [0.85, 1, 1], tb),
       P(vFin([[0.05, 0.25], [-0.35, 0.72], [-0.4, 0.25]]), '#5d7185'),
       P(hFin([[0.2, 0.45], [0.55, 0.1], [0.2, 0.25]]), '#5d7185', [0, -0.15, 0]), P(hFin([[-0.2, 0.45], [-0.55, 0.1], [-0.2, 0.25]]), '#5d7185', [0, -0.15, 0]),
       P(new THREE.SphereGeometry(0.04, 6, 4), '#050505', [0.2, 0.08, 0.8]), P(new THREE.SphereGeometry(0.04, 6, 4), '#050505', [-0.2, 0.08, 0.8]),
-    ), MAT.vcD));
+    ), MAT.vcD); g.add(body);
     const fl = new THREE.Group(); fl.position.z = -1.15; fl.add(new THREE.Mesh(P(hFin([[0, 0.1], [0.55, -0.25], [0.35, -0.4], [0, -0.15], [-0.35, -0.4], [-0.55, -0.25]]), '#5d7185'), MAT.vcD)); g.add(fl);
-    return { root: g, anim(t) { fl.rotation.x = Math.sin(t * 7) * 0.45; } };
+    // the whole body swims: an up-down wave runs from the head back to the flukes, barely moving the head and growing
+    // toward the tail stock (u is 0 at the beak, 1 at the flukes); the normals turn with the bend so the shading stays smooth
+    const NOSE = 1.3, LEN = 2.5, W = 7, K = 2.6, amp = (u) => 0.03 + 0.06 * u + 0.12 * u * u, damp = (u) => 0.06 + 0.24 * u;
+    const pa = body.geometry.attributes.position, na = body.geometry.attributes.normal, p0 = pa.array.slice(), n0 = na.array.slice(), nv = pa.count;
+    const U = new Float32Array(nv); for (let i = 0; i < nv; i++) U[i] = Math.max(0, (NOSE - p0[i * 3 + 2]) / LEN);
+    body.geometry.boundingSphere.radius += 0.25;
+    const uF = (NOSE + 1.15) / LEN;
+    return { root: g, anim(t, e, near) {
+      const ph = t * W;
+      // the flukes ride the tail tip and follow its tangent (slope dy/dz), flexed a little further
+      { const a = ph - K * uF, sn = Math.sin(a); fl.position.y = amp(uF) * sn; fl.rotation.x = Math.atan((damp(uF) * sn - amp(uF) * K * Math.cos(a)) / LEN) * 1.4; }
+      if (near === false) return;
+      const pv = pa.array, nn = na.array;
+      for (let i = 0; i < nv; i++) { const u = U[i], a = ph - K * u, sn = Math.sin(a), sl = -(damp(u) * sn - amp(u) * K * Math.cos(a)) / LEN, c = 1 / Math.sqrt(1 + sl * sl), sa = sl * c, j = i * 3;
+        pv[j + 1] = p0[j + 1] + amp(u) * sn; nn[j + 1] = n0[j + 1] * c + n0[j + 2] * sa; nn[j + 2] = -n0[j + 1] * sa + n0[j + 2] * c; }
+      pa.needsUpdate = true; na.needsUpdate = true; } };
   },
   jelly(e) {
     const g = new THREE.Group(); const hue = e ? e.hue : 300; const c = new THREE.Color().setHSL(hue / 360, 0.85, 0.65);
