@@ -567,8 +567,10 @@ function updatePlayer(dt) {
     if (ml > 0.3 && Math.random() < dt * (10 + (boosting ? 25 : 0))) { const cp = camera.position, fw = P.fwd; bubble(cp.x + fw.x * 5 + rnd(-2.5, 2.5), cp.y + fw.y * 5 + rnd(-1.8, 1.8), cp.z + fw.z * 5 + rnd(-2.5, 2.5), 0, rnd(0.3, 1), 0, rnd(0.03, 0.08)); } }
   SUB.root.position.copy(P.pos); if (P.pos.y > -1.6) SUB.root.position.y += Math.sin(G.t * 2) * 0.15;
   SUB.root.rotation.set(-P.vpitch, P.vyaw, P.roll, 'YXZ');
-  SUB.prop.rotation.z += dt * (3 + ml * 25 + (boosting ? 20 : 0));
-  SUB.root.updateMatrixWorld(); P.nose.set(0, -0.3, 2.0).applyMatrix4(SUB.root.matrixWorld);
+  const spin = dt * (3 + ml * 25 + (boosting ? 20 : 0)); SUB.prop.rotation.z += spin; for (const t of SUB.thr) t.rotation.z -= spin * 1.6;
+  // the beam projector brightens while the beam is on; the mast beacon flashes every 1.6 s
+  SUB.emitter.material.color.setRGB(0.5, 0.91, 1).multiplyScalar(P.beam ? 2.6 : 0.7); SUB.beacon.material.color.setRGB(1, 0.48, 0.18).multiplyScalar(G.t % 1.6 < 0.13 ? 3 : 0.35);
+  SUB.root.updateMatrixWorld(); P.nose.set(0, -0.6, 1.78).applyMatrix4(SUB.root.matrixWorld);
   P.thrust = ml; P.beam = inp.beam && P.alive;
   const drain = 0.2 + ml * 0.5 + (boosting ? 1.5 : 0) + (P.beam ? 1.3 : 0);
   if (G.story) P.bat = S.bat; // story mode: no running out of power
@@ -1333,6 +1335,6 @@ genItems(); genRescues(); genSiteItems(); buildItemMeshes(); genCreatures(); bui
 G.poll = items.length;
 loadSettings(); resize(); showTitle();
 function simulate(sec) { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) { const dt = 1 / 30; G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); FXA.update(dt); FXN.update(dt); } writeFish(); }
-window.__game = { AU, IN, SITES, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
+window.__game = { AU, IN, SUB, SITES, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
 $('loading').classList.add('hidden');
 requestAnimationFrame((t) => { last = t; frame(t); });

@@ -48,37 +48,94 @@ export function initMaterials() {
 }
 
 // ---------------------------------------------------------------- submarine
+// a rod of radius r from a to b, for rails, struts and masts
+function rod(a, b, r, color, seg = 6) {
+  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize()), e = new THREE.Euler().setFromQuaternion(q);
+  return P(new THREE.CylinderGeometry(r, r, d.length(), seg), color, A.add(B).multiplyScalar(0.5).toArray(), [e.x, e.y, e.z]);
+}
+// a flat shape with thickness, standing in the y-z plane (vertical) or lying in the x-z plane (horizontal)
+const slab = (pts, d) => new THREE.ExtrudeGeometry(new THREE.Shape(pts.map(([u, v]) => new THREE.Vector2(u, v))), { depth: d, bevelEnabled: false, curveSegments: 1 }).translate(0, 0, -d / 2);
+// a five-blade propeller of radius r, each blade twisted along its own length, spinning about z
+const propGeo = (r, n = 5, w = 0.16) => M(...Array.from({ length: n }, (_, i) => P(new THREE.BoxGeometry(w, r * 0.82, 0.035).translate(0, r * 0.59, 0).rotateY(0.5).rotateZ((i * TAU) / n), '#c9d2d8')),
+  P(new THREE.ConeGeometry(r * 0.3, r * 0.6, 12), '#c9d2d8', [0, 0, -r * 0.32], [-Math.PI / 2, 0, 0]),
+  P(new THREE.CylinderGeometry(r * 0.22, r * 0.26, r * 0.4, 12), '#8a96a2', [0, 0, r * 0.2], [Math.PI / 2, 0, 0]));
 export function buildSub() {
-  const Y = '#ffcf2e', Yd = '#f0b000', D = '#27313b', G = '#8a96a2';
+  const Y = '#ffcf2e', Yd = '#e8a800', D = '#27313b', G = '#8a96a2', N = '#1f3550';
+  // hull: a lathed teardrop running stern (z -2.0) to bow (z 1.38), yellow above a pale belly
+  const HULL = [[0.001, -2.0], [0.24, -1.98], [0.42, -1.85], [0.62, -1.55], [0.78, -1.05], [0.86, -0.45], [0.87, 0.35], [0.85, 0.95], [0.79, 1.3], [0.755, 1.38]];
+  // the colour change goes by angle round the hull, so it stays under the stripe as the stern tapers
+  const yc = col(Y), wc = col('#e9edef'), belly = (x, y) => { const t = THREE.MathUtils.smoothstep(y / (Math.hypot(x, y) || 1), -0.39, -0.33); return [wc.r + (yc.r - wc.r) * t, wc.g + (yc.g - wc.g) * t, wc.b + (yc.b - wc.b) * t]; };
+  // a navy line down each side, on the colour change: a thin strip of the hull profile lifted off the skin
+  const stripe = (phi) => P(new THREE.LatheGeometry(HULL.slice(2).map(([r, z]) => new THREE.Vector2(r * 1.006, z)), 1, phi, 0.075).rotateX(Math.PI / 2), N);
+  // the bow plate closes the hull around the canopy opening
+  const bow = new THREE.Shape(); bow.absarc(0, 0, 0.755, 0, TAU); const hole = new THREE.Path(); hole.absarc(0, 0.1, 0.6, 0, TAU, true); bow.holes.push(hole);
+  // the sail in side view (z, y), flat on top for the hatch, extruded with rounded edges
+  const SAIL = new THREE.Shape(); SAIL.moveTo(-0.62, 0.7); SAIL.lineTo(-0.56, 1.14); SAIL.quadraticCurveTo(-0.52, 1.3, -0.36, 1.3); SAIL.lineTo(0.36, 1.3); SAIL.quadraticCurveTo(0.66, 1.28, 0.7, 0.7); SAIL.closePath();
+  // cruciform tail fins swept back over the duct, navy at the tips; (z, r) outline, root on the hull taper
+  const FIN = [[-1.15, 0.73], [-1.95, 1.02], [-2.35, 1.02], [-2.35, 0.7], [-1.9, 0.66], [-1.8, 0.44]];
+  const finCol = (x, y) => (Math.hypot(x, y) > 0.9 ? [0.12, 0.2, 0.31] : [0.91, 0.66, 0]);
+  const fins = [1, -1].flatMap((sg) => [
+    P(slab(FIN.map(([z, r]) => [z, sg * r]), 0.05).rotateY(-Math.PI / 2), Yd, [0, 0, 0], [0, 0, 0], [1, 1, 1], finCol),
+    P(slab(FIN.map(([z, r]) => [sg * r, z]), 0.05).rotateX(Math.PI / 2), Yd, [0, 0, 0], [0, 0, 0], [1, 1, 1], finCol),
+  ]);
+  // side thruster pods on short pylons, each with a ring duct at the back
+  const pods = [1, -1].flatMap((sx) => [
+    P(new THREE.CapsuleGeometry(0.13, 0.32, 4, 14), Yd, [sx * 1.08, -0.15, -0.75], [Math.PI / 2, 0, 0]),
+    P(new THREE.BoxGeometry(0.26, 0.07, 0.34), G, [sx * 0.9, -0.15, -0.75]),
+    P(new THREE.TorusGeometry(0.17, 0.035, 6, 18), D, [sx * 1.08, -0.15, -1.16]), rod([sx * 1.08, -0.15, -1.06], [sx * 1.08, -0.15, -1.13], 0.05, G, 8),
+  ]);
+  // skids: a rail each side with an upturned toe, on two struts
+  const skids = [1, -1].flatMap((sx) => [
+    rod([sx * 0.48, -1.0, -1.1], [sx * 0.48, -1.0, 1.0], 0.045, G), rod([sx * 0.48, -1.0, 1.0], [sx * 0.48, -0.82, 1.3], 0.045, G),
+    rod([sx * 0.48, -1.0, -0.75], [sx * 0.36, -0.78, -0.75], 0.035, G), rod([sx * 0.48, -1.0, 0.55], [sx * 0.36, -0.78, 0.55], 0.035, G),
+  ]);
+  // handrails either side of the sail
+  const rails = [1, -1].flatMap((sx) => [rod([sx * 0.32, 0.92, -0.95], [sx * 0.32, 0.92, 0.7], 0.018, G, 5), ...[-0.9, -0.1, 0.65].map((z) => rod([sx * 0.32, 0.79, z], [sx * 0.32, 0.92, z], 0.016, G, 5))]);
   const body = M(
-    P(new THREE.CapsuleGeometry(0.85, 2.2, 8, 20), Y, [0, 0, 0], [Math.PI / 2, 0, 0], [1, 1, 1], (x, y) => { const t = THREE.MathUtils.smoothstep(y, -0.9, 0.9); return [0.85 + 0.15 * t, 0.52 + 0.2 * t, 0.02 + 0.04 * t]; }),
-    P(new THREE.CylinderGeometry(0.44, 0.5, 0.6, 16), Yd, [0, 0.95, 0.15], [0, 0, 0], [1, 1, 1.5]),
-    P(new THREE.CylinderGeometry(0.06, 0.06, 0.6, 8), G, [0.15, 1.45, 0.35]),
-    P(new THREE.BoxGeometry(0.1, 0.1, 0.3), G, [0.15, 1.72, 0.45]),
-    P(new THREE.CylinderGeometry(0.875, 0.875, 0.22, 24, 1, true), D, [0, 0, -0.4], [Math.PI / 2, 0, 0]),
-    P(new THREE.BoxGeometry(0.08, 1.3, 0.7), Yd, [0, 0, -1.75]),
-    P(new THREE.BoxGeometry(1.3, 0.08, 0.7), Yd, [0, 0, -1.75]),
-    P(new THREE.TorusGeometry(0.62, 0.09, 8, 20), G, [0, 0, -2.15]),
-    P(new THREE.CylinderGeometry(0.12, 0.2, 0.3, 10), D, [0, 0, -2.0], [Math.PI / 2, 0, 0]),
-    P(new THREE.CylinderGeometry(0.14, 0.16, 0.3, 12), D, [0.55, -0.42, 1.25], [Math.PI / 2, 0, 0]),
-    P(new THREE.CylinderGeometry(0.14, 0.16, 0.3, 12), D, [-0.55, -0.42, 1.25], [Math.PI / 2, 0, 0]),
-    P(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 6), G, [0, -0.95, 0.6], [0.9, 0, 0]),
-    P(new THREE.CylinderGeometry(0.05, 0.05, 0.6, 6), G, [0, -1.15, 1.15], [-0.4, 0, 0]),
-    P(new THREE.TorusGeometry(0.16, 0.04, 6, 12), D, [0.84, 0.15, 0.3], [0, Math.PI / 2, 0]),
-    P(new THREE.TorusGeometry(0.16, 0.04, 6, 12), D, [-0.84, 0.15, 0.3], [0, Math.PI / 2, 0]),
-    P(new THREE.TorusGeometry(0.16, 0.04, 6, 12), D, [0.84, 0.15, -0.35], [0, Math.PI / 2, 0]),
-    P(new THREE.TorusGeometry(0.16, 0.04, 6, 12), D, [-0.84, 0.15, -0.35], [0, Math.PI / 2, 0]),
+    P(lathe(HULL, 40), Y, [0, 0, 0], [0, 0, 0], [1, 1, 1], belly), stripe(Math.PI * 0.374), stripe(-Math.PI * 0.374 - 0.075),
+    P(new THREE.ShapeGeometry(bow, 24), Yd, [0, 0, 1.38]),
+    P(new THREE.TorusGeometry(0.61, 0.05, 8, 36), G, [0, 0.1, 1.39]),
+    // panel seams
+    P(new THREE.TorusGeometry(0.853, 0.016, 4, 40), Yd, [0, 0, 0.95]), P(new THREE.TorusGeometry(0.783, 0.016, 4, 40), Yd, [0, 0, -1.05]),
+    // inside the canopy: back wall, seat, console and the pilot in a navy cap
+    P(new THREE.CircleGeometry(0.6, 20), D, [0, 0.1, 1.3]), P(new THREE.BoxGeometry(0.36, 0.34, 0.08), '#33414f', [0, -0.02, 1.4]),
+    P(new THREE.BoxGeometry(0.5, 0.08, 0.16), D, [0, -0.28, 1.6]), P(new THREE.SphereGeometry(0.12, 12, 10), '#f2c9a4', [0, 0.24, 1.5]),
+    P(new THREE.SphereGeometry(0.128, 12, 6, 0, TAU, 0, Math.PI / 2), N, [0, 0.27, 1.5]),
+    // sail with a hatch on top, a mast and a whip antenna
+    P(new THREE.ExtrudeGeometry(SAIL, { depth: 0.24, bevelEnabled: true, bevelSize: 0.05, bevelThickness: 0.06, bevelSegments: 3, curveSegments: 8 }).translate(0, 0, -0.12).rotateY(-Math.PI / 2), Y),
+    P(new THREE.TorusGeometry(0.1, 0.022, 6, 16), G, [0, 1.355, 0.2], [Math.PI / 2, 0, 0]), P(new THREE.CylinderGeometry(0.09, 0.09, 0.03, 14), G, [0, 1.36, 0.2]),
+    rod([0, 1.3, -0.3], [0, 1.76, -0.3], 0.028, G), rod([0.07, 1.3, -0.45], [0.1, 1.95, -0.62], 0.009, D, 4),
+    // portholes, two a side
+    ...[1, -1].flatMap((sx) => [0.15, 0.55].map((z) => P(new THREE.TorusGeometry(0.12, 0.03, 6, 16), D, [sx * 0.85, 0.2, z], [0, Math.PI / 2, 0]))),
+    // lamp housings and the beam projector under the canopy
+    ...[1, -1].map((sx) => P(new THREE.CylinderGeometry(0.13, 0.15, 0.3, 14), D, [sx * 0.45, -0.52, 1.31], [Math.PI / 2, 0, 0])),
+    P(new THREE.CylinderGeometry(0.09, 0.12, 0.34, 14), D, [0, -0.6, 1.55], [Math.PI / 2, 0, 0]), P(new THREE.TorusGeometry(0.095, 0.022, 6, 16), G, [0, -0.6, 1.72]),
+    // the ducted propeller's nozzle, yellow outside and dark inside
+    P(lathe([[0.6, -2.48], [0.66, -2.42], [0.7, -2.25], [0.69, -2.05], [0.64, -1.94], [0.6, -1.96], [0.6, -2.48]], 28), Yd, [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y) => (Math.hypot(x, y) < 0.62 ? [0.15, 0.19, 0.23] : [0.91, 0.66, 0])),
+    ...fins, ...pods, ...skids, ...rails,
   );
   const g = new THREE.Group();
   const bodyMesh = new THREE.Mesh(body, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.38, metalness: 0.12, emissive: 0x2a1a00, emissiveIntensity: 0.6 })); g.add(bodyMesh);
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.7, 20, 14, 0, TAU, 0, Math.PI / 2).rotateX(Math.PI / 2), MAT.glass); dome.position.z = 1.35; g.add(dome);
-  const ports = new THREE.Mesh(M(P(new THREE.SphereGeometry(0.13, 8, 6), '#8fe6ff', [0.82, 0.15, 0.3]), P(new THREE.SphereGeometry(0.13, 8, 6), '#8fe6ff', [-0.82, 0.15, 0.3]), P(new THREE.SphereGeometry(0.13, 8, 6), '#8fe6ff', [0.82, 0.15, -0.35]), P(new THREE.SphereGeometry(0.13, 8, 6), '#8fe6ff', [-0.82, 0.15, -0.35])), new THREE.MeshBasicMaterial({ vertexColors: true }));
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.6, 24, 14, 0, TAU, 0, Math.PI / 2).rotateX(Math.PI / 2), MAT.glass); dome.position.set(0, 0.1, 1.38); g.add(dome);
+  // glowing glass: portholes and the console screen
+  const ports = new THREE.Mesh(M(...[1, -1].flatMap((sx) => [0.15, 0.55].map((z) => P(new THREE.SphereGeometry(0.1, 10, 8), '#8fe6ff', [sx * 0.835, 0.2, z], [0, 0, 0], [0.35, 1, 1]))),
+    P(new THREE.PlaneGeometry(0.3, 0.07), '#7fe0ff', [0, -0.232, 1.6], [-Math.PI / 2 - 0.45, 0, 0])), new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
   g.add(ports);
-  const lamps = new THREE.Mesh(M(P(new THREE.CircleGeometry(0.12, 12), '#fff', [0.55, -0.42, 1.41]), P(new THREE.CircleGeometry(0.12, 12), '#fff', [-0.55, -0.42, 1.41])), new THREE.MeshBasicMaterial({ vertexColors: true, fog: false }));
+  const lamps = new THREE.Mesh(M(P(new THREE.CircleGeometry(0.115, 14), '#fff', [0.45, -0.52, 1.465]), P(new THREE.CircleGeometry(0.115, 14), '#fff', [-0.45, -0.52, 1.465])), new THREE.MeshBasicMaterial({ vertexColors: true, fog: false }));
   lamps.material.color.setScalar(3); g.add(lamps);
-  const prop = new THREE.Mesh(M(...[0, 1, 2].map((i) => P(new THREE.BoxGeometry(0.16, 0.95, 0.04), '#c9d2d8', [0, 0, 0], [0, 0.5, (i * TAU) / 3]))), MAT.metal);
-  prop.position.z = -2.15; g.add(prop);
-  return { root: g, prop, lamps, bodyMesh };
+  // beam projector lens and the beacon on the mast; main.js drives their glow
+  const emitter = new THREE.Mesh(new THREE.CircleGeometry(0.085, 16), new THREE.MeshBasicMaterial({ color: 0x7fe9ff, fog: false })); emitter.position.set(0, -0.6, 1.725); g.add(emitter);
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff7a2e, fog: false })); beacon.position.set(0, 1.8, -0.3); g.add(beacon);
+  // hull number on both sides, behind the portholes, tilted with the taper
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 80; const cx = cv.getContext('2d');
+  cx.fillStyle = N; cx.font = '700 62px "Helvetica Neue", Arial, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('DB-01', 128, 44);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  const decal = new THREE.Mesh(mergeGeometries([1, -1].map((sx) => new THREE.PlaneGeometry(0.72, 0.225).rotateY(sx * (Math.PI / 2 + 0.082)).translate(sx * 0.842, 0.1, -0.52))),
+    new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.4, polygonOffset: true, polygonOffsetFactor: -2 }));
+  g.add(decal);
+  const prop = new THREE.Mesh(propGeo(0.56), MAT.metal); prop.position.z = -2.17; g.add(prop);
+  const thr = [1, -1].map((sx) => { const m = new THREE.Mesh(propGeo(0.13, 3, 0.06), MAT.metal); m.position.set(sx * 1.08, -0.15, -1.16); g.add(m); return m; });
+  return { root: g, prop, thr, lamps, emitter, beacon, bodyMesh };
 }
 
 // ---------------------------------------------------------------- trash

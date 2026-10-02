@@ -30,8 +30,12 @@ const SUITES = {
     await sim(0.5); check('contact collect', await E((id) => window.__game.items[id].col, id));
     id = await E(() => { const g = window.__game, it = g.items.find((i) => !i.col && !i.locked && i.buoy < 0 && i.kg <= 2 && Math.hypot(i.pos.x, i.pos.z) > 40), p = -0.2;
       g.P.yaw = g.P.vyaw = 0; g.P.pitch = p; g.P.pos.set(it.pos.x, it.pos.y + 10 * Math.sin(-p) + 0.5, it.pos.z - 10 * Math.cos(p)); g.P.vel.set(0, 0, 0); return it.id; });
-    await page.keyboard.down('KeyE'); await sim(2.9); await page.keyboard.up('KeyE');
+    await page.keyboard.down('KeyE'); await sim(2.9); const glowOn = await E(() => window.__game.SUB.emitter.material.color.g); await page.keyboard.up('KeyE');
     check('beam collect', await E((id) => window.__game.items[id].col, id));
+    // the sub: every part hides in the cockpit and shows in the chase view; the beam projector glows while beaming
+    const sub = await E(() => { const g = window.__game, U = g.SUB, parts = [U.bodyMesh, U.prop, U.emitter, U.beacon, ...U.thr], hid = parts.every((m) => !m.visible); g.toggleView(); const shown = parts.every((m) => m.visible); g.toggleView(); g.simulate(0.1); return { hid, shown, glowOff: U.emitter.material.color.g }; });
+    check('sub parts hide in the cockpit, show in the chase view', sub.hid && sub.shown, sub);
+    check('beam projector glows while the beam is on', glowOn > sub.glowOff * 2, { glowOn, glowOff: sub.glowOff });
     check('the sub lamp lights the deep', await E(() => { const g = window.__game; g.P.pos.set(330, -282, -360); g.SV().up.depth = 5; g.calcStats(); g.simulate(0.1); g.updateEnv(0.016); let s = null; g.scene.traverse((o) => { if (o.isSpotLight) s = o; }); const ok = !!s && s.intensity > 20 && s.parent && s.parent.visible !== undefined; g.SV().up.depth = 0; g.calcStats(); g.P.pos.set(0, -12, -40); return ok; }));
     await page.keyboard.press('KeyQ'); await sim(2.4); check('sonar reveals items', await E(() => window.__game.items.filter((i) => i.known).length) > 5);
     await E(() => { const g = window.__game; g.SV().money = 500; g.P.canDock = true; g.P.pos.copy(g.DOCK); }); await sim(0.1);
