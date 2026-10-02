@@ -62,7 +62,11 @@ const SUITES = {
     await page.click('#bLaunch'); await E(() => window.__game.saveGame()); const saved = await E((k) => JSON.parse(localStorage.getItem(k)), SAVE_KEY);
     check('core: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close();
     // a fresh boot from that save, with the first page closed (a reload instead can race Chromium's storage under load and come up without it)
-    const next = await open(browser, { save: saved }); await next.page.click('#bContinue'); await next.page.waitForTimeout(400);
+    const next = await open(browser, { save: saved });
+    // with a save, new game asks first; the box must take clicks over the title screen
+    await next.page.click('#bNew'); await next.page.click('#cfNo', { timeout: 10000 }).catch(() => {});
+    check('new-game confirm over the title can be answered', await next.E(() => document.getElementById('confirm').classList.contains('hidden') && window.__game.G.state === 'title'));
+    await next.page.click('#bContinue'); await next.page.waitForTimeout(400);
     check('continue restores the save', await next.E((m) => { const g = window.__game; return g.SV().money === m && g.rescues[0].freed && g.SV().up.depth === 1; }, saved.money));
     check('continue: no page errors', next.errors.length === 0, next.errors.slice(0, 3)); await next.ctx.close();
   },
@@ -151,7 +155,7 @@ const SUITES = {
       const o = {}, home = () => { P.pos.set(150, g.heightAt(150, 150) + 40, 150); P.vel.set(0, 0, 0); P.yaw = P.vyaw = 0; P.pitch = 0; };
       home(); g.simulate(0.1); o.hints = !hid('joyHint') && !hid('lookHint');
       ev('joyZone', 'touchstart', 200, 600, 1); ev('joyZone', 'touchmove', 205, 598, 1); o.dead = IN.joy.dx === 0 && IN.joy.dy === 0;
-      ev('joyZone', 'touchmove', 256, 600, 1); let y0 = P.yaw; const p0 = P.pos.clone(); g.simulate(1); o.turn = +(y0 - P.yaw).toFixed(2); o.drift = +P.pos.distanceTo(p0).toFixed(2);
+      ev('joyZone', 'touchmove', 256, 600, 1); let y0 = P.yaw; const p0 = P.pos.clone(); g.simulate(1); const mv = P.pos.clone().sub(p0); o.turn = +Math.abs(y0 - P.yaw).toFixed(3); o.drift = +mv.length().toFixed(2); o.ahead = +Math.abs(mv.dot(P.fwd)).toFixed(2);
       ev('joyZone', 'touchmove', 200, 544, 1); P.pitch = -1.1; y0 = P.yaw; g.simulate(3); o.pitch = +P.pitch.toFixed(2); o.yawHeld = Math.abs(P.yaw - y0) < 1e-6;
       ev('joyZone', 'touchend', 200, 544, 1); g.simulate(0.1); o.joyHintGone = hid('joyHint');
       ev('lookZone', 'touchstart', 900, 400, 2); ev('lookZone', 'touchmove', 960, 400, 2); g.simulate(1); ev('lookZone', 'touchend', 960, 400, 2); g.simulate(0.1); o.lookHintGone = hid('lookHint');
@@ -165,7 +169,7 @@ const SUITES = {
       o.collected = it.col; o.tip = !!g.SV().tips.tbeam; o.nudgeGone = !document.getElementById('tBeam').classList.contains('nudge'); return o; });
     check('touch: hints show on first play', c.hints, c);
     check('joystick dead zone', c.dead);
-    check('sideways joystick steers instead of strafing', c.turn > 1.6 && c.turn < 2.1 && c.drift < 0.5, { turn: c.turn, drift: c.drift });
+    check('sideways joystick moves sideways without turning the view', c.turn === 0 && c.drift > 1 && c.ahead < c.drift * 0.2, { turn: c.turn, drift: c.drift, ahead: c.ahead });
     check('cruising relaxes a steep pitch', c.pitch > -0.5 && c.yawHeld, c.pitch);
     check('move and look hints go once used', c.joyHintGone && c.lookHintGone);
     check('touch beam reaches further off-centre', c.angle > c.mouseLimit && c.collected, { angle: c.angle, mouse: c.mouseLimit });

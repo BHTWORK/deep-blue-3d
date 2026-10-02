@@ -519,16 +519,16 @@ function mGuide(m) {
 const IN = { keys: {}, mdx: 0, mdy: 0, lmb: false, locked: false, drag: false, lx: 0, ly: 0, touch: false, joy: { on: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 }, look: { id: null, x: 0, y: 0 }, tBeam: false, tBoost: false, tUp: false, tDown: false, gp: { mx: 0, my: 0, ax: 0, ay: 0, up: 0, beam: false, boost: false, prev: {} } };
 // touch joystick: a 12% dead zone and a gentle curve, so small thumb wobbles do nothing and half a push is a slow crawl
 const JOY_DZ = 0.12, joyCurve = (m) => (m < JOY_DZ ? 0 : Math.pow((m - JOY_DZ) / (1 - JOY_DZ), 1.3));
-// the turn axis gets its own small dead band, so pushing roughly forward doesn't drift the heading
-const joyTurn = (x) => Math.sign(x) * Math.max(0, Math.abs(x) - 0.1) / 0.9;
-const AIM_TOUCH = 0.15, TURN_RATE = 1.9;
+// the sideways axis gets its own small dead band, so pushing roughly forward doesn't drift sideways
+const joySide = (x) => Math.sign(x) * Math.max(0, Math.abs(x) - 0.1) / 0.9;
+const AIM_TOUCH = 0.15;
 // on touch the beam takes targets a little further off-centre
 const aimPad = () => (IN.touch ? AIM_TOUCH : 0);
 const buzz = (ms) => { if (IN.touch && navigator.vibrate) try { navigator.vibrate(ms); } catch (e) {} };
-function inputVec() { if (G.talk) return { f: 0, s: 0, u: 0, t: 0, beam: false, boost: false }; const k = IN.keys; let f = 0, s = 0, u = 0, t = 0;
+function inputVec() { if (G.talk) return { f: 0, s: 0, u: 0, beam: false, boost: false }; const k = IN.keys; let f = 0, s = 0, u = 0;
   if (k.KeyW || k.ArrowUp) f += 1; if (k.KeyS || k.ArrowDown) f -= 1; if (k.KeyD || k.ArrowRight) s += 1; if (k.KeyA || k.ArrowLeft) s -= 1; if (k.Space || IN.tUp) u += 1; if (k.KeyC || k.ControlLeft || IN.tDown) u -= 1;
-  if (IN.joy.on) { f -= IN.joy.dy; t += joyTurn(IN.joy.dx); } f -= IN.gp.my; s += IN.gp.mx; u += IN.gp.up;
-  return { f, s, u, t, beam: !!(k.KeyE || k.KeyF || IN.lmb || IN.tBeam || IN.gp.beam), boost: !!(k.ShiftLeft || k.ShiftRight || IN.tBoost || IN.gp.boost) }; }
+  if (IN.joy.on) { f -= IN.joy.dy; s += joySide(IN.joy.dx); } f -= IN.gp.my; s += IN.gp.mx; u += IN.gp.up;
+  return { f, s, u, beam: !!(k.KeyE || k.KeyF || IN.lmb || IN.tBeam || IN.gp.beam), boost: !!(k.ShiftLeft || k.ShiftRight || IN.tBoost || IN.gp.boost) }; }
 function pollGamepad(dt) { const pads = navigator.getGamepads ? navigator.getGamepads() : []; let gp = null; for (const p of pads) if (p && p.connected) { gp = p; break; } const g = IN.gp; if (!gp) { g.mx = g.my = g.up = 0; g.beam = g.boost = false; return; }
   const dz = (v) => (Math.abs(v) < 0.18 ? 0 : v); g.mx = dz(gp.axes[0] || 0); g.my = dz(gp.axes[1] || 0); const ax = dz(gp.axes[2] || 0), ay = dz(gp.axes[3] || 0); P.yaw -= ax * 2.4 * dt; P.pitch = clamp(P.pitch - ay * 1.8 * dt, -1.25, 1.25);
   const b = (i) => !!(gp.buttons[i] && gp.buttons[i].pressed); g.beam = b(7) || b(0); g.boost = b(4); g.up = (b(5) ? 1 : 0) - (b(6) ? 1 : 0);
@@ -543,7 +543,7 @@ function damage(v, cause, silent) { if (G.state !== 'play' || v <= 0 || G.story)
   if (P.hull <= 0) { P.hull = 0; fail(cause === '수압' ? 'pressure' : 'hull'); } }
 function updatePlayer(dt) {
   const sens = 0.0022 * G.sens; P.yaw -= IN.mdx * sens; P.pitch = clamp(P.pitch - IN.mdy * sens, -1.3, 1.3); IN.mdx = IN.mdy = 0;
-  const inp = inputVec(); P.inp = inp; if (inp.t) P.yaw -= inp.t * TURN_RATE * dt;
+  const inp = inputVec(); P.inp = inp;
   // touch: a second after the look thumb lifts, cruising forward without the beam eases a steep pitch back to 26 degrees
   if (IN.touch && IN.look.id == null) { G.lookIdle = (G.lookIdle || 0) + dt; const lim = 0.45; if (G.lookIdle > 1.2 && inp.f > 0.3 && !inp.beam && Math.abs(P.pitch) > lim) P.pitch += (Math.sign(P.pitch) * lim - P.pitch) * Math.min(1, dt * 1.2); } else G.lookIdle = 0;
   const f = fwdOf(P.yaw, P.pitch, P.fwd), r = rightOf(P.yaw, tv2);
@@ -1172,7 +1172,7 @@ function showTitle() { G.state = 'title'; G.story = false; G.talk = false; hide(
   const d = loadGame(); $('bContinue').classList.toggle('hidden', !d); $('bNew').classList.toggle('primary', !d && !STORY_LINK); SV = freshSave(); calcStats(); resetWorld(); siteTick(true); bleach.valve.prog = 0; bleach.valve.wheel.rotation.y = 0; updateBleach(0, true); G.clean = 0.6; G.coralH = -1; missionTickCoral(); SUB.root.visible = false; applyView(); }
 function missionTickCoral() { const h = Math.round(clamp(0.12 + G.clean * 1.15, 0, 1) * 50) / 50; if (h !== G.coralH) { G.coralH = h; flora.setCoralHealth(h); } }
 function startGame(d) { AU.init(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); if (!G.story) requestLock();
-  const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽 드래그 이동·방향</span><span>오른쪽 드래그 시점</span><span>빔으로 수거·절단</span>' : '<span><kbd>WASD</kbd>이동</span><span><kbd>Space</kbd><kbd>C</kbd>상승·하강</span><span><kbd>클릭</kbd>빔</span><span><kbd>Q</kbd>소나</span><span><kbd>Shift</kbd>가속</span><span><kbd>V</kbd>시점</span><span><kbd>F</kbd>카메라</span><span><kbd>M</kbd>지도</span><span><kbd>Tab</kbd>도감</span>';
+  const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>빔으로 수거·절단</span>' : '<span><kbd>WASD</kbd>이동</span><span><kbd>Space</kbd><kbd>C</kbd>상승·하강</span><span><kbd>클릭</kbd>빔</span><span><kbd>Q</kbd>소나</span><span><kbd>Shift</kbd>가속</span><span><kbd>V</kbd>시점</span><span><kbd>F</kbd>카메라</span><span><kbd>M</kbd>지도</span><span><kbd>Tab</kbd>도감</span>';
   setTimeout(() => { hint.style.opacity = 0; }, 25000);
   if (G.story) { /* the guide does the introductions */ } else if (!d) { setTimeout(() => toast('해양 정화선 푸른바다호', 'big', '바다가 쓰레기로 병들고 있습니다. 잠수정으로 쓰레기를 수거해 주세요.'), 600); setTimeout(() => { const m = MISSIONS[0]; toast(`임무: ${m.t}`, 'tip', m.d); }, 4200); }
   else toast('이어서 탐험을 시작합니다', '', `바다 정화율 ${cleanPct()}%`);

@@ -176,6 +176,8 @@ body.touch #sonarInd{display:none} /* the sonar button counts down itself */
 .btn.small{height:32px;padding:0 12px;font-size:13px}
 .btn:disabled{opacity:.35;cursor:not-allowed}
 .modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,10,.72);z-index:20;padding:12px}
+/* the confirm box also opens over the title screen (new game with a save), so it sits above it */
+#confirm{z-index:35}
 .box{position:relative;width:min(760px,96vw);max-height:92vh;overflow:auto;padding:22px 24px;background:var(--plate-solid);border:1px solid var(--line);border-radius:8px}
 .box.narrow{width:min(420px,94vw)}
 .box::-webkit-scrollbar{width:8px}.box::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
@@ -372,7 +374,7 @@ body.touch #sonarInd{display:none} /* the sonar button counts down itself */
   <div id="joyZone"></div>
   <div id="lookZone"></div>
   <div id="joy"><div id="joyKnob"></div></div>
-  <div id="joyHint" class="thint hidden"><div class="ring"><div class="dot"></div></div><span>끌어서 이동<small>옆으로 밀면 방향 전환</small></span></div>
+  <div id="joyHint" class="thint hidden"><div class="ring"><div class="dot"></div></div><span>끌어서 이동<small>앞뒤 · 좌우로 움직여요</small></span></div>
   <div id="lookHint" class="thint hidden"><div class="trail"><div class="dot"></div></div><span>끌어서 둘러보기</span></div>
   <button id="tBeam" class="tbtn">빔<small>수거</small></button>
   <button id="tSonar" class="tbtn">소나</button>
