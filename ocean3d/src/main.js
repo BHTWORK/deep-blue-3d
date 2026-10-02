@@ -876,7 +876,7 @@ function drawOverlayIn(c, W, H) {
     if (r.prog > 0) { c.strokeStyle = '#8fcf9b'; c.lineWidth = 3; c.beginPath(); c.arc(s.x, s.y, R, -Math.PI / 2, -Math.PI / 2 + TAU * r.prog); c.stroke(); }
     c.font = '600 12px sans-serif'; c.fillStyle = '#f2d4e2'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.7)'; const t = r.cutting ? `그물 절단 ${Math.floor(r.prog * 100)}%` : '구조 필요 · 빔으로 그물 절단'; c.strokeText(t, s.x, s.y - R - 10); c.fillText(t, s.x, s.y - R - 10); }
   // dock label
-  { const d = DOCK.distanceTo(camera.position); if (d < 140) { const s = project(DOCK, pv); if (!s.behind) { c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.7)'; c.fillStyle = '#cfe9d4'; c.strokeText('도킹 · 판매 · 업그레이드', s.x, s.y + 34); c.fillText('도킹 · 판매 · 업그레이드', s.x, s.y + 34); } } }
+  { const d = DOCK.distanceTo(camera.position); if (d < 140) { const s = project(DOCK, pv); if (!s.behind) { c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.7)'; c.fillStyle = '#cfe9d4'; const dl = G.story ? '배 · 재활용' : '도킹 · 판매 · 업그레이드'; c.strokeText(dl, s.x, s.y + 34); c.fillText(dl, s.x, s.y + 34); } } }
   // floating texts
   for (const f of ftexts) { const s = project(f.p, pv); if (s.behind) continue; c.globalAlpha = Math.min(1, (f.life / f.max) * 2); c.font = `600 ${f.size}px ui-monospace, Menlo, monospace`; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; c.strokeText(f.txt, s.x, s.y); c.fillStyle = f.col; c.fillText(f.txt, s.x, s.y); } c.globalAlpha = 1;
   // edge arrows
@@ -1042,7 +1042,7 @@ function updateHUD() {
 // the guide talks between short goals (pick up trash, free a turtle, heal the bleached reef), then an
 // ending card with the results, everyday actions and a three-question OX quiz.
 // =====================================================================
-const SS = { i: -1, line: 0, base: 0, coralBase: 0, coralDone: false, turtle: null, wait: 0 };
+const SS = { i: -1, line: 0, base: 0, coralBase: 0, coralDone: false, turtle: null, wait: 0, unloaded: 0 };
 const storyCoral = () => SITE.bleach.ids.reduce((n, id) => n + (items[id].col ? 1 : 0), 0) - SS.coralBase;
 function storyProg(st) {
   if (st.goal === 'trash') return [Math.min(st.n, ST().collected - SS.base), st.n];
@@ -1050,6 +1050,7 @@ function storyProg(st) {
   if (st.goal === 'reach') return [Math.hypot(P.pos.x - SITE.bleach.c.x, P.pos.z - SITE.bleach.c.z) < 42 ? 1 : 0, 1];
   if (st.goal === 'valve') return [SV.valve ? 1 : 0, 1];
   if (st.goal === 'coral') return [Math.min(st.n, storyCoral()), st.n];
+  if (st.goal === 'dock') return [inDockZone(1.5) ? 1 : 0, 1];
   return [0, 1];
 }
 function storyGuide(st) {
@@ -1058,6 +1059,7 @@ function storyGuide(st) {
   if (st.goal === 'reach') return { p: SITE.bleach.c, label: '하얀 산호 지대' };
   if (st.goal === 'valve') return { p: bleach.valve.pos, label: '빨간 밸브' };
   if (st.goal === 'coral') { const it = nearestItem((i) => i.site === 'bleach'); return it && { p: it.pos, label: '산호 위 쓰레기' }; }
+  if (st.goal === 'dock') return { p: DOCK, label: '배 · 초록색 고리' };
   return null;
 }
 function storyTick() {
@@ -1067,6 +1069,8 @@ function storyTick() {
   const [c, n] = storyProg(st); if (c < n) return;
   SS.wait = 1.3; AU.mission(); BUDDY.party = 1.8; AU.chirp(); toast('잘했어요!', 'good', `${st.t} 완료`);
   if (st.goal === 'coral') { SS.coralDone = true; SV.sites.bleach = 1; } // corals regain full colour and the reef fish come back
+  // the hold goes up to the ship for sorting; in story mode the dock has no shop
+  if (st.goal === 'dock') { SS.unloaded = P.cargo.length; P.cargo = []; P.kg = 0; recount(); AU.sell(); }
 }
 // 푸른이 swims with the sub: in front of the glass while talking, ahead toward the goal while the child
 // plays (circling the target once it is close), and a loop of joy after each goal.
@@ -1120,7 +1124,7 @@ function storyNext() {
   storyStep(SS.i + 1);
 }
 function startStory() {
-  AU.init(); hide('storyEnd'); G.story = true; SS.coralDone = false; SS.coralBase = 0; SS.wait = 0;
+  AU.init(); hide('storyEnd'); G.story = true; SS.coralDone = false; SS.coralBase = 0; SS.wait = 0; SS.unloaded = 0;
   startGame(null);
   // a comfortable sub for a short lesson: quicker, a longer beam and a roomy hold
   Object.assign(SV.up, { engine: 2, beam: 2, cargo: 3, light: 1 }); calcStats(); P.bat = S.bat; P.hull = S.hull;

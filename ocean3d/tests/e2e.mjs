@@ -95,7 +95,9 @@ const SUITES = {
       }
       await page.keyboard.up('KeyW'); await page.keyboard.up('KeyE'); goals++;
     }
-    check('story reaches the ending card', await E(() => !document.getElementById('storyEnd').classList.contains('hidden')), { goals });
+    const end = await E(() => { const g = window.__game; return { shown: !document.getElementById('storyEnd').classList.contains('hidden'), hold: g.P.cargo.length, secs: Math.round(g.SV().stats.time) }; });
+    check('story reaches the ending card after six goals', end.shown && goals === 6, { goals, secs: end.secs });
+    check('the last goal brings the trash back to the ship', end.hold === 0);
     check('reef healed and fish back in the story', await E(() => window.__game.G.bleachH > 0.5 && window.__game.schools.filter((s) => s.site === 'bleach').every((s) => s.on)));
     await page.click('#seQuiz'); for (let i = 0; i < 3; i++) { await page.click('#storyEnd .ox .ans-o'); await page.click('#seNext'); }
     check('quiz scores 2/3 for O,O,O', await E(() => document.getElementById('seBody').innerText.includes('2문제')));
