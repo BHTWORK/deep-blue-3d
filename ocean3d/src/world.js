@@ -152,8 +152,19 @@ export function buildTerrain() {
   }
   geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
   const mat = addSeabed(addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0 }), 0.7));
-  const mesh = new THREE.Mesh(geo, mat); mesh.receiveShadow = false; mesh.frustumCulled = false;
-  return mesh;
+  // Drawn as one 260k-triangle sheet the seabed was the heaviest thing in every frame, though the fog hides all but a few
+  // hundred metres of it. It is cut into 200 m chunks that copy the sheet's vertices (same normals and colours on the shared
+  // edges, so no seams), so the camera draws only the chunks in view; main.js also hides those past the fog (cullTerrain).
+  const group = new THREE.Group(), V = WORLD.N + 1, CH = 40, P0 = pos.array, N0 = nrm.array;
+  for (let cj = 0; cj < WORLD.N; cj += CH) for (let ci = 0; ci < WORLD.N; ci += CH) {
+    const w = Math.min(CH, WORLD.N - ci) + 1, h = Math.min(CH, WORLD.N - cj) + 1, pa = new Float32Array(w * h * 3), na = new Float32Array(w * h * 3), ca = new Float32Array(w * h * 3);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const sI = ((cj + y) * V + ci + x) * 3, d = (y * w + x) * 3; for (let t = 0; t < 3; t++) { pa[d + t] = P0[sI + t]; na[d + t] = N0[sI + t]; ca[d + t] = cols[sI + t]; } }
+    // the plane's own winding: (a, below, right) and (below, below-right, right)
+    const idx = []; for (let y = 0; y < h - 1; y++) for (let x = 0; x < w - 1; x++) { const a = y * w + x, b = a + w; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pa, 3)); g.setAttribute('normal', new THREE.BufferAttribute(na, 3)); g.setAttribute('color', new THREE.BufferAttribute(ca, 3));
+    g.setIndex(idx); g.computeBoundingSphere(); g.computeBoundingBox(); group.add(new THREE.Mesh(g, mat)); }
+  geo.dispose();
+  return group;
 }
 
 // ---------------------------------------------------------------- water surface & sky

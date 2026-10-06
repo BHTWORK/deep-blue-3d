@@ -118,6 +118,14 @@ const SUITES = {
   // graphics quality: auto by default and adapting to real frame times, a 최고 tier at full pixel density,
   // and recovery when the browser drops the WebGL context
   async quality(browser) {
+    // fog-distance culling: what the fog hides is not drawn (the whole map used to be, about 1.7-2.1M triangles everywhere)
+    { const { ctx, page, errors, E } = await open(browser, { settings: { quality: 2, master: 0, fp: 0 } });
+      await page.click('#bNew'); await page.waitForTimeout(300);
+      const t = await E(() => { const g = window.__game, R = g.renderer, out = {}; g.G.state = 'pause'; R.info.autoReset = false;
+        for (const [k, x, z, y] of [['base', 20, -40, -12], ['deep', 330, -360, -270]]) { g.P.pos.set(x, Math.max(y, g.heightAt(x, z) + 6), z); g.P.yaw = g.P.vyaw = 0.6; g.P.pitch = g.P.vpitch = -0.15; g.simulate(0.05); g.updateCamera(1); g.updateEnv(0.016); R.info.reset(); R.render(g.scene, g.camera); out[k] = R.info.render.triangles; }
+        R.info.autoReset = true; return out; });
+      check('the fog hides what is not drawn: triangles per frame well down', t.base < 1.3e6 && t.deep < 0.6e6, t);
+      check('culling: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close(); }
     { const { ctx, page, errors, E } = await open(browser, { settings: null, device: 'iPad Pro 11 landscape' });
       check('auto quality is the default', await E(() => document.getElementById('sQuality').value === 'auto' && window.__game.G.quality === 2));
       await page.tap('#bNew'); // the software renderer manages about one frame a second, so auto mode should step down

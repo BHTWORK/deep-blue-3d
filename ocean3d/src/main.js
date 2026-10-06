@@ -42,7 +42,8 @@ const amb = new THREE.AmbientLight(0x3050a0, 0.06); scene.add(amb);
 const glowPool = [];
 const SPOT_K = Math.pow(16, 0.6 - 1); // keeps the lamp as bright as before at 16 m with the flatter falloff
 function addGlow(p, col, k) { const n = G.glowSrc.length, s = glowPool[n] || (glowPool[n] = [new V3(), 0, 0]); s[0].copy(p); s[1] = col; s[2] = k; G.glowSrc.push(s); }
-const glowLights = [0, 1, 2, 3].map(() => { const l = new THREE.PointLight(0xffffff, 0, 22, 1.4); scene.add(l); return l; });
+// every lit pixel loops over every light, lit or not: phones, where pixels are the cost, keep two glow lights instead of four
+const glowLights = Array.from({ length: PHONE ? 2 : 4 }, () => { const l = new THREE.PointLight(0xffffff, 0, 22, 1.4); scene.add(l); return l; });
 const overlay = $('overlay'), octx = overlay.getContext('2d');
 
 // =====================================================================
@@ -78,6 +79,34 @@ const snow = buildSnow(); scene.add(snow);
 const rays = buildRays(); scene.add(rays);
 const flora = buildFlora(scene, colliders);
 const pieces = buildSetPieces(scene, colliders);
+// Static scatter (kelp, seagrass, rocks, reef growth, deep stalks) is drawn instanced, and an instanced mesh draws every copy on
+// the map every frame. Past about 2.1 / fog density the fog has swallowed a copy (under 1.5% left), so as the camera moves
+// only the copies within that reach (fogReach, below) are packed into the front of each buffer and drawn. Corals and anemones are left alone:
+// their colours are rewritten by index as the reef heals.
+const CULL = [];
+{ const corals = new Set(flora.corals.map((c) => c.im));
+  for (const im of [flora.kelp, flora.grass, ...flora.rocks, ...flora.reefMeshes.filter((m) => !corals.has(m)), ...flora.deepMeshes]) {
+    if (!im || !im.isInstancedMesh) continue; const n = im.count;
+    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); if (im.instanceColor) im.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    // seagrass blades are a few centimetres wide and vanish into the sand long before the fog takes them: half the reach
+    CULL.push({ im, n, m: im.instanceMatrix.array.slice(0, n * 16), c: im.instanceColor ? im.instanceColor.array.slice(0, n * 3) : null, x: NaN, z: NaN, r: 0, k: im === flora.grass ? 0.5 : 1 }); } }
+// How far the fog lets anything show: three.js fogs by depth along the view axis, not distance, so toward the screen's corners
+// a thing shows from further off, by 1 / cos(the corner's angle off-axis); 2.1 / density leaves under 1.5% of it on axis.
+const fogReach = () => { const t = Math.tan((camera.fov * Math.PI) / 360); return (2.1 / scene.fog.density) * Math.sqrt(1 + t * t * (1 + camera.aspect * camera.aspect)); };
+// seabed chunks past the fog's reach are hidden; the camera's frustum takes care of the rest
+function cullTerrain() {
+  const R = Math.min(2400, fogReach() + 20), cx = camera.position.x, cz = camera.position.z;
+  for (const ch of terrain.children) { const bb = ch.geometry.boundingBox, dx = Math.max(bb.min.x - cx, 0, cx - bb.max.x), dz = Math.max(bb.min.z - cz, 0, cz - bb.max.z); ch.visible = dx * dx + dz * dz < R * R; }
+}
+function cullScatter() {
+  const R = Math.min(1200, fogReach() + 15), cx = camera.position.x, cz = camera.position.z;
+  // repacked after the camera moves 15 m or the reach changes by 8%; the extra 15 m covers the drift in between
+  for (const e of CULL) { if ((cx - e.x) ** 2 + (cz - e.z) ** 2 < 225 && Math.abs(R - e.r) < e.r * 0.08) continue;
+    e.x = cx; e.z = cz; e.r = R; const R2 = (R * e.k + 15) ** 2, M = e.im.instanceMatrix.array, C = e.c && e.im.instanceColor.array; let k = 0;
+    for (let i = 0; i < e.n; i++) { const dx = e.m[i * 16 + 12] - cx, dz = e.m[i * 16 + 14] - cz; if (dx * dx + dz * dz > R2) continue;
+      M.set(e.m.subarray(i * 16, i * 16 + 16), k * 16); if (C) C.set(e.c.subarray(i * 3, i * 3 + 3), k * 3); k++; }
+    e.im.count = k; e.im.instanceMatrix.needsUpdate = true; if (C) e.im.instanceColor.needsUpdate = true; }
+}
 const bleach = buildBleach(scene, colliders, flora); pieces.sites.bleach = bleach.site;
 const ship = buildBaseShip(); scene.add(ship);
 const dockRing = buildDockRing(); dockRing.position.copy(DOCK); scene.add(dockRing);
@@ -349,7 +378,7 @@ function genCreatures() {
     mat.onBeforeCompile = (sh) => { sh.uniforms.uTime = U.time; sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n float fph = float(gl_InstanceID)*1.7; float tk = smoothstep(0.05, -0.3, position.z); transformed.x += sin(uTime*11.0 + fph + position.z*14.0) * tk * 0.09;'); };
     mat.customProgramCacheKey = () => 'fishwiggle';
     const im = new THREE.InstancedMesh(fishGeo(sp), mat, Math.max(1, cnt)); im.frustumCulled = false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(im); FISHIM[sp] = { im, n: 0 }; }
-  { let i = 0; const c = new THREE.Color(), im = FISHIM.reef.im; for (const s of schools) if (s.sp === 'reef') for (const m of s.m) { c.set(s.col).offsetHSL(rr(-0.03, 0.03), 0, rr(-0.08, 0.06)); im.setColorAt(i++, c); } im.instanceColor.needsUpdate = true; }
+  { let i = 0; const c = new THREE.Color(), im = FISHIM.reef.im; for (const s of schools) if (s.sp === 'reef') for (const m of s.m) { c.set(s.col).offsetHSL(rr(-0.03, 0.03), 0, rr(-0.08, 0.06)); m.c = c.clone(); im.setColorAt(i++, c); } im.instanceColor.needsUpdate = true; }
   FISHIM.lanternDots = new THREE.InstancedMesh(lanternDotsGeo(), new THREE.MeshBasicMaterial({ color: new THREE.Color('#6fe8ff').multiplyScalar(3), fog: false }), FISHIM.lantern.im.count); FISHIM.lanternDots.frustumCulled = false; scene.add(FISHIM.lanternDots);
 }
 function fishMatrix(pos, dir, scale, out) { tv2.copy(dir); if (tv2.lengthSq() < 1e-6) tv2.set(0, 0, 1); tv2.normalize(); tm.lookAt(tv2, ZERO, UPV); tq.setFromRotationMatrix(tm); out.compose(pos, tq, ts.setScalar(scale)); return out; }
@@ -456,11 +485,13 @@ function updateSchool(s, dt) {
 function writeFish() {
   for (const k in FISHIM) if (FISHIM[k].im) FISHIM[k].n = 0;
   const dots = FISHIM.lanternDots; let dn = 0;
-  for (const s of schools) { const R = FISHIM[s.sp]; const vis = s.pos.distanceTo(camera.position) < 200;
-    for (const m of s.m) { const i = R.n++; if (!vis || m.a < 0.02) { tm.makeScale(0, 0, 0); } else { tv3.copy(m.vel).add(s.vel); fishMatrix(m.pos, tv3, m.a * s.scale, tm); } R.im.setMatrixAt(i, tm); if (s.sp === 'lantern') dots.setMatrixAt(dn++, tm); } }
-  for (const e of creatures) { if (!SMALL[e.sp]) continue; const R = FISHIM[e.sp]; const i = R.n++; if (e.a < 0.02 || e.pos.distanceTo(camera.position) > 160) tm.makeScale(0, 0, 0); else fishMatrix(e.pos, e.vel.lengthSq() > 0.01 ? e.vel : fwdOf(e.ph, 0, tv3), e.sp === 'tang' ? 1.3 : 1.2, tm); R.im.setMatrixAt(i, tm); }
-  for (const k of FISH_KINDS) { FISHIM[k].im.instanceMatrix.needsUpdate = true; }
-  dots.instanceMatrix.needsUpdate = true;
+  // only fish in sight are written, packed at the front, and each mesh draws just that many: a zero-scaled fish still costs
+  // the GPU its vertices, and most schools are out of sight at any moment (reef fish carry their colour along)
+  for (const s of schools) { const R = FISHIM[s.sp]; if (s.pos.distanceTo(camera.position) >= 200) continue;
+    for (const m of s.m) { if (m.a < 0.02) continue; const i = R.n++; tv3.copy(m.vel).add(s.vel); fishMatrix(m.pos, tv3, m.a * s.scale, tm); R.im.setMatrixAt(i, tm); if (m.c) R.im.setColorAt(i, m.c); if (s.sp === 'lantern') dots.setMatrixAt(dn++, tm); } }
+  for (const e of creatures) { if (!SMALL[e.sp] || e.a < 0.02 || e.pos.distanceTo(camera.position) > 160) continue; const R = FISHIM[e.sp]; const i = R.n++; fishMatrix(e.pos, e.vel.lengthSq() > 0.01 ? e.vel : fwdOf(e.ph, 0, tv3), e.sp === 'tang' ? 1.3 : 1.2, tm); R.im.setMatrixAt(i, tm); }
+  for (const k of FISH_KINDS) { const R = FISHIM[k]; R.im.count = R.n; R.im.instanceMatrix.needsUpdate = true; if (R.im.instanceColor) R.im.instanceColor.needsUpdate = true; }
+  dots.count = dn; dots.instanceMatrix.needsUpdate = true;
 }
 
 // =====================================================================
@@ -845,7 +876,9 @@ function updateEnv(dt) {
   snow.visible = cy < 0.2; // marine snow only below the waterline
   // distance culling: reef growth only near the shelf reefs, glowing corals only in the deep
   { const reef = Math.hypot(camera.position.x - 90, camera.position.z - 30) < 560 && cy > -260; for (const m of flora.reefMeshes) m.visible = reef; for (const m of flora.deepMeshes) m.visible = cy < -140; }
-  for (const f of pieces.far) f.o.visible = (camera.position.x - f.x) ** 2 + (camera.position.z - f.z) ** 2 < 420 * 420;
+  // set pieces (wrecks, the whale fall, vents, the trench floor) show within the fog's reach plus their own size, at most 420 m
+  { const rf = Math.min(420, fogReach() + 70) ** 2; for (const f of pieces.far) f.o.visible = (camera.position.x - f.x) ** 2 + (camera.position.z - f.z) ** 2 < rf; }
+  cullScatter(); cullTerrain();
   const su = snow.material.uniforms; su.uCam.value.copy(camera.position); su.uLP.value.copy(P.nose); su.uLD.value.copy(P.fwd); su.uLR.value = S.light || 50; su.uAmb.value = hemi.intensity * 0.5 + 0.1; su.uPR.value = renderer.getPixelRatio();
   // god rays follow the camera near the surface
   const ra = rays.userData; ra.mat.opacity = 0.05 * day * (1 - smooth(10, 140, dep)) * (0.6 + 0.4 * cv); rays.visible = ra.mat.opacity > 0.003 && cy < 0;
@@ -1374,7 +1407,10 @@ function frame(now) {
     // the hints follow play state; outside play they are cleared here
     if (G.state !== 'play' && TH.shown) updateTouchHints(0);
     if (live) { G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); else updateAttract(dt); FXA.update(dt); FXN.update(dt); for (let i = ftexts.length - 1; i >= 0; i--) { const f = ftexts[i]; f.life -= dt; f.p.y += dt * 1.2; if (f.life <= 0) ftexts.splice(i, 1); } writeFish(); }
-    if ((live || G.needRender) && !G.ctxLost && !GL.isContextLost()) { updateEnv(dt); if (inCockpit()) renderFeed(); if (bloom.enabled) composer.render(); else renderer.render(scene, camera); drawOverlay(); G.needRender = false; }
+    // always through the composer, bloom or not (quality 0 just skips the bloom pass): three.js mixes fog in after a material's
+    // own tone mapping, so a direct render shows half-fogged distance as lighter shapes against the background, and the
+    // fog-distance culling above would show as straight edges; through the composer fog mixes first and the end pass tone-maps all
+    if ((live || G.needRender) && !G.ctxLost && !GL.isContextLost()) { updateEnv(dt); if (inCockpit()) renderFeed(); composer.render(); drawOverlay(); G.needRender = false; }
     if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit() && G.ck) CK.update(cockpitState(), dt); }
     if (G.state === 'menu' && !$('mapm').classList.contains('hidden')) { mmAcc += dt; if (mmAcc > 0.3) { mmAcc = 0; drawBigMap(); } }
     AU.update(G.state === 'title' ? 20 : depthOf(P.pos.y), P.vel.length() * 12, G.state === 'play' ? P.thrust : 0, G.state === 'play' && P.beam, G.state === 'play');
