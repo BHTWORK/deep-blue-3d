@@ -914,10 +914,13 @@ function redrawCockpit() { if (!inCockpit() || !G.ck) return; drawCockpit($('coc
 function layoutHUD() {
   const st = document.documentElement.style, W = G.VW, H = G.VH, ins = 12; let x0 = 0, y0 = 0, x1 = W, y1 = H;
   if (inCockpit() && G.ck) ({ x0, y0, x1, y1 } = G.ck.glass);
+  // stay clear of a notch or Dynamic Island (the safe-area insets, read off the #safe probe)
+  const sa = getComputedStyle($('safe')), sl = parseFloat(sa.paddingLeft) || 0, sr = parseFloat(sa.paddingRight) || 0, stp = parseFloat(sa.paddingTop) || 0, sb = parseFloat(sa.paddingBottom) || 0;
+  x0 = Math.max(x0, sl); x1 = Math.min(x1, W - sr); y0 = Math.max(y0, stp); y1 = Math.min(y1, H - sb);
   st.setProperty('--hx', `${x0 + ins}px`); st.setProperty('--hy', `${y0 + ins}px`); st.setProperty('--hr', `${W - x1 + ins}px`); st.setProperty('--hb', `${H - y1 + ins}px`);
   st.setProperty('--ppy', inCockpit() && G.ck ? `${G.ck.ppY}px` : '50%');
   // touch buttons sit in the bottom-right corner (beside the right stick on tablets), inside the screen edge otherwise
-  st.setProperty('--tr', inCockpit() && G.ck ? `${G.ck.touchR}px` : `${W - x1 + ins}px`); st.setProperty('--tb', inCockpit() ? '12px' : `${H - y1 + ins}px`);
+  st.setProperty('--tr', inCockpit() && G.ck ? `${Math.max(G.ck.touchR, sr + ins)}px` : `${W - x1 + ins}px`); st.setProperty('--tb', inCockpit() ? `${12 + sb}px` : `${H - y1 + ins}px`);
   G.win = { x: x0 + ins, y: y0 + ins, w: x1 - x0 - ins * 2, h: y1 - y0 - ins * 2 };
 }
 function applyView() {
@@ -1175,7 +1178,22 @@ document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('cli
 function showTitle() { G.state = 'title'; G.story = false; setTalk(false); hide('storyBox'); hide('storyEnd'); buddyHide(); unlockPointer(); hide('hud'); hide('touch'); ['dock', 'codex', 'mapm', 'pause', 'fail', 'win', 'settings', 'help'].forEach(hide); show('title');
   const d = loadGame(); $('bContinue').classList.toggle('hidden', !d); $('bNew').classList.toggle('primary', !d && !STORY_LINK); SV = freshSave(); calcStats(); resetWorld(); siteTick(true); bleach.valve.prog = 0; bleach.valve.wheel.rotation.y = 0; updateBleach(0, true); G.clean = 0.6; G.coralH = -1; missionTickCoral(); SUB.root.visible = false; applyView(); }
 function missionTickCoral() { const h = Math.round(clamp(0.12 + G.clean * 1.15, 0, 1) * 50) / 50; if (h !== G.coralH) { G.coralH = h; flora.setCoralHealth(h); } }
-function startGame(d) { AU.init(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); if (!G.story) requestLock();
+// full screen where the browser allows it on the page (Android, iPad, desktop); iPhone Safari allows it only for video,
+// so there the title suggests adding the game to the home screen, which opens it without Safari's bars
+const FS = { ok: !!(document.fullscreenEnabled || document.webkitFullscreenEnabled), on: () => !!(document.fullscreenElement || document.webkitFullscreenElement) };
+function goFull(on = true) {
+  if (!FS.ok || on === FS.on()) return; const de = document.documentElement;
+  try { const r = on ? (de.requestFullscreen || de.webkitRequestFullscreen).call(de) : (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    // Android keeps the game landscape once it is full screen
+    if (on && r && r.then) r.then(() => { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); }, () => {}); } catch (e) { /* not allowed here */ }
+}
+const fsIcon = () => $('bFullP').setAttribute('d', FS.on() ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5');
+for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, fsIcon);
+$('bFull').classList.toggle('hidden', !FS.ok); $('bFull').onclick = () => { goFull(!FS.on()); AU.click(); };
+{ const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches;
+  $('a2hs').classList.toggle('hidden', FS.ok || standalone || !/iPhone|iPod/.test(navigator.userAgent)); }
+// on a phone or tablet, starting play (a tap, so the browser allows it) goes full screen
+function startGame(d) { AU.init(); if (IN.touch) goFull(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); if (!G.story) requestLock();
   const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>빔으로 수거·절단</span>' : '<span><kbd>WASD</kbd>이동</span><span><kbd>Space</kbd><kbd>C</kbd>상승·하강</span><span><kbd>클릭</kbd>빔</span><span><kbd>Q</kbd>소나</span><span><kbd>Shift</kbd>가속</span><span><kbd>V</kbd>시점</span><span><kbd>F</kbd>카메라</span><span><kbd>M</kbd>지도</span><span><kbd>Tab</kbd>도감</span>';
   setTimeout(() => { hint.style.opacity = 0; }, 25000);
   if (G.story) { /* the guide does the introductions */ } else if (!d) { setTimeout(() => toast('해양 정화선 푸른바다호', 'big', '바다가 쓰레기로 병들고 있습니다. 잠수정으로 쓰레기를 수거해 주세요.'), 600); setTimeout(() => { const m = MISSIONS[0]; toast(`임무: ${m.t}`, 'tip', m.d); }, 4200); }

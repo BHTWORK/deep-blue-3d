@@ -11,11 +11,12 @@ let failed = 0; const OPEN = [], PAGES = []; // contexts still open, closed afte
 const check = (name, ok, info) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${info === undefined ? '' : ' ' + JSON.stringify(info)}`); if (!ok) failed++; };
 
 // a fresh browser context with fixed settings (low quality keeps the software renderer fast)
-async function open(browser, { query = '', settings = { quality: 0, master: 0, fp: 1 }, save = null, device = null } = {}) {
+async function open(browser, { query = '', settings = { quality: 0, master: 0, fp: 1 }, save = null, device = null, init = null } = {}) {
   const ctx = await browser.newContext(device ? { ...devices[device] } : { viewport: { width: 900, height: 560 } }); OPEN.push(ctx);
   const page = await ctx.newPage(); page.setDefaultTimeout(240000);
   const errors = []; page.on('pageerror', (e) => errors.push(e.message)); page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); }); page.on('crash', () => errors.push('page crashed')); PAGES.push({ page, errors });
   await page.addInitScript(([sk, s, vk, v]) => { if (s) localStorage.setItem(sk, JSON.stringify(s)); if (v) localStorage.setItem(vk, JSON.stringify(v)); }, [SET_KEY, settings, SAVE_KEY, save]);
+  if (init) await page.addInitScript(init);
   await page.goto(GAME + query); await page.waitForFunction(() => window.__game, null, { timeout: 120000 });
   const E = (f, a) => page.evaluate(f, a), sim = (s) => E((s) => window.__game.simulate(s), s);
   return { ctx, page, errors, E, sim };
@@ -150,6 +151,7 @@ const SUITES = {
       return { small: Math.round(rs[1].width), overlap, hit, sonarText: getComputedStyle(document.getElementById('sonarInd')).display }; });
     check('touch buttons are large, separate and tappable', r.small >= 60 && r.overlap === 0 && r.hit === 5, r);
     check('sonar status text hidden on touch', r.sonarText === 'none');
+    check('a tablet goes full screen on start, with a toggle in the HUD', await E(() => !!document.fullscreenElement && !document.getElementById('bFull').classList.contains('hidden')));
     // controls, driven by synthetic touches inside one evaluate so the live loop can't interleave
     const c = await E(() => { const g = window.__game, P = g.P, IN = g.IN, hid = (id) => document.getElementById(id).classList.contains('hidden');
       const ev = (id, type, x, y, n) => { const el = document.getElementById(id), t = new Touch({ identifier: n, target: el, clientX: x, clientY: y }); el.dispatchEvent(new TouchEvent(type, { changedTouches: [t], touches: type === 'touchend' ? [] : [t], bubbles: true, cancelable: true })); };
@@ -177,7 +179,11 @@ const SUITES = {
     check('beam button pulses until the beam is used', c.nudge && c.tip && c.nudgeGone);
     check('touch: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close();
     // a phone: auto quality starts a tier lower; the story line is one compact row, a tap on it goes on, the controls step aside
-    const ph = await open(browser, { device: 'iPhone 13 landscape', settings: { master: 0, fp: 1 }, query: '?story' });
+    // iPhone Safari has no page full screen: stand that in, and the title should point to "add to home screen" instead
+    const noFs = () => { for (const k of ['fullscreenEnabled', 'webkitFullscreenEnabled']) Object.defineProperty(Document.prototype, k, { get: () => false }); };
+    const ph = await open(browser, { device: 'iPhone 13 landscape', settings: { master: 0, fp: 1 }, query: '?story', init: noFs });
+    check('iPhone: home-screen hint on the title, no full-screen button', await ph.E(() => { const t = document.getElementById('a2hs'), r = t.getBoundingClientRect(), e = document.querySelector('#title .eyebrow').getBoundingClientRect();
+      return !t.classList.contains('hidden') && document.getElementById('bFull').classList.contains('hidden') && r.bottom <= innerHeight && e.top >= 0; }));
     const q = await ph.E(() => ({ q: window.__game.G.quality, mem: navigator.deviceMemory || 8 }));
     check('phones start auto quality a tier lower', q.q === (q.mem <= 4 ? 0 : 1), q);
     await ph.page.tap('#bStory'); await ph.page.waitForTimeout(500);

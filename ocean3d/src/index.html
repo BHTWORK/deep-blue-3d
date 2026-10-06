@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#071017">
+<!-- added to the home screen, the game opens full screen without the browser's bars (the only way on iPhone) -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="딥 블루 3D">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="description" content="잠수정으로 심해를 탐험하며 쓰레기를 수거하고 바다를 되살리는 3D 게임">
 <title>딥 블루 3D</title>
 <style>
@@ -180,6 +187,11 @@ body.talking #touch{visibility:hidden}
 .modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,10,.72);z-index:20;padding:12px}
 /* the confirm box also opens over the title screen (new game with a save), so it sits above it */
 #confirm{z-index:35}
+/* on a notched phone (home-screen app, or Safari in landscape) keep dialogs and the title clear of the safe-area insets;
+   the HUD and touch buttons read the same insets through #safe in layoutHUD */
+#safe{position:fixed;inset:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+.modal{padding:max(12px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+body #title{padding-left:max(clamp(20px,6vw,72px),calc(env(safe-area-inset-left,0px) + 16px));padding-right:max(clamp(20px,6vw,72px),calc(env(safe-area-inset-right,0px) + 16px))}
 .box{position:relative;width:min(760px,96vw);max-height:92vh;overflow:auto;padding:22px 24px;background:var(--plate-solid);border:1px solid var(--line);border-radius:8px}
 .box.narrow{width:min(420px,94vw)}
 .box::-webkit-scrollbar{width:8px}.box::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
@@ -272,6 +284,10 @@ body.talking #touch{visibility:hidden}
 #title .tag{font-size:clamp(14px,1.8vw,16px);color:var(--mute);margin:18px 0 28px;max-width:34em;line-height:1.7}
 #title .menu{display:flex;flex-wrap:wrap;gap:10px}
 #title .foot{margin-top:22px;font-size:12px;color:var(--dim)}
+/* the iPhone home-screen hint: a small pill that reads over the seabed */
+body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-radius:8px;background:rgba(6,18,26,.8);border:1px solid rgba(111,211,193,.45);color:#c6f1ea;font-size:12.5px;line-height:1.5;max-width:100%}
+/* phones in landscape: a tighter title so the heading, the buttons and the hint all fit */
+@media (max-height:520px){#title{padding-bottom:14px}#title .eyebrow{margin-bottom:4px}#title h1{font-size:40px}#title .tag{font-size:13px;line-height:1.5;margin:8px 0 12px}#title .foot{margin-top:8px}body #title .a2hs{margin-top:6px}}
 .btn.story{border-color:#6fd3c1;color:#bff3ea}
 .btn.story.primary{background:#3fbfa8;border-color:#3fbfa8;color:#04201a}
 /* story mode: big, friendly dialogue and an ending card with a short OX quiz */
@@ -298,7 +314,7 @@ body.talking #touch{visibility:hidden}
 #storyEnd .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 #storyEnd .row .btn{height:44px;font-size:15px}
 /* phones in landscape: one compact row, icon | line + dots | button, so the scene stays visible above it */
-@media (max-height:520px){#storyBox{bottom:6px;width:min(760px,calc(100vw - 24px))}#storyBox .sbox{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:'face text next' 'face dots next';column-gap:12px;row-gap:4px;align-items:center;padding:8px 10px 8px 12px;border-radius:14px;background:rgba(6,18,26,.95)}#storyBox .who,#storyBox .sfoot{display:contents}#storyBox .face{grid-area:face;width:34px;height:34px;font-size:21px}#storyBox .who b{display:none}#storyBox p{grid-area:text;font-size:15px;line-height:1.4;min-height:0}#storyBox .dots{grid-area:dots}#storyBox .dots i{width:6px;height:6px}#storyBox .btn{grid-area:next;height:44px;font-size:15px;padding:0 16px}#storyEnd .box{padding:12px 16px}#storyEnd h2{font-size:19px;margin-bottom:2px}#storyEnd .lead{font-size:13px;margin-bottom:6px}#storyEnd .sstats{grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 8px}#storyEnd .sstats div{padding:6px 4px}#storyEnd .sstats b{font-size:16px}#storyEnd .sstats span{font-size:11px}#storyEnd h3{font-size:14px}#storyEnd ul{font-size:13px;line-height:1.45;margin:4px auto 8px}#storyEnd .q{font-size:16px;margin:6px 0 10px}#storyEnd .ox button{width:90px;height:64px;font-size:34px}#storyEnd .fb{font-size:14px;margin:4px 0 8px}#storyEnd .row .btn{height:38px}}
+@media (max-height:520px){#storyBox{bottom:calc(6px + env(safe-area-inset-bottom,0px));width:min(760px,calc(100vw - 24px))}#storyBox .sbox{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:'face text next' 'face dots next';column-gap:12px;row-gap:4px;align-items:center;padding:8px 10px 8px 12px;border-radius:14px;background:rgba(6,18,26,.95)}#storyBox .who,#storyBox .sfoot{display:contents}#storyBox .face{grid-area:face;width:34px;height:34px;font-size:21px}#storyBox .who b{display:none}#storyBox p{grid-area:text;font-size:15px;line-height:1.4;min-height:0}#storyBox .dots{grid-area:dots}#storyBox .dots i{width:6px;height:6px}#storyBox .btn{grid-area:next;height:44px;font-size:15px;padding:0 16px}#storyEnd .box{padding:12px 16px}#storyEnd h2{font-size:19px;margin-bottom:2px}#storyEnd .lead{font-size:13px;margin-bottom:6px}#storyEnd .sstats{grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 8px}#storyEnd .sstats div{padding:6px 4px}#storyEnd .sstats b{font-size:16px}#storyEnd .sstats span{font-size:11px}#storyEnd h3{font-size:14px}#storyEnd ul{font-size:13px;line-height:1.45;margin:4px auto 8px}#storyEnd .q{font-size:16px;margin:6px 0 10px}#storyEnd .ox button{width:90px;height:64px;font-size:34px}#storyEnd .fb{font-size:14px;margin:4px 0 8px}#storyEnd .row .btn{height:38px}}
 
 @media (max-width:760px),(max-height:520px){
   #hudLeft{width:200px;gap:5px}
@@ -364,6 +380,7 @@ body.talking #touch{visibility:hidden}
       <button class="ibtn" id="bView" title="1인칭/3인칭 전환 (V)" aria-label="시점 전환"><svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg></button>
       <button class="ibtn" id="bMap" title="지도 (M)" aria-label="지도"><svg class="i" viewBox="0 0 24 24"><path d="M9 4.5 3.5 6.5v13L9 17.5l6 2 5.5-2v-13L15 6.5z"/><path d="M9 4.5v13M15 6.5v13"/></svg></button>
       <button class="ibtn" id="bCodex" title="도감 (Tab)" aria-label="도감"><svg class="i" viewBox="0 0 24 24"><path d="M3.5 6c3-1.2 6-1.2 8.5.8 2.5-2 5.5-2 8.5-.8v12.5c-3-1.2-6-1.2-8.5.8-2.5-2-5.5-2-8.5-.8z"/><path d="M12 6.8v12.5"/></svg></button>
+      <button class="ibtn hidden" id="bFull" title="전체 화면" aria-label="전체 화면"><svg class="i" viewBox="0 0 24 24"><path id="bFullP" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
       <button class="ibtn" id="bPause" title="일시정지 (P)" aria-label="일시정지"><svg class="i" viewBox="0 0 24 24"><path d="M9 5.5v13M15 5.5v13"/></svg></button>
     </div>
   </div>
@@ -398,7 +415,9 @@ body.talking #touch{visibility:hidden}
     <button class="btn" id="bSetT">설정</button>
   </div>
   <p class="foot">진행 상황은 이 브라우저에 자동 저장됩니다.</p>
+  <p class="foot a2hs hidden" id="a2hs">📱 전체 화면으로 하려면: 사파리 공유 버튼 → 「홈 화면에 추가」 → 그 아이콘으로 열기</p>
 </div>
+<div id="safe" aria-hidden="true"></div>
 
 <div id="dock" class="modal hidden"><div class="box">
   <div class="mhead">
