@@ -42,5 +42,5 @@ npm test -- story touch            # 일부만
 
 ## 모바일 전체 화면
 - 터치 기기에서 게임을 시작하면(새 게임·이어하기·스토리) `requestFullscreen`으로 전체 화면을 요청하고, Android에서는 가로로 고정합니다. HUD 오른쪽 위 ⛶ 버튼으로 전환합니다. 지원하지 않는 브라우저에서는 버튼이 숨겨집니다.
-- iPhone 사파리는 페이지 전체 화면을 지원하지 않아, 제목 화면에 「홈 화면에 추가」 안내가 나옵니다. 루트의 `manifest.webmanifest`(전체 화면·가로)와 `apple-touch-icon.png`·`icon-192.png`·`icon-512.png`, `apple-mobile-web-app-capable` 메타 태그로 홈 화면에서 주소창 없이 열립니다. 시작 URL은 추가한 페이지 그대로라 스토리 링크에서 추가하면 스토리 모드로 열립니다.
+- iPhone의 브라우저는 모두 사파리 엔진이라 페이지 전체 화면이 안 되므로, 제목 화면에 안내가 나옵니다(사파리: 「툴바 가리기」와 「홈 화면에 추가」, 크롬·파이어폭스·엣지: 「홈 화면에 추가」). 루트의 `manifest.webmanifest`(전체 화면·가로)와 `apple-touch-icon.png`·`icon-192.png`·`icon-512.png`, `apple-mobile-web-app-capable` 메타 태그로 홈 화면에서 주소창 없이 열립니다. 시작 URL은 추가한 페이지 그대로라 스토리 링크에서 추가하면 스토리 모드로 열립니다.
 - 노치·다이내믹 아일랜드: `#safe` 요소로 safe-area inset을 읽어 HUD와 터치 버튼을 그 안쪽에 두고, 제목·대화 상자·모달도 inset만큼 띄웁니다.
