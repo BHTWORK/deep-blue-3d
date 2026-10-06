@@ -125,6 +125,7 @@ const SUITES = {
         for (const [k, x, z, y] of [['base', 20, -40, -12], ['deep', 330, -360, -270]]) { g.P.pos.set(x, Math.max(y, g.heightAt(x, z) + 6), z); g.P.yaw = g.P.vyaw = 0.6; g.P.pitch = g.P.vpitch = -0.15; g.simulate(0.05); g.updateCamera(1); g.updateEnv(0.016); R.info.reset(); R.render(g.scene, g.camera); out[k] = R.info.render.triangles; }
         R.info.autoReset = true; return out; });
       check('the fog hides what is not drawn: triangles per frame well down', t.base < 1.3e6 && t.deep < 0.6e6, t);
+      check('desktop keeps MSAA on the bloom path', await E(() => window.__game.composer.renderTarget1.samples === 4));
       check('culling: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close(); }
     { const { ctx, page, errors, E } = await open(browser, { settings: null, device: 'iPad Pro 11 landscape' });
       check('auto quality is the default', await E(() => document.getElementById('sQuality').value === 'auto' && window.__game.G.quality === 2));
@@ -195,7 +196,7 @@ const SUITES = {
     check('iPhone: home-screen hint on the title, no full-screen button', await ph.E(() => { const t = document.getElementById('a2hs'), r = t.getBoundingClientRect(), e = document.querySelector('#title .eyebrow').getBoundingClientRect();
       return !t.classList.contains('hidden') && document.getElementById('bFull').classList.contains('hidden') && r.bottom <= innerHeight && e.top >= 0; }));
     const q = await ph.E(() => { const g = window.__game; return { q: g.G.quality, mem: navigator.deviceMemory || 8, pr: g.renderer.getPixelRatio(), samples: g.composer.renderTarget1.samples, labels: g.G.opr }; });
-    check('phones start auto quality a tier lower, still sharp (1.6x, MSAA, labels at 2x)', q.q === (q.mem <= 4 ? 0 : 1) && q.pr === (q.mem <= 4 ? 1.25 : 1.6) && q.samples === 4 && q.labels === 2, q);
+    check('phones start auto quality a tier lower, still sharp (1.6x, labels at 2x; no MSAA on touch GPUs)', q.q === (q.mem <= 4 ? 0 : 1) && q.pr === (q.mem <= 4 ? 1.25 : 1.6) && q.samples === 0 && q.labels === 2, q);
     // iPhone landscape with Safari's bars showing: the page can scroll and the title says to swipe up; at full height the hint goes
     const sw = async () => ph.E(() => ({ hint: !document.getElementById('swipeHint').classList.contains('hidden'), scroll: document.documentElement.scrollHeight - innerHeight }));
     // a resize lands with the next frame, which the software renderer can take seconds to reach: poll for the outcome

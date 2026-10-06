@@ -606,8 +606,8 @@ function updatePlayer(dt) {
   SUB.root.position.copy(P.pos); if (P.pos.y > -1.6) SUB.root.position.y += Math.sin(G.t * 2) * 0.15;
   SUB.root.rotation.set(-P.vpitch, P.vyaw, P.roll, 'YXZ');
   const spin = dt * (3 + ml * 25 + (boosting ? 20 : 0)); SUB.prop.rotation.z += spin; for (const t of SUB.thr) t.rotation.z -= spin * 1.6;
-  // the beam projector brightens while the beam is on; the mast beacon flashes every 1.6 s
-  SUB.emitter.material.color.setRGB(0.5, 0.91, 1).multiplyScalar(P.beam ? 2.6 : 0.7); SUB.beacon.material.color.setRGB(1, 0.48, 0.18).multiplyScalar(G.t % 1.6 < 0.13 ? 3 : 0.35);
+  // the beam projector brightens while the beam is on; the mast beacon pulses softly every 1.6 s
+  SUB.emitter.material.color.setRGB(0.5, 0.91, 1).multiplyScalar(P.beam ? 2.6 : 0.7); SUB.beacon.material.color.setRGB(1, 0.48, 0.18).multiplyScalar(0.35 + 1.4 * Math.max(0, Math.sin(G.t * 3.9)) ** 6);
   SUB.root.updateMatrixWorld(); P.nose.set(0, -0.6, 1.78).applyMatrix4(SUB.root.matrixWorld);
   P.thrust = ml; P.beam = inp.beam && P.alive;
   const drain = 0.2 + ml * 0.5 + (boosting ? 1.5 : 0) + (P.beam ? 1.3 : 0);
@@ -888,7 +888,13 @@ function updateEnv(dt) {
   // glow light pool: nearest emissive sources
   for (const v of pieces.vents) addGlow(tv2.set(v.x, v.top + 1, v.z), 0xff7a2a, 14);
   G.glowSrc.sort((a, b) => a[0].distanceToSquared(camera.position) - b[0].distanceToSquared(camera.position));
-  for (let i = 0; i < glowLights.length; i++) { const L = glowLights[i], s = G.glowSrc[i]; if (s && s[0].distanceTo(camera.position) < 120) { L.position.copy(s[0]); L.color.setHex(s[1]); L.intensity = s[2]; L.distance = s[2] > 10 ? 40 : 16; } else L.intensity = 0; }
+  // Lights stay on their source while it is among the nearest few; a light whose source dropped out fades to dark before it takes
+  // another, and brightness eases, so drifting jellyfish trading places never make the lighting pop (with two lights it did)
+  { const top = []; for (const s of G.glowSrc) { if (top.length >= glowLights.length) break; if (s[0].distanceTo(camera.position) < 120) top.push(s); }
+    const used = top.map(() => false), k = Math.min(1, dt * 6);
+    for (const L of glowLights) { L.userData.src = null; if (L.intensity < 0.02) continue; for (let j = 0; j < top.length; j++) if (!used[j] && L.position.distanceToSquared(top[j][0]) < 9) { used[j] = true; L.userData.src = top[j]; break; } }
+    for (const L of glowLights) { if (!L.userData.src && L.intensity < 0.05) { const j = used.indexOf(false); if (j >= 0) { used[j] = true; L.userData.src = top[j]; L.color.setHex(top[j][1]); L.distance = top[j][2] > 10 ? 40 : 16; } }
+      const s = L.userData.src; if (s) L.position.copy(s[0]); L.intensity += ((s ? s[2] : 0) - L.intensity) * k; } }
   G.glowSrc.length = 0;
   sky.position.copy(camera.position);
   const dr = dockRing.userData.ring; dr.material.opacity = 0.6 + 0.3 * Math.sin(G.t * 3); dockRing.visible = G.state !== 'title';
@@ -1237,7 +1243,7 @@ $('bFull').classList.toggle('hidden', !FS.ok); $('bFull').onclick = () => { goFu
 const IOS = { on: !FS.ok && /iPhone|iPod/.test(navigator.userAgent) && !(navigator.standalone === true || matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches), skip: false };
 function swipeCheck() {
   if (!IOS.on) return; const land = innerWidth > innerHeight, full = innerHeight >= Math.min(screen.width, screen.height) - 2;
-  document.documentElement.classList.toggle('ios-swipe', land);
+  document.documentElement.classList.toggle('ios-swipe', land); document.documentElement.classList.toggle('ios-lock', G.state !== 'title');
   $('swipeHint').classList.toggle('hidden', !land || full || IOS.skip || G.state !== 'title'); $('a2hs').classList.toggle('hidden', full);
 }
 $('swipeSkip').onclick = () => { IOS.skip = true; swipeCheck(); };
@@ -1328,9 +1334,11 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 // =====================================================================
 // LOOP
 // =====================================================================
-// multisampling for the bloom path by render size: 4x on phone-sized targets, 2x up to ~3 MP, none above (the pixel density
-// already smooths edges there, and the float targets get large); only where float targets can be multisampled
-const MSAA_OK = renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float');
+// multisampling for the composer's scene target by render size: 4x up to 1.6 MP, 2x up to ~3 MP, none above (the pixel density
+// already smooths edges there, and the float targets get large). Not on touch devices: the bloom pass draws into that target
+// a second time, and mobile GPUs that keep multisample buffers only in tile memory (iPhone, many Androids) made the screen
+// flicker; their high pixel density does the smoothing instead.
+const MSAA_OK = !matchMedia('(pointer: coarse)').matches && (renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float'));
 const msaaFor = (mp) => (!MSAA_OK ? 0 : mp <= 1.6 ? 4 : mp <= 3.2 ? 2 : 0);
 function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; const pr = Math.min(devicePixelRatio || 1, PR_TIERS[q]);
   const L = G.ck = inCockpit() ? cockpitLayout(G.VW, G.VH, IN.touch) : null, vp = G.vp = L ? L.view : { x: 0, y: 0, w: G.VW, h: G.VH };
@@ -1347,7 +1355,8 @@ function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; 
   G.opr = Math.min(devicePixelRatio || 1, 2); overlay.width = Math.round(G.VW * G.opr); overlay.height = Math.round(G.VH * G.opr);
   FXA.mat.uniforms.uScale.value = f * pr; FXN.mat.uniforms.uScale.value = f * pr;
   snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); if (L) CK.setLayout(L, Math.min(devicePixelRatio || 1, 2)); feedLayout(); layoutHUD(); swipeCheck(); }
-addEventListener('resize', resize);
+// iOS fires resize while the page scrolls; reallocating every buffer for an unchanged size only costs a frame
+addEventListener('resize', () => { if (innerWidth !== G.VW || innerHeight !== G.VH) resize(); });
 // first touch play: ghost hints over the two drag zones until each has been used for a moment, and a pulsing beam button
 const TH = { joy: 0, look: 0, shown: '' };
 function updateTouchHints(dt) {

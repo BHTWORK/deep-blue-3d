@@ -288,6 +288,8 @@ body #title{padding-left:max(clamp(20px,6vw,72px),calc(env(safe-area-inset-left,
    It lets touches through, so the title buttons work while it is up. */
 html.ios-swipe{height:auto;overflow-x:hidden;overflow-y:auto;touch-action:pan-y;overscroll-behavior:auto}
 html.ios-swipe body{height:auto;overflow:visible;touch-action:pan-y;overscroll-behavior:auto}
+/* in play the page must not scroll: a stray drag would bring the toolbars back and resize the game mid-dive */
+html.ios-swipe.ios-lock,html.ios-swipe.ios-lock body{touch-action:none;overscroll-behavior:none}
 #swipePad{display:none}html.ios-swipe #swipePad{display:block;width:1px;height:calc(100lvh + 160px)}
 #swipeHint{position:fixed;right:max(24px,calc(env(safe-area-inset-right,0px) + 12px));top:50%;transform:translateY(-50%);z-index:32;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 18px;border-radius:16px;background:rgba(6,18,26,.82);border:2px solid #6fd3c1;color:#e8f6f4;text-align:center;max-width:220px}
 #swipeHint .hand{font-size:44px;line-height:1;animation:swipeUp 1.4s ease-in-out infinite}
