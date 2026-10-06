@@ -24,7 +24,14 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05; renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x0b4f78, 0.01); scene.background = new THREE.Color(0x0b4f78);
 const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.1, 3400);
-const composer = new EffectComposer(renderer);
+// device profile. Auto quality starts a tier lower on phones (touch-first, short side under 600 css px) and on devices reporting
+// 4 GB of memory or less (Chrome only; Safari doesn't say), and phones top out at 2; fast devices still climb from there.
+// Phones keep a high render resolution at every tier (a small, dense screen shows softness at once) and give up effects instead.
+const PHONE = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+const AUTO_START = Math.max(0, (PHONE ? 1 : 2) - ((navigator.deviceMemory || 8) <= 4 ? 1 : 0)), AUTO_MAX = PHONE ? 2 : 3;
+const PR_TIERS = PHONE ? [1.25, 1.6, 2, 2] : [0.85, 1.25, 1.75, 2];
+// the scene renders into this target when bloom is on, so it carries its own multisampling (see msaaFor)
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType }));
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.5, 0.5, 0.9); composer.addPass(bloom);
 composer.addPass(new OutputPass());
@@ -862,7 +869,7 @@ function updateEnv(dt) {
 function project(p, out) { out.copy(p).project(camera); const behind = tv3.subVectors(p, camera.position).dot(camera.getWorldDirection(tv2)) < 0; return { x: G.vp.x + (out.x * 0.5 + 0.5) * G.vp.w, y: G.vp.y + (-out.y * 0.5 + 0.5) * G.vp.h, behind }; }
 const pv = new V3();
 function drawOverlay() {
-  const c = octx, W = G.VW, H = G.VH; c.setTransform(renderer.getPixelRatio(), 0, 0, renderer.getPixelRatio(), 0, 0); c.clearRect(0, 0, W, H);
+  const c = octx, W = G.VW, H = G.VH; c.setTransform(G.opr, 0, 0, G.opr, 0, 0); c.clearRect(0, 0, W, H);
   if (G.state === 'title') return;
   c.save(); drawOverlayIn(c, W, H); c.restore();
 }
@@ -1175,7 +1182,7 @@ function openCodex() { if (G.state === 'menu' && !$('codex').classList.contains(
 function togglePause() { if (G.state === 'play') { G.state = 'pause'; IN.keys = {}; IN.lmb = false; unlockPointer(); show('pause'); saveGame(); AU.click(); } else if (G.state === 'pause') { hide('pause'); G.state = 'play'; requestLock(); AU.click(); } }
 function openSub(id, from) { modalBack = from; if (from) hide(from); show(id); AU.click(); }
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => { const id = b.dataset.close; AU.click(); if (id === 'mapm' || id === 'codex') { closeModal(id); return; } hide(id); if (modalBack) { show(modalBack); modalBack = null; } }));
-function showTitle() { G.state = 'title'; G.story = false; setTalk(false); hide('storyBox'); hide('storyEnd'); buddyHide(); unlockPointer(); hide('hud'); hide('touch'); ['dock', 'codex', 'mapm', 'pause', 'fail', 'win', 'settings', 'help'].forEach(hide); show('title');
+function showTitle() { G.state = 'title'; G.story = false; setTalk(false); swipeCheck(); hide('storyBox'); hide('storyEnd'); buddyHide(); unlockPointer(); hide('hud'); hide('touch'); ['dock', 'codex', 'mapm', 'pause', 'fail', 'win', 'settings', 'help'].forEach(hide); show('title');
   const d = loadGame(); $('bContinue').classList.toggle('hidden', !d); $('bNew').classList.toggle('primary', !d && !STORY_LINK); SV = freshSave(); calcStats(); resetWorld(); siteTick(true); bleach.valve.prog = 0; bleach.valve.wheel.rotation.y = 0; updateBleach(0, true); G.clean = 0.6; G.coralH = -1; missionTickCoral(); SUB.root.visible = false; applyView(); }
 function missionTickCoral() { const h = Math.round(clamp(0.12 + G.clean * 1.15, 0, 1) * 50) / 50; if (h !== G.coralH) { G.coralH = h; flora.setCoralHealth(h); } }
 // full screen where the browser allows it on the page (Android, iPad, desktop); iPhone Safari allows it only for video,
@@ -1190,14 +1197,25 @@ function goFull(on = true) {
 const fsIcon = () => $('bFullP').setAttribute('d', FS.on() ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5');
 for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, fsIcon);
 $('bFull').classList.toggle('hidden', !FS.ok); $('bFull').onclick = () => { goFull(!FS.on()); AU.click(); };
-{ const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches, ua = navigator.userAgent;
-  $('a2hs').classList.toggle('hidden', FS.ok || standalone || !/iPhone|iPod/.test(ua));
+// iPhone: no browser there can put a page full screen, but Safari and Chrome hide their toolbars once the page is scrolled
+// (the "swipe up" that web game sites use). In landscape, while a toolbar still shows, the page gets some extra height to
+// scroll and the title shows a swipe-up hint; when the visible area reaches the screen's full height the hint goes. In play
+// the touch zones block scrolling, so the bars stay away.
+const IOS = { on: !FS.ok && /iPhone|iPod/.test(navigator.userAgent) && !(navigator.standalone === true || matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches), skip: false };
+function swipeCheck() {
+  if (!IOS.on) return; const land = innerWidth > innerHeight, full = innerHeight >= Math.min(screen.width, screen.height) - 2;
+  document.documentElement.classList.toggle('ios-swipe', land);
+  $('swipeHint').classList.toggle('hidden', !land || full || IOS.skip || G.state !== 'title'); $('a2hs').classList.toggle('hidden', full);
+}
+$('swipeSkip').onclick = () => { IOS.skip = true; swipeCheck(); };
+{ const ua = navigator.userAgent;
+  $('a2hs').classList.toggle('hidden', !IOS.on);
   // every iPhone browser runs on Safari's engine, so none can go full screen; Safari can at least hide its toolbars on the spot,
   // the others (Chrome, Firefox, Edge for iPhone) only offer the home-screen route
-  $('a2hs').textContent = /CriOS|FxiOS|EdgiOS/.test(ua) ? '📱 전체 화면으로 하려면: 공유 버튼 → 「홈 화면에 추가」 → 그 아이콘으로 열기'
-    : '📱 넓은 화면: 주소창 왼쪽 「가가」 버튼 → 「툴바 가리기」 · 완전한 전체 화면: 공유 → 「홈 화면에 추가」 → 그 아이콘으로 열기'; }
+  $('a2hs').textContent = /CriOS|FxiOS|EdgiOS/.test(ua) ? '📱 위로 쓸어도 안 되면: 공유 버튼 → 「홈 화면에 추가」 → 그 아이콘으로 열기'
+    : '📱 위로 쓸어도 안 되면: 주소창 왼쪽 「가가」 → 「툴바 가리기」 · 앱처럼: 공유 → 「홈 화면에 추가」'; }
 // on a phone or tablet, starting play (a tap, so the browser allows it) goes full screen
-function startGame(d) { AU.init(); if (IN.touch) goFull(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); if (!G.story) requestLock();
+function startGame(d) { AU.init(); if (IN.touch) goFull(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; swipeCheck(); G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); if (!G.story) requestLock();
   const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>빔으로 수거·절단</span>' : '<span><kbd>WASD</kbd>이동</span><span><kbd>Space</kbd><kbd>C</kbd>상승·하강</span><span><kbd>클릭</kbd>빔</span><span><kbd>Q</kbd>소나</span><span><kbd>Shift</kbd>가속</span><span><kbd>V</kbd>시점</span><span><kbd>F</kbd>카메라</span><span><kbd>M</kbd>지도</span><span><kbd>Tab</kbd>도감</span>';
   setTimeout(() => { hint.style.opacity = 0; }, 25000);
   if (G.story) { /* the guide does the introductions */ } else if (!d) { setTimeout(() => toast('해양 정화선 푸른바다호', 'big', '바다가 쓰레기로 병들고 있습니다. 잠수정으로 쓰레기를 수거해 주세요.'), 600); setTimeout(() => { const m = MISSIONS[0]; toast(`임무: ${m.t}`, 'tip', m.d); }, 4200); }
@@ -1277,18 +1295,25 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 // =====================================================================
 // LOOP
 // =====================================================================
-function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; const pr = Math.min(devicePixelRatio || 1, [0.85, 1.25, 1.75, 2][q]);
+// multisampling for the bloom path by render size: 4x on phone-sized targets, 2x up to ~3 MP, none above (the pixel density
+// already smooths edges there, and the float targets get large); only where float targets can be multisampled
+const MSAA_OK = renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float');
+const msaaFor = (mp) => (!MSAA_OK ? 0 : mp <= 1.6 ? 4 : mp <= 3.2 ? 2 : 0);
+function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; const pr = Math.min(devicePixelRatio || 1, PR_TIERS[q]);
   const L = G.ck = inCockpit() ? cockpitLayout(G.VW, G.VH, IN.touch) : null, vp = G.vp = L ? L.view : { x: 0, y: 0, w: G.VW, h: G.VH };
   renderer.setPixelRatio(pr); renderer.setSize(vp.w, vp.h, false); Object.assign(canvas.style, { left: vp.x + 'px', top: vp.y + 'px', width: vp.w + 'px', height: vp.h + 'px' });
+  { const n = msaaFor((vp.w * vp.h * pr * pr) / 1e6); for (const rt of [composer.renderTarget1, composer.renderTarget2]) if (rt.samples !== n) { rt.samples = n; rt.dispose(); } }
   composer.setPixelRatio(pr); composer.setSize(vp.w, vp.h); bloom.enabled = q > 0; bloom.strength = q >= 2 ? 0.55 : 0.45; SEABED.value = q > 0 ? 1 : 0;
   let f;
   if (L) { // principal point at the middle of the visible glass; F is the virtual frame height
     const py = L.ppY - vp.y, F = 2 * Math.max(py, vp.h - py); f = Math.max(0.72 * G.VH, 0.42 * G.VW);
     camera.fov = (2 * Math.atan(F / 2 / f) * 180) / Math.PI; camera.aspect = vp.w / F; camera.setViewOffset(vp.w, F, 0, F / 2 - py, vp.w, vp.h);
   } else { camera.clearViewOffset(); camera.fov = 68; camera.aspect = vp.w / vp.h; f = vp.h / (2 * Math.tan((68 * Math.PI) / 360)); }
-  camera.updateProjectionMatrix(); overlay.width = Math.round(G.VW * pr); overlay.height = Math.round(G.VH * pr);
+  camera.updateProjectionMatrix();
+  // labels and markers are 2D text: drawn at the screen's own density (to 2x) whatever the 3D resolution
+  G.opr = Math.min(devicePixelRatio || 1, 2); overlay.width = Math.round(G.VW * G.opr); overlay.height = Math.round(G.VH * G.opr);
   FXA.mat.uniforms.uScale.value = f * pr; FXN.mat.uniforms.uScale.value = f * pr;
-  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); if (L) CK.setLayout(L, Math.min(devicePixelRatio || 1, 2)); feedLayout(); layoutHUD(); }
+  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); if (L) CK.setLayout(L, Math.min(devicePixelRatio || 1, 2)); feedLayout(); layoutHUD(); swipeCheck(); }
 addEventListener('resize', resize);
 // first touch play: ghost hints over the two drag zones until each has been used for a moment, and a pulsing beam button
 const TH = { joy: 0, look: 0, shown: '' };
@@ -1324,17 +1349,14 @@ let last = performance.now(), hudAcc = 0, mmAcc = 0;
 // Auto quality: start on 높음 and watch real frame times while playing. Two slow windows in a row
 // (under ~40 fps for 4 s) drop a tier for good; a device with headroom (~55+ fps for 6 s, e.g. a recent
 // iPad Pro) is raised once to 최고.
-// auto quality starts a tier lower on phones (touch-first, short side under 600 css px) and on devices reporting 4 GB of
-// memory or less (Chrome only; Safari doesn't say), and phones top out at 2; fast devices still climb from there
-const PHONE = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
-const AUTO_START = Math.max(0, (PHONE ? 1 : 2) - ((navigator.deviceMemory || 8) <= 4 ? 1 : 0)), AUTO_MAX = PHONE ? 2 : 3;
 const AQ = { acc: 0, n: 0, slow: 0, fast: 0, dropped: false };
 function autoQuality(ms) {
   if (G.qualityPref !== 'auto' || G.state !== 'play' || document.hidden || !(ms > 0)) return;
   // frames are capped at 1 s; one long hitch can't drop a tier alone, that takes two slow windows in a row
   AQ.acc += Math.min(ms, 1000); AQ.n++; if (AQ.acc < 2000) return;
   const avg = AQ.acc / AQ.n; AQ.acc = 0; AQ.n = 0;
-  if (avg > 25 && G.quality > 0) { if (++AQ.slow >= 2) { G.quality--; AQ.slow = 0; AQ.dropped = true; resize(); } } else AQ.slow = 0;
+  // phones only step down below 25 fps: iPhone Low Power Mode holds every page at 30 fps, which is not the device struggling
+  if (avg > (PHONE ? 40 : 25) && G.quality > 0) { if (++AQ.slow >= 2) { G.quality--; AQ.slow = 0; AQ.dropped = true; resize(); } } else AQ.slow = 0;
   if (avg < 18 && !AQ.dropped && G.quality < AUTO_MAX) { if (++AQ.fast >= 3) { G.quality++; AQ.fast = 0; resize(); } } else AQ.fast = 0;
 }
 // Safari may drop the WebGL context under memory pressure. three.js rebuilds its GPU resources when the
@@ -1365,6 +1387,6 @@ genItems(); genRescues(); genSiteItems(); buildItemMeshes(); genCreatures(); bui
 G.poll = items.length;
 loadSettings(); resize(); showTitle();
 function simulate(sec) { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) { const dt = 1 / 30; G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); FXA.update(dt); FXN.update(dt); } writeFish(); }
-window.__game = { AU, IN, SUB, SITES, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
+window.__game = { AU, IN, SUB, composer, SITES, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
 $('loading').classList.add('hidden');
 requestAnimationFrame((t) => { last = t; frame(t); });

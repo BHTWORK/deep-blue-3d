@@ -284,6 +284,20 @@ body #title{padding-left:max(clamp(20px,6vw,72px),calc(env(safe-area-inset-left,
 #title .tag{font-size:clamp(14px,1.8vw,16px);color:var(--mute);margin:18px 0 28px;max-width:34em;line-height:1.7}
 #title .menu{display:flex;flex-wrap:wrap;gap:10px}
 #title .foot{margin-top:22px;font-size:12px;color:var(--dim)}
+/* iPhone landscape: the page scrolls a little so a swipe up hides Safari's bars (see swipeCheck); the hint shows how.
+   It lets touches through, so the title buttons work while it is up. */
+html.ios-swipe{height:auto;overflow-x:hidden;overflow-y:auto;touch-action:pan-y;overscroll-behavior:auto}
+html.ios-swipe body{height:auto;overflow:visible;touch-action:pan-y;overscroll-behavior:auto}
+#swipePad{display:none}html.ios-swipe #swipePad{display:block;width:1px;height:calc(100lvh + 160px)}
+#swipeHint{position:fixed;right:max(24px,calc(env(safe-area-inset-right,0px) + 12px));top:50%;transform:translateY(-50%);z-index:32;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 18px;border-radius:16px;background:rgba(6,18,26,.82);border:2px solid #6fd3c1;color:#e8f6f4;text-align:center;max-width:220px}
+#swipeHint .hand{font-size:44px;line-height:1;animation:swipeUp 1.4s ease-in-out infinite}
+#swipeHint b{font-size:16px}#swipeHint span{font-size:13px;color:#a9d9d1}
+#swipeHint .btn{pointer-events:auto;height:34px;font-size:13px;padding:0 14px;margin-top:4px}
+@keyframes swipeUp{0%{transform:translateY(18px);opacity:0}25%{opacity:1}75%{transform:translateY(-22px);opacity:1}100%{transform:translateY(-26px);opacity:0}}
+/* narrow phones: a one-line banner along the top, clear of the title menu */
+@media (max-width:700px){#swipeHint{top:max(8px,env(safe-area-inset-top,0px));transform:none;flex-direction:row;gap:8px;padding:5px 6px 5px 12px;max-width:none;border-radius:12px}#swipeHint .hand{font-size:22px;animation-name:swipeUpS}#swipeHint span{display:none}#swipeHint b{font-size:13px}#swipeHint .btn{height:28px;margin:0;font-size:12px;padding:0 10px}}
+@keyframes swipeUpS{0%{transform:translateY(6px);opacity:0}30%{opacity:1}80%{transform:translateY(-8px);opacity:1}100%{transform:translateY(-10px);opacity:0}}
+@media (prefers-reduced-motion:reduce){#swipeHint .hand{animation:none}}
 /* the iPhone home-screen hint: a small pill that reads over the seabed */
 body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-radius:8px;background:rgba(6,18,26,.8);border:1px solid rgba(111,211,193,.45);color:#c6f1ea;font-size:12.5px;line-height:1.5;max-width:100%}
 /* phones in landscape: a tighter title so the heading, the buttons and the hint all fit */
@@ -418,6 +432,8 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
   <p class="foot a2hs hidden" id="a2hs">📱 전체 화면으로 하려면: 사파리 공유 버튼 → 「홈 화면에 추가」 → 그 아이콘으로 열기</p>
 </div>
 <div id="safe" aria-hidden="true"></div>
+<div id="swipeHint" class="hidden" aria-live="polite"><div class="hand">☝️</div><b>화면을 위로 쓸어 올려 보세요</b><span>전체 화면으로 바뀌어요</span><button id="swipeSkip" class="btn">그냥 할래요</button></div>
+<div id="swipePad" aria-hidden="true"></div>
 
 <div id="dock" class="modal hidden"><div class="box">
   <div class="mhead">

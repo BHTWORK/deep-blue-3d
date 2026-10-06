@@ -180,12 +180,21 @@ const SUITES = {
     check('touch: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close();
     // a phone: auto quality starts a tier lower; the story line is one compact row, a tap on it goes on, the controls step aside
     // iPhone Safari has no page full screen: stand that in, and the title should point to "add to home screen" instead
-    const noFs = () => { for (const k of ['fullscreenEnabled', 'webkitFullscreenEnabled']) Object.defineProperty(Document.prototype, k, { get: () => false }); };
+    // (and like a real iPhone, the screen keeps its portrait size, 390 x 844, whatever the viewport does)
+    const noFs = () => { for (const k of ['fullscreenEnabled', 'webkitFullscreenEnabled']) Object.defineProperty(Document.prototype, k, { get: () => false });
+      Object.defineProperty(Screen.prototype, 'width', { get: () => 390 }); Object.defineProperty(Screen.prototype, 'height', { get: () => 844 }); };
     const ph = await open(browser, { device: 'iPhone 13 landscape', settings: { master: 0, fp: 1 }, query: '?story', init: noFs });
     check('iPhone: home-screen hint on the title, no full-screen button', await ph.E(() => { const t = document.getElementById('a2hs'), r = t.getBoundingClientRect(), e = document.querySelector('#title .eyebrow').getBoundingClientRect();
       return !t.classList.contains('hidden') && document.getElementById('bFull').classList.contains('hidden') && r.bottom <= innerHeight && e.top >= 0; }));
-    const q = await ph.E(() => ({ q: window.__game.G.quality, mem: navigator.deviceMemory || 8 }));
-    check('phones start auto quality a tier lower', q.q === (q.mem <= 4 ? 0 : 1), q);
+    const q = await ph.E(() => { const g = window.__game; return { q: g.G.quality, mem: navigator.deviceMemory || 8, pr: g.renderer.getPixelRatio(), samples: g.composer.renderTarget1.samples, labels: g.G.opr }; });
+    check('phones start auto quality a tier lower, still sharp (1.6x, MSAA, labels at 2x)', q.q === (q.mem <= 4 ? 0 : 1) && q.pr === (q.mem <= 4 ? 1.25 : 1.6) && q.samples === 4 && q.labels === 2, q);
+    // iPhone landscape with Safari's bars showing: the page can scroll and the title says to swipe up; at full height the hint goes
+    const sw = async () => ph.E(() => ({ hint: !document.getElementById('swipeHint').classList.contains('hidden'), scroll: document.documentElement.scrollHeight - innerHeight }));
+    // a resize lands with the next frame, which the software renderer can take seconds to reach: poll for the outcome
+    const until = async (want) => { for (let t = Date.now(); Date.now() - t < 20000; await ph.page.waitForTimeout(400)) { const v = await sw(); if (v.hint === want) return v; } return sw(); };
+    const s0 = await sw(); await ph.page.setViewportSize({ width: 750, height: 390 }); const s1 = await until(false);
+    await ph.page.setViewportSize({ width: 750, height: 342 }); const s2 = await until(true);
+    check('iPhone: swipe-up hint while the bars show, gone at full height', s0.hint && s0.scroll > 100 && !s1.hint && s2.hint, { s0, s1, s2 });
     await ph.page.tap('#bStory'); await ph.page.waitForTimeout(500);
     const t0 = await ph.E(() => { const b = document.getElementById('storyBox').getBoundingClientRect(); return { h: +(b.height / innerHeight).toFixed(2), text: document.getElementById('stText').textContent, touch: getComputedStyle(document.getElementById('touch')).visibility }; });
     await ph.page.tap('#stText'); const t1 = await ph.E(() => document.getElementById('stText').textContent);
