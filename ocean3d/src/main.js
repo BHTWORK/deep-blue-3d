@@ -938,7 +938,7 @@ function feedLayout() {
 }
 function renderFeed() {
   if (!FEED.q) return;
-  FEED.ok = G.quality > 0 && P.alive;
+  FEED.ok = G.quality > (PHONE ? 1 : 0) && P.alive;
   if (!FEED.ok || FEED.n++ % (G.quality >= 3 ? 1 : G.quality === 2 ? 2 : 3) !== 0) return;
   const cam = FEED.cam; SUB.root.updateMatrixWorld();
   if (FEED.mode === 0) { cam.position.set(0, -0.6, 1.9).applyMatrix4(SUB.root.matrixWorld); cam.rotation.set(P.pitch - 0.62, P.yaw + Math.PI, 0, 'YXZ'); }
@@ -1109,20 +1109,22 @@ function storyStep(i) {
   SS.base = ST().collected; if (st.goal === 'coral') SS.coralBase = storyCoral() + SS.coralBase;
   toast(`할 일: ${st.t}`, 'tip', st.d); G.tick = 0.29;
 }
+// dialogue on/off; the touch controls do nothing while it is open, so the page hides them (body.talking)
+function setTalk(on) { G.talk = on; document.body.classList.toggle('talking', on); }
 function storyTalk(lines) {
-  G.talk = true; SS.line = 0; IN.keys = {}; IN.lmb = false; IN.tBeam = IN.tBoost = IN.tUp = IN.tDown = false; unlockPointer();
+  setTalk(true); SS.line = 0; IN.keys = {}; IN.lmb = false; IN.tBeam = IN.tBoost = IN.tUp = IN.tDown = false; unlockPointer();
   $('stDots').innerHTML = lines.map(() => '<i></i>').join(''); show('storyBox'); storyLine();
 }
 function storyLine() {
   const lines = STORY.steps[SS.i].talk, t = lines[SS.line];
   $('stText').textContent = t === '@controls' ? (IN.touch ? STORY.controls.touch : STORY.controls.keys) : t;
   $('stDots').querySelectorAll('i').forEach((d, k) => d.classList.toggle('on', k === SS.line));
-  $('stNext').textContent = SS.line < lines.length - 1 ? '다음 ▶' : STORY.steps[SS.i + 1] ? '좋아! ▶' : '끝내기 ▶'; AU.chirp();
+  $('stNext').textContent = SS.line < lines.length - 1 ? '다음 ▶' : STORY.steps[SS.i + 1] ? '좋아! ▶' : '끝내기 ▶'; AU.chirp(); SS.lineAt = performance.now();
 }
 function storyNext() {
   if (!G.talk) return; const lines = STORY.steps[SS.i].talk;
   if (SS.line < lines.length - 1) { SS.line++; storyLine(); return; }
-  hide('storyBox'); G.talk = false; const nx = STORY.steps[SS.i + 1]; if (nx && nx.goal) requestLock(); // not before the ending card, which needs the cursor
+  hide('storyBox'); setTalk(false); const nx = STORY.steps[SS.i + 1]; if (nx && nx.goal) requestLock(); // not before the ending card, which needs the cursor
   storyStep(SS.i + 1);
 }
 function startStory() {
@@ -1136,7 +1138,7 @@ function startStory() {
   buddyShow(); storyStep(0);
 }
 function storyEnd() {
-  G.state = 'menu'; G.talk = false; unlockPointer(); hide('storyBox'); AU.mission(); AU.whale(0.18);
+  G.state = 'menu'; setTalk(false); unlockPointer(); hide('storyBox'); AU.mission(); AU.whale(0.18);
   const s = ST(), t = Math.round(s.time), kg = Math.round(s.kg * 10) / 10;
   $('seBody').innerHTML = `<h2>바다를 지켜 줘서 고마워요!</h2><p class="lead">푸른이와 함께 바다를 다시 웃게 만들었어요.</p>
     <div class="sstats"><div><b>${s.collected}개</b><span>주운 쓰레기 (${kg}kg)</span></div><div><b>${s.rescues}마리</b><span>구한 바다거북</span></div><div><b>1곳</b><span>되살린 산호 지대</span></div><div><b>${Math.floor(t / 60)}분 ${t % 60}초</b><span>걸린 시간</span></div></div>
@@ -1159,6 +1161,8 @@ $('bStory').onclick = () => startStory();
 const STORY_LINK = /[?&]story\b/.test(location.search); // class link: ocean-cleanup-3d.html?story (or story.html)
 if (STORY_LINK) { $('bStory').classList.add('primary'); $('bNew').classList.remove('primary'); }
 $('stNext').onclick = () => storyNext();
+// the whole box is a big tap target for small fingers; a second tap within 0.3 s of a new line is ignored so a double tap can't skip it
+$('storyBox').addEventListener('click', (e) => { if (!e.target.closest('#stNext') && performance.now() - (SS.lineAt || 0) > 300) storyNext(); });
 // ---- flow
 let prevState = 'play', modalBack = null;
 function openModal(id) { if (G.state !== 'play') return; prevState = G.state; G.state = 'menu'; IN.keys = {}; IN.lmb = false; unlockPointer(); show(id); }
@@ -1168,7 +1172,7 @@ function openCodex() { if (G.state === 'menu' && !$('codex').classList.contains(
 function togglePause() { if (G.state === 'play') { G.state = 'pause'; IN.keys = {}; IN.lmb = false; unlockPointer(); show('pause'); saveGame(); AU.click(); } else if (G.state === 'pause') { hide('pause'); G.state = 'play'; requestLock(); AU.click(); } }
 function openSub(id, from) { modalBack = from; if (from) hide(from); show(id); AU.click(); }
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => { const id = b.dataset.close; AU.click(); if (id === 'mapm' || id === 'codex') { closeModal(id); return; } hide(id); if (modalBack) { show(modalBack); modalBack = null; } }));
-function showTitle() { G.state = 'title'; G.story = false; G.talk = false; hide('storyBox'); hide('storyEnd'); buddyHide(); unlockPointer(); hide('hud'); hide('touch'); ['dock', 'codex', 'mapm', 'pause', 'fail', 'win', 'settings', 'help'].forEach(hide); show('title');
+function showTitle() { G.state = 'title'; G.story = false; setTalk(false); hide('storyBox'); hide('storyEnd'); buddyHide(); unlockPointer(); hide('hud'); hide('touch'); ['dock', 'codex', 'mapm', 'pause', 'fail', 'win', 'settings', 'help'].forEach(hide); show('title');
   const d = loadGame(); $('bContinue').classList.toggle('hidden', !d); $('bNew').classList.toggle('primary', !d && !STORY_LINK); SV = freshSave(); calcStats(); resetWorld(); siteTick(true); bleach.valve.prog = 0; bleach.valve.wheel.rotation.y = 0; updateBleach(0, true); G.clean = 0.6; G.coralH = -1; missionTickCoral(); SUB.root.visible = false; applyView(); }
 function missionTickCoral() { const h = Math.round(clamp(0.12 + G.clean * 1.15, 0, 1) * 50) / 50; if (h !== G.coralH) { G.coralH = h; flora.setCoralHealth(h); } }
 function startGame(d) { AU.init(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); if (!G.story) requestLock();
@@ -1190,13 +1194,13 @@ $('bMap').onclick = () => openMap(); $('bCodex').onclick = () => openCodex(); $(
 $('bReset').onclick = () => confirmBox('저장 데이터 삭제', '모든 진행 상황을 삭제합니다. 되돌릴 수 없습니다.', () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } hide('settings'); hide('pause'); modalBack = null; showTitle(); toast('저장 데이터를 삭제했습니다', ''); });
 // ---- settings
 function loadSettings() { try { const s = JSON.parse(localStorage.getItem(SET_KEY) || '{}'); if (s.master != null) AU.vol.master = s.master; if (s.music != null) AU.vol.music = s.music; if (s.sfx != null) AU.vol.sfx = s.sfx; if (s.quality != null) G.qualityPref = s.quality; if (s.shake != null) G.shakeOn = !!s.shake; if (s.sens != null) G.sens = s.sens; if (s.fp != null) G.fp = !!s.fp; } catch (e) { /* ignore */ }
-  G.quality = G.qualityPref === 'auto' ? 2 : clamp(+G.qualityPref || 0, 0, 3);
+  G.quality = G.qualityPref === 'auto' ? AUTO_START : clamp(+G.qualityPref || 0, 0, 3);
   $('sMaster').value = Math.round(AU.vol.master * 100); $('sMusic').value = Math.round(AU.vol.music * 100); $('sSfx').value = Math.round(AU.vol.sfx * 100); $('sQuality').value = String(G.qualityPref); $('sShake').value = G.shakeOn ? 1 : 0; $('sSens').value = Math.round(G.sens * 100); $('sView').value = G.fp ? '1' : '0'; }
 function saveSettings() { try { localStorage.setItem(SET_KEY, JSON.stringify({ master: AU.vol.master, music: AU.vol.music, sfx: AU.vol.sfx, quality: G.qualityPref, shake: G.shakeOn ? 1 : 0, sens: G.sens, fp: G.fp ? 1 : 0 })); } catch (e) { /* ignore */ } }
 $('sMaster').oninput = (e) => { AU.vol.master = e.target.value / 100; AU.setVol(); saveSettings(); };
 $('sMusic').oninput = (e) => { AU.vol.music = e.target.value / 100; AU.setVol(); saveSettings(); };
 $('sSfx').oninput = (e) => { AU.vol.sfx = e.target.value / 100; AU.setVol(); saveSettings(); AU.click(); };
-$('sQuality').onchange = (e) => { const v = e.target.value; G.qualityPref = v === 'auto' ? 'auto' : +v; G.quality = v === 'auto' ? 2 : +v; Object.assign(AQ, { acc: 0, n: 0, slow: 0, fast: 0, dropped: false }); resize(); saveSettings(); };
+$('sQuality').onchange = (e) => { const v = e.target.value; G.qualityPref = v === 'auto' ? 'auto' : +v; G.quality = v === 'auto' ? AUTO_START : +v; Object.assign(AQ, { acc: 0, n: 0, slow: 0, fast: 0, dropped: false }); resize(); saveSettings(); };
 $('sShake').onchange = (e) => { G.shakeOn = e.target.value === '1'; saveSettings(); };
 $('sSens').oninput = (e) => { G.sens = e.target.value / 100; saveSettings(); };
 $('sView').onchange = (e) => { G.fp = e.target.value === '1'; applyView(); saveSettings(); };
@@ -1298,6 +1302,10 @@ let last = performance.now(), hudAcc = 0, mmAcc = 0;
 // Auto quality: start on 높음 and watch real frame times while playing. Two slow windows in a row
 // (under ~40 fps for 4 s) drop a tier for good; a device with headroom (~55+ fps for 6 s, e.g. a recent
 // iPad Pro) is raised once to 최고.
+// auto quality starts a tier lower on phones (touch-first, short side under 600 css px) and on devices reporting 4 GB of
+// memory or less (Chrome only; Safari doesn't say), and phones top out at 2; fast devices still climb from there
+const PHONE = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+const AUTO_START = Math.max(0, (PHONE ? 1 : 2) - ((navigator.deviceMemory || 8) <= 4 ? 1 : 0)), AUTO_MAX = PHONE ? 2 : 3;
 const AQ = { acc: 0, n: 0, slow: 0, fast: 0, dropped: false };
 function autoQuality(ms) {
   if (G.qualityPref !== 'auto' || G.state !== 'play' || document.hidden || !(ms > 0)) return;
@@ -1305,7 +1313,7 @@ function autoQuality(ms) {
   AQ.acc += Math.min(ms, 1000); AQ.n++; if (AQ.acc < 2000) return;
   const avg = AQ.acc / AQ.n; AQ.acc = 0; AQ.n = 0;
   if (avg > 25 && G.quality > 0) { if (++AQ.slow >= 2) { G.quality--; AQ.slow = 0; AQ.dropped = true; resize(); } } else AQ.slow = 0;
-  if (avg < 18 && !AQ.dropped && G.quality < 3) { if (++AQ.fast >= 3) { G.quality++; AQ.fast = 0; resize(); } } else AQ.fast = 0;
+  if (avg < 18 && !AQ.dropped && G.quality < AUTO_MAX) { if (++AQ.fast >= 3) { G.quality++; AQ.fast = 0; resize(); } } else AQ.fast = 0;
 }
 // Safari may drop the WebGL context under memory pressure. three.js rebuilds its GPU resources when the
 // context comes back, so save, pause and say so in the meantime. The context is already gone before the

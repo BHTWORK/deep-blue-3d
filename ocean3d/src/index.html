@@ -146,6 +146,8 @@ body.fp #vign,body.fp #sonarInd,body.fp #hudStats{display:none}
 #tDown{right:calc(var(--tr) + var(--tbb) + var(--tbs) + var(--tbg) * 2);bottom:var(--tb)}
 #tSonar span{font:700 22px var(--mono)}
 body.touch #sonarInd{display:none} /* the sonar button counts down itself */
+/* during story dialogue the controls do nothing, so they step aside */
+body.talking #touch{visibility:hidden}
 /* first-play hints: a ghost stick, a drag trail and a pulsing beam button, each gone once used */
 .thint{position:absolute;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:10px;font:600 15px var(--font);color:var(--ink);text-align:center;text-shadow:0 1px 3px rgba(0,0,0,.8),0 0 10px rgba(0,0,0,.45);animation:thIn .5s ease-out}
 .thint small{display:block;margin-top:3px;font-size:13px;font-weight:600;color:rgba(232,237,241,.85)}
@@ -274,7 +276,7 @@ body.touch #sonarInd{display:none} /* the sonar button counts down itself */
 .btn.story.primary{background:#3fbfa8;border-color:#3fbfa8;color:#04201a}
 /* story mode: big, friendly dialogue and an ending card with a short OX quiz */
 #storyBox{position:fixed;left:50%;bottom:max(22vh,150px);transform:translateX(-50%);width:min(640px,calc(100vw - 32px));z-index:15}
-#storyBox .sbox{background:rgba(6,18,26,.92);border:2px solid #6fd3c1;border-radius:16px;padding:16px 18px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+#storyBox .sbox{cursor:pointer;background:rgba(6,18,26,.92);border:2px solid #6fd3c1;border-radius:16px;padding:16px 18px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
 #storyBox .who{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 #storyBox .face{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:28px;background:#123a44;border:2px solid #6fd3c1}
 #storyBox .who b{font-size:16px;color:#bff3ea}
@@ -295,7 +297,8 @@ body.touch #sonarInd{display:none} /* the sonar button counts down itself */
 #storyEnd .fb{font-size:16px;line-height:1.6;margin:8px 0 14px}#storyEnd .fb b{font-size:20px}
 #storyEnd .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 #storyEnd .row .btn{height:44px;font-size:15px}
-@media (max-height:520px){#storyBox{bottom:8px;width:min(720px,calc(100vw - 32px))}#storyBox .sbox{padding:10px 14px}#storyBox .who{margin-bottom:4px}#storyBox .face{width:32px;height:32px;font-size:20px}#storyBox p{font-size:15px;line-height:1.5;min-height:0}#storyBox .sfoot{margin-top:6px}#storyBox .btn{height:36px;font-size:14px}#storyEnd .box{padding:12px 16px}#storyEnd h2{font-size:19px;margin-bottom:2px}#storyEnd .lead{font-size:13px;margin-bottom:6px}#storyEnd .sstats{grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 8px}#storyEnd .sstats div{padding:6px 4px}#storyEnd .sstats b{font-size:16px}#storyEnd .sstats span{font-size:11px}#storyEnd h3{font-size:14px}#storyEnd ul{font-size:13px;line-height:1.45;margin:4px auto 8px}#storyEnd .q{font-size:16px;margin:6px 0 10px}#storyEnd .ox button{width:90px;height:64px;font-size:34px}#storyEnd .fb{font-size:14px;margin:4px 0 8px}#storyEnd .row .btn{height:38px}}
+/* phones in landscape: one compact row, icon | line + dots | button, so the scene stays visible above it */
+@media (max-height:520px){#storyBox{bottom:6px;width:min(760px,calc(100vw - 24px))}#storyBox .sbox{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:'face text next' 'face dots next';column-gap:12px;row-gap:4px;align-items:center;padding:8px 10px 8px 12px;border-radius:14px;background:rgba(6,18,26,.95)}#storyBox .who,#storyBox .sfoot{display:contents}#storyBox .face{grid-area:face;width:34px;height:34px;font-size:21px}#storyBox .who b{display:none}#storyBox p{grid-area:text;font-size:15px;line-height:1.4;min-height:0}#storyBox .dots{grid-area:dots}#storyBox .dots i{width:6px;height:6px}#storyBox .btn{grid-area:next;height:44px;font-size:15px;padding:0 16px}#storyEnd .box{padding:12px 16px}#storyEnd h2{font-size:19px;margin-bottom:2px}#storyEnd .lead{font-size:13px;margin-bottom:6px}#storyEnd .sstats{grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 8px}#storyEnd .sstats div{padding:6px 4px}#storyEnd .sstats b{font-size:16px}#storyEnd .sstats span{font-size:11px}#storyEnd h3{font-size:14px}#storyEnd ul{font-size:13px;line-height:1.45;margin:4px auto 8px}#storyEnd .q{font-size:16px;margin:6px 0 10px}#storyEnd .ox button{width:90px;height:64px;font-size:34px}#storyEnd .fb{font-size:14px;margin:4px 0 8px}#storyEnd .row .btn{height:38px}}
 
 @media (max-width:760px),(max-height:520px){
   #hudLeft{width:200px;gap:5px}

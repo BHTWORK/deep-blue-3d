@@ -139,7 +139,8 @@ const SUITES = {
       check('the game keeps running after a restore', await E(() => window.__game.G.state === 'play'));
       check('context loss: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close(); }
   },
-  // touch on a tablet: the five buttons are big enough, apart, on screen and on top; then the stick, pitch assist, beam cone and hints
+  // touch on a tablet: the five buttons are big enough, apart, on screen and on top; then the stick, pitch assist, beam cone and hints;
+  // then a phone's starting quality and story box
   async touch(browser) {
     const { ctx, page, errors, E } = await open(browser, { device: 'iPad Pro 11 landscape' });
     await page.tap('#bNew'); await page.waitForTimeout(500);
@@ -175,6 +176,15 @@ const SUITES = {
     check('touch beam reaches further off-centre', c.angle > c.mouseLimit && c.collected, { angle: c.angle, mouse: c.mouseLimit });
     check('beam button pulses until the beam is used', c.nudge && c.tip && c.nudgeGone);
     check('touch: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close();
+    // a phone: auto quality starts a tier lower; the story line is one compact row, a tap on it goes on, the controls step aside
+    const ph = await open(browser, { device: 'iPhone 13 landscape', settings: { master: 0, fp: 1 }, query: '?story' });
+    const q = await ph.E(() => ({ q: window.__game.G.quality, mem: navigator.deviceMemory || 8 }));
+    check('phones start auto quality a tier lower', q.q === (q.mem <= 4 ? 0 : 1), q);
+    await ph.page.tap('#bStory'); await ph.page.waitForTimeout(500);
+    const t0 = await ph.E(() => { const b = document.getElementById('storyBox').getBoundingClientRect(); return { h: +(b.height / innerHeight).toFixed(2), text: document.getElementById('stText').textContent, touch: getComputedStyle(document.getElementById('touch')).visibility }; });
+    await ph.page.tap('#stText'); const t1 = await ph.E(() => document.getElementById('stText').textContent);
+    check('phone story: compact box, tap to go on, controls hidden while talking', t0.h < 0.25 && t1 !== t0.text && t0.touch === 'hidden', { h: t0.h, touch: t0.touch });
+    check('phone: no page errors', ph.errors.length === 0, ph.errors.slice(0, 3)); await ph.ctx.close();
   },
 };
 
