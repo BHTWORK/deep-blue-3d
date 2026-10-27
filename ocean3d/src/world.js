@@ -684,7 +684,8 @@ export function buildBaseShip() {
   const red = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color('#ff3030').multiplyScalar(3), fog: false })); red.position.set(1.5, 14.6, 1); g.add(red);
   const grn = red.clone(); grn.material = new THREE.MeshBasicMaterial({ color: new THREE.Color('#30ff60').multiplyScalar(3), fog: false }); grn.position.x = -1.5; g.add(grn);
   // crane cable to dock
-  const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 20, 4), new THREE.MeshBasicMaterial({ color: 0x222222 })); cable.position.set(2.6, 3, -19); g.add(cable);
+  // a thin lit cable, not an unlit black bar: it hangs right over the dock ring where the chase camera looks up at it
+  const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 20, 6), new THREE.MeshStandardMaterial({ color: 0x5a6670, roughness: 0.6, metalness: 0.4 })); cable.position.set(2.6, 3, -19); g.add(cable);
   return g;
 }
 export function buildDockRing() {

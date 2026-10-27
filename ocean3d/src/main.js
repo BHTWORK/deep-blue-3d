@@ -499,7 +499,7 @@ function writeFish() {
 // =====================================================================
 function nearestRescue() { let best = null, bd = 1e18; for (const r of rescues) { if (r.freed) continue; const d = r.pos.distanceToSquared(P.pos); if (d < bd) { bd = d; best = r; } } return best ? best.pos : null; }
 const MISSIONS = [
-  { t: '첫 수거', d: '쓰레기 5개를 수거하세요. 가까이 다가가거나 조준 후 트랙터 빔(클릭/E)으로 끌어오세요.', goal: 5, p: () => ST().collected, rw: 60, kind: 'trash' },
+  { t: '첫 수거', d: '쓰레기 5개를 수거하세요. 가까이 다가가거나 조준 후 트랙터 빔({beam})으로 끌어오세요.', goal: 5, p: () => ST().collected, rw: 60, kind: 'trash' },
   { t: '기지선 귀환', d: '기지선 뒤쪽 초록 고리나 그 아래 빛기둥에 들어가세요. 수거물이 자동으로 판매되고 상점이 열립니다.', goal: 1, p: () => ST().sells, rw: 60, tg: () => DOCK, tgl: '기지선 도킹 지점' },
   { t: '장비 강화', d: '기지선에서 업그레이드를 하나 구매하세요.', goal: 1, p: () => ST().upgrades, rw: 100, tg: () => DOCK, tgl: '기지선' },
   { t: '무지개 산호초', d: '기지선 동쪽의 산호초를 찾아가세요.', poi: 'reef', rw: 120 },
@@ -764,7 +764,7 @@ function openDock() {
 function sellCargo() { const groups = {}; let base = 0; for (const id of P.cargo) { const it = items[id]; const k = it.key; if (!groups[k]) groups[k] = { n: itemName(it), c: 0, v: 0 }; groups[k].c++; groups[k].v += it.v; base += it.v; }
   const bonus = Math.round(base * 0.5 * G.clean), total = base + bonus; if (P.cargo.length) { SV.money += total; ST().earned += total; ST().sells++; AU.sell(); } P.cargo = []; P.kg = 0; return { groups, base, bonus, total }; }
 function buyUpgrade(k) { const lv = SV.up[k], cost = UP[k].c[lv]; if (cost === undefined || SV.money < cost) return; SV.money -= cost; SV.up[k]++; ST().upgrades++; calcStats(); P.bat = S.bat; P.hull = S.hull; AU.upgrade(); renderUpgrades(); $('dMoney').textContent = fmt(SV.money); saveGame(); }
-function launch() { hide('dock'); G.state = 'play'; tv1.set(P.pos.x - DOCK.x, 0, P.pos.z - DOCK.z); if (tv1.lengthSq() < 1) tv1.set(0, 0, -1); tv1.normalize().multiplyScalar(9); P.vel.set(tv1.x, -2, tv1.z); P.canDock = false; AU.click(); requestLock(); const m = MISSIONS[SV.mission]; if (m && G.t - G.lastMTip > 60) { G.lastMTip = G.t; toast(`임무: ${m.t}`, 'tip', m.d); } }
+function launch() { hide('dock'); G.state = 'play'; tv1.set(P.pos.x - DOCK.x, 0, P.pos.z - DOCK.z); if (tv1.lengthSq() < 1) tv1.set(0, 0, -1); tv1.normalize().multiplyScalar(9); P.vel.set(tv1.x, -2, tv1.z); P.canDock = false; AU.click(); requestLock(); const m = MISSIONS[SV.mission]; if (m && G.t - G.lastMTip > 60) { G.lastMTip = G.t; toast(`임무: ${m.t}`, 'tip', ctlText(m.d)); } }
 function fail(kind) {
   if (G.state !== 'play') return; G.state = 'fail'; unlockPointer(); AU.fail();
   const frac = kind === 'battery' ? 0.5 : 1; const cargo = P.cargo.slice().sort(() => Math.random() - 0.5); const nLost = Math.ceil(cargo.length * frac); const lost = cargo.slice(0, nLost); let lkg = 0;
@@ -821,7 +821,9 @@ function buildMap() {
   x.putImageData(img, 0, 0); MAPBASE = c;
   FOG = document.createElement('canvas'); FOG.width = FOG.height = MAPN; FOGC = FOG.getContext('2d'); resetFog();
 }
-function resetFog() { if (!FOGC) return; EXP.fill(0); FOGC.globalCompositeOperation = 'source-over'; FOGC.fillStyle = '#01060d'; FOGC.fillRect(0, 0, MAPN, MAPN); }
+// unexplored water is dimmed, not blacked out: the seabed shows through at under half, so the shape of the world reads
+// before it is explored and explored patches read as the brighter ones
+function resetFog() { if (!FOGC) return; EXP.fill(0); FOGC.globalCompositeOperation = 'source-over'; FOGC.fillStyle = 'rgba(1,6,13,0.62)'; FOGC.fillRect(0, 0, MAPN, MAPN); }
 function revealFog(i, j) { const s = MAPN / EXN; FOGC.save(); FOGC.globalCompositeOperation = 'destination-out'; const g = FOGC.createRadialGradient(i * s + s / 2, j * s + s / 2, 0, i * s + s / 2, j * s + s / 2, s * 1.4); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)'); FOGC.fillStyle = g; FOGC.fillRect(i * s - s, j * s - s, s * 3, s * 3); FOGC.restore(); }
 function exploreAt(x, z, rad) { const cs = WORLD.size / EXN; const i0 = Math.max(0, Math.floor((x - rad + WORLD.half) / cs)), i1 = Math.min(EXN - 1, Math.floor((x + rad + WORLD.half) / cs)), j0 = Math.max(0, Math.floor((z - rad + WORLD.half) / cs)), j1 = Math.min(EXN - 1, Math.floor((z + rad + WORLD.half) / cs));
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { const k = j * EXN + i; if (EXP[k]) continue; const cx = -WORLD.half + (i + 0.5) * cs, cz = -WORLD.half + (j + 0.5) * cs; if ((cx - x) ** 2 + (cz - z) ** 2 > rad * rad) continue; EXP[k] = 1; revealFog(i, j); } }
@@ -1056,6 +1058,8 @@ function renderCodex() {
 }
 const H = {};
 const zoneName = (dm) => (dm < 60 ? '표층' : dm < 220 ? '중층' : dm < 500 ? '심층' : '심해');
+// mission text names the beam control for the device in use ({beam})
+const ctlText = (t) => t.replace('{beam}', IN.touch ? '빔 버튼' : '클릭/E');
 function updateHUD() {
   if (!H.ok) { for (const id of ['hMoney', 'hBat', 'hBatV', 'hHull', 'hHullV', 'hCargo', 'hCargoV', 'hDepth', 'hLimit', 'hClean', 'mName', 'mProg', 'mBar', 'mProgRow', 'mDesc', 'mGuide', 'mArrow', 'mGuideTxt', 'mTag', 'hudSite', 'sName', 'sProg', 'sBar', 'sState', 'alert', 'sonarInd', 'sonarTxt', 'rBat', 'rHull', 'rCargo', 'tSonar']) H[id] = $(id); H.ok = true; }
   H.hMoney.textContent = fmt(SV.money);
@@ -1069,7 +1073,7 @@ function updateHUD() {
   const m = MISSIONS[SV.mission], sg = G.story && STORY.steps[SS.i];
   H.mTag.textContent = G.story ? '이야기' : '임무';
   if (G.story) { const has = sg && sg.goal; H.mName.textContent = has ? sg.t : STORY.guide.n; H.mDesc.textContent = has ? sg.d : '푸른이의 이야기를 들어 보세요.'; const [c, g] = has ? storyProg(sg) : [0, 1]; H.mProgRow.style.display = has ? '' : 'none'; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = has ? `${c}/${g}` : ''; }
-  else if (m) { H.mName.textContent = m.t; H.mDesc.textContent = m.d; const [c, g] = mProg(m); H.mProgRow.style.display = ''; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = m.poi || m.sp ? (c ? '완료' : '탐색 중') : `${fmt(c)}/${fmt(g)}`; }
+  else if (m) { H.mName.textContent = m.t; H.mDesc.textContent = ctlText(m.d); const [c, g] = mProg(m); H.mProgRow.style.display = ''; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = m.poi || m.sp ? (c ? '완료' : '탐색 중') : `${fmt(c)}/${fmt(g)}`; }
   else { H.mName.textContent = '자유 탐험'; H.mDesc.textContent = '남은 쓰레기를 찾아 바다를 끝까지 되살려 보세요.'; H.mProg.textContent = ''; H.mProgRow.style.display = 'none'; }
   // guide: arrow turned by the target's bearing relative to the sub's heading, plus distance and height difference
   const gd = G.guide; H.mGuide.style.display = gd ? '' : 'none';
@@ -1257,7 +1261,7 @@ $('swipeSkip').onclick = () => { IOS.skip = true; swipeCheck(); };
 function startGame(d) { AU.init(); if (IN.touch) goFull(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; swipeCheck(); G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); if (!G.story) requestLock();
   const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>빔으로 수거·절단</span>' : '<span><kbd>WASD</kbd>이동</span><span><kbd>Space</kbd><kbd>C</kbd>상승·하강</span><span><kbd>클릭</kbd>빔</span><span><kbd>Q</kbd>소나</span><span><kbd>Shift</kbd>가속</span><span><kbd>V</kbd>시점</span><span><kbd>F</kbd>카메라</span><span><kbd>M</kbd>지도</span><span><kbd>Tab</kbd>도감</span>';
   setTimeout(() => { hint.style.opacity = 0; }, 25000);
-  if (G.story) { /* the guide does the introductions */ } else if (!d) { setTimeout(() => toast('해양 정화선 푸른바다호', 'big', '바다가 쓰레기로 병들고 있습니다. 잠수정으로 쓰레기를 수거해 주세요.'), 600); setTimeout(() => { const m = MISSIONS[0]; toast(`임무: ${m.t}`, 'tip', m.d); }, 4200); }
+  if (G.story) { /* the guide does the introductions */ } else if (!d) { setTimeout(() => toast('해양 정화선 푸른바다호', 'big', '바다가 쓰레기로 병들고 있습니다. 잠수정으로 쓰레기를 수거해 주세요.'), 600); setTimeout(() => { const m = MISSIONS[0]; toast(`임무: ${m.t}`, 'tip', ctlText(m.d)); }, 4200); }
   else toast('이어서 탐험을 시작합니다', '', `바다 정화율 ${cleanPct()}%`);
   saveGame(); }
 function showWin() { G.state = 'menu'; prevState = 'play'; unlockPointer(); const s = ST(); $('winStats').innerHTML = [['수거한 쓰레기', `${fmt(s.collected)}개`], ['수거 무게', `${fmt(s.kg)}kg`], ['구조한 생물', `${s.rescues}마리`], ['발견한 생물', `${Object.keys(SV.species).length}종`], ['플레이 시간', `${Math.floor(s.time / 60)}분`], ['총 수익', fmt(s.earned)]].map((r) => `<div class="stat"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
