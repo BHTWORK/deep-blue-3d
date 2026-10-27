@@ -9,6 +9,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="딥 블루 3D">
+<!-- the UI face, fetched without blocking the page: offline (a classroom without wifi, file://) the system font stands in -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="description" content="잠수정으로 심해를 탐험하며 쓰레기를 수거하고 바다를 되살리는 3D 게임">
@@ -19,8 +21,8 @@
   color-scheme:dark;
   --ink:#e8edf1; --mute:#8d9aa5; --dim:#56636e;
   --plate:rgba(9,15,20,.8); --plate-solid:#0c141a; --line:rgba(255,255,255,.09); --line2:rgba(255,255,255,.18);
-  --accent:#e9c46a; --ok:#8fcf9b; --warn:#e9b44c; --bad:#e5645e;
-  --font:"Pretendard","Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --accent:#e3bd5f; --accent-ink:#1b1606; --teal:#6fd3c1; --ok:#8fcf9b; --warn:#e9b44c; --bad:#e5645e;
+  --font:"Pretendard Variable","Pretendard","Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:ui-monospace,"SF Mono","SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
   --r:6px;
 }
@@ -83,7 +85,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 .kv b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12px;font-weight:600;color:var(--accent)}
 #hudMission{padding:8px 12px;display:flex;flex-direction:column;gap:5px}
 #hudMission .mt{display:flex;align-items:baseline;gap:7px;font-size:13px}
-#hudMission .mtag{flex:none;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;color:#0b1116;background:var(--accent)}
+#hudMission .mtag{flex:none;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--accent);border:1px solid rgba(227,189,95,.45)}
 #hudMission .mn{flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #hudMission .md{font-size:11px;line-height:1.5;color:var(--mute)}
 #hudMission .mg{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--accent)}
@@ -177,12 +179,17 @@ body.talking #touch{visibility:hidden}
 @media (prefers-reduced-motion:reduce){.thint .dot,#tBeam.nudge{animation:none}}
 
 /* ---------- buttons, modals ---------- */
-.btn{appearance:none;height:40px;padding:0 18px;border-radius:var(--r);border:1px solid var(--line2);background:transparent;color:var(--ink);font:600 14px var(--font);cursor:pointer;transition:background .15s,border-color .15s}
+.btn{appearance:none;height:40px;padding:0 18px;border-radius:var(--r);border:1px solid var(--line2);background:rgba(255,255,255,.03);color:var(--ink);font:600 14px/1 var(--font);letter-spacing:-.01em;cursor:pointer;transition:background .15s,border-color .15s,transform .08s}
+.btn:active:not(:disabled){transform:translateY(1px)}
 .btn:hover:not(:disabled){background:rgba(255,255,255,.06)}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:#1b1606}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.primary:hover:not(:disabled){background:#f1d07c}
 .btn.danger{color:var(--bad);border-color:rgba(229,100,94,.45)}
 .btn.small{height:32px;padding:0 12px;font-size:13px}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--mute)}.btn.quiet:hover:not(:disabled){color:var(--ink)}
+/* pause: one line of actions, not a stack */
+.pausebox{width:min(460px,94vw)}.pausebox .mhead{margin-bottom:14px}.pausebox .sub{margin-top:4px;font-size:13px;color:var(--mute)}
+.pauserow{display:flex;gap:8px;flex-wrap:wrap}.pauserow .btn{flex:1 1 auto}.pauserow .quiet{flex:0 0 auto;margin-left:auto}
 .btn:disabled{opacity:.35;cursor:not-allowed}
 .modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,10,.72);z-index:20;padding:12px}
 /* the confirm box also opens over the title screen (new game with a save), so it sits above it */
@@ -196,7 +203,7 @@ body #title{padding-left:max(clamp(20px,6vw,72px),calc(env(safe-area-inset-left,
 .box.narrow{width:min(420px,94vw)}
 .box::-webkit-scrollbar{width:8px}.box::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
 .mhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px;padding-right:40px}
-.mhead h2,.box h2{font-size:18px;font-weight:700;text-wrap:balance}
+.mhead h2,.box h2{font-size:18px;font-weight:700;letter-spacing:-.02em;text-wrap:balance}
 .sub{font-size:13px;color:var(--mute);margin-top:4px;line-height:1.5}
 .funds{font-size:12px;color:var(--mute);text-align:right;white-space:nowrap}
 .funds b{display:block;font:600 20px var(--mono);font-variant-numeric:tabular-nums;color:var(--accent)}
@@ -280,9 +287,9 @@ body #title{padding-left:max(clamp(20px,6vw,72px),calc(env(safe-area-inset-left,
 
 /* ---------- title ---------- */
 #title{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;justify-content:flex-end;padding:0 clamp(20px,6vw,72px) clamp(28px,8vh,80px);background:linear-gradient(90deg,rgba(4,10,15,.82) 0%,rgba(4,10,15,.45) 45%,rgba(4,10,15,0) 75%)}
-#title .eyebrow{font-size:13px;color:var(--mute);margin-bottom:10px}
+#title .eyebrow{font-size:12px;letter-spacing:.14em;color:var(--mute);margin-bottom:12px}
 #title h1{font-size:clamp(44px,8vw,96px);font-weight:800;letter-spacing:-.03em;line-height:1;color:var(--ink)}
-#title h1 span{font-weight:300;color:var(--accent);margin-left:.15em}
+#title h1 span{font-weight:200;color:var(--mute);margin-left:.12em}
 #title .tag{font-size:clamp(14px,1.8vw,16px);color:var(--mute);margin:18px 0 28px;max-width:34em;line-height:1.7}
 #title .menu{display:flex;flex-wrap:wrap;gap:10px}
 #title .foot{margin-top:22px;font-size:12px;color:var(--dim)}
@@ -294,26 +301,26 @@ html.ios-swipe body{height:auto;overflow:visible;touch-action:pan-y;overscroll-b
 html.ios-swipe.ios-lock,html.ios-swipe.ios-lock body{touch-action:none;overscroll-behavior:none}
 #swipePad{display:none}html.ios-swipe #swipePad{display:block;width:1px;height:calc(100lvh + 160px)}
 #swipeHint{position:fixed;right:max(24px,calc(env(safe-area-inset-right,0px) + 12px));top:50%;transform:translateY(-50%);z-index:32;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 18px;border-radius:16px;background:rgba(6,18,26,.82);border:2px solid #6fd3c1;color:#e8f6f4;text-align:center;max-width:220px}
-#swipeHint .hand{font-size:44px;line-height:1;animation:swipeUp 1.4s ease-in-out infinite}
+#swipeHint .hand{width:44px;height:44px;animation:swipeUp 1.4s ease-in-out infinite}#swipeHint .hand svg{width:100%;height:100%;fill:none;stroke:var(--teal);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 #swipeHint b{font-size:16px}#swipeHint span{font-size:13px;color:#a9d9d1}
 #swipeHint .btn{pointer-events:auto;height:34px;font-size:13px;padding:0 14px;margin-top:4px}
 @keyframes swipeUp{0%{transform:translateY(18px);opacity:0}25%{opacity:1}75%{transform:translateY(-22px);opacity:1}100%{transform:translateY(-26px);opacity:0}}
 /* narrow phones: a one-line banner along the top, clear of the title menu */
-@media (max-width:700px){#swipeHint{top:max(8px,env(safe-area-inset-top,0px));transform:none;flex-direction:row;gap:8px;padding:5px 6px 5px 12px;max-width:none;border-radius:12px}#swipeHint .hand{font-size:22px;animation-name:swipeUpS}#swipeHint span{display:none}#swipeHint b{font-size:13px}#swipeHint .btn{height:28px;margin:0;font-size:12px;padding:0 10px}}
+@media (max-width:700px){#swipeHint{top:max(8px,env(safe-area-inset-top,0px));transform:none;flex-direction:row;gap:8px;padding:5px 6px 5px 12px;max-width:none;border-radius:12px}#swipeHint .hand{width:22px;height:22px;animation-name:swipeUpS}#swipeHint span{display:none}#swipeHint b{font-size:13px}#swipeHint .btn{height:28px;margin:0;font-size:12px;padding:0 10px}}
 @keyframes swipeUpS{0%{transform:translateY(6px);opacity:0}30%{opacity:1}80%{transform:translateY(-8px);opacity:1}100%{transform:translateY(-10px);opacity:0}}
 @media (prefers-reduced-motion:reduce){#swipeHint .hand{animation:none}}
 /* the iPhone home-screen hint: a small pill that reads over the seabed */
 body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-radius:8px;background:rgba(6,18,26,.8);border:1px solid rgba(111,211,193,.45);color:#c6f1ea;font-size:12.5px;line-height:1.5;max-width:100%}
 /* phones in landscape: a tighter title so the heading, the buttons and the hint all fit */
 @media (max-height:520px){#title{padding-bottom:14px}#title .eyebrow{margin-bottom:4px}#title h1{font-size:40px}#title .tag{font-size:13px;line-height:1.5;margin:8px 0 12px}#title .foot{margin-top:8px}body #title .a2hs{margin-top:6px}}
-.btn.story{border-color:#6fd3c1;color:#bff3ea}
-.btn.story.primary{background:#3fbfa8;border-color:#3fbfa8;color:#04201a}
+.btn.story{border-color:rgba(111,211,193,.5)}
+.btn.story.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 /* story mode: big, friendly dialogue and an ending card with a short OX quiz */
 #storyBox{position:fixed;left:50%;bottom:max(22vh,150px);transform:translateX(-50%);width:min(640px,calc(100vw - 32px));z-index:15}
-#storyBox .sbox{cursor:pointer;background:rgba(6,18,26,.92);border:2px solid #6fd3c1;border-radius:16px;padding:16px 18px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+#storyBox .sbox{cursor:pointer;background:rgba(7,14,20,.9);border:1px solid rgba(111,211,193,.4);border-radius:10px;padding:16px 18px 14px;box-shadow:0 12px 32px rgba(0,0,0,.35);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 #storyBox .who{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-#storyBox .face{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:28px;background:#123a44 center/cover no-repeat;border:2px solid #6fd3c1}
-#storyBox .who b{font-size:16px;color:#bff3ea}
+#storyBox .face{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:28px;background:#123a44 center/cover no-repeat;border:1px solid rgba(111,211,193,.6)}
+#storyBox .who b{font-size:12px;letter-spacing:.08em;color:var(--teal);font-weight:700}
 #storyBox p{font-size:clamp(16px,2.2vw,20px);line-height:1.6;color:#f2f7fa;min-height:3.2em}
 #storyBox .sfoot{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
 #storyBox .dots{display:flex;gap:6px}#storyBox .dots i{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.25)}#storyBox .dots i.on{background:#6fd3c1}
@@ -322,7 +329,7 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
 #cine{position:fixed;inset:0;z-index:16;cursor:pointer}
 #cine .bar{position:absolute;left:0;right:0;height:11vh;background:#020507;animation:barIn .9s ease-out both}#cine .top{top:0;transform-origin:top}#cine .bot{bottom:0;transform-origin:bottom}
 #cine .ct{position:absolute;left:50%;bottom:max(16vh,calc(11vh + 36px));transform:translateX(-50%);text-align:center;color:#f2f7fa;text-shadow:0 2px 12px rgba(0,0,0,.7);animation:ctIn 1.6s .5s ease-out both;white-space:nowrap}
-#cine .ct b{display:block;font-size:clamp(28px,5vw,54px);font-weight:800;letter-spacing:-.02em}#cine .ct span{display:block;margin-top:8px;font-size:clamp(13px,1.8vw,18px);color:#bff3ea}
+#cine .ct b{display:block;font-size:clamp(28px,5vw,54px);font-weight:800;letter-spacing:-.02em}#cine .ct span{display:block;margin-top:10px;font-size:clamp(12px,1.5vw,15px);letter-spacing:.08em;color:rgba(232,237,241,.75)}
 #cine .skip{position:absolute;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(11vh + 10px);font:500 12px var(--font);color:rgba(232,237,241,.55);font-style:normal}
 #cine.out{animation:fadeOut .8s ease-in both}
 @keyframes barIn{from{transform:scaleY(0)}to{transform:scaleY(1)}}@keyframes ctIn{from{opacity:0;transform:translate(-50%,14px)}to{opacity:1;transform:translate(-50%,0)}}@keyframes fadeOut{to{opacity:0}}
@@ -331,7 +338,7 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
 #cine.hold{pointer-events:none}#cine.hold .ct,#cine.hold .skip{display:none}
 /* the quiz's O and X, either side of the screen, above the cinematic bars */
 #quizOX{position:fixed;inset:0;z-index:17;pointer-events:none}
-#quizOX button{position:absolute;top:38%;transform:translateY(-50%);width:clamp(96px,14vmin,150px);height:clamp(96px,14vmin,150px);border-radius:50%;border:3px solid;background:rgba(6,18,26,.82);color:var(--ink);font:800 clamp(44px,7vmin,72px)/1 var(--font);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;pointer-events:auto;box-shadow:0 8px 30px rgba(0,0,0,.4);animation:qIn .4s ease-out both}
+#quizOX button{position:absolute;top:38%;transform:translateY(-50%);width:clamp(96px,14vmin,150px);height:clamp(96px,14vmin,150px);border-radius:50%;border:1px solid;background:rgba(7,14,20,.86);color:var(--ink);font:800 clamp(44px,7vmin,72px)/1 var(--font);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;pointer-events:auto;box-shadow:0 8px 30px rgba(0,0,0,.4);animation:qIn .4s ease-out both}
 #quizOX button small{font-size:13px;font-weight:600;color:var(--mute)}
 #quizOX .qo{left:max(5vw,env(safe-area-inset-left,0px));border-color:#6fd3c1;color:#8ff0dc}#quizOX .qx{right:max(5vw,env(safe-area-inset-right,0px));border-color:#f08a7e;color:#ffb0a6;animation-delay:.08s}
 #quizOX button:disabled{opacity:.4}
@@ -346,11 +353,6 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
 #storyEnd .sstats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0 16px}
 #storyEnd .sstats div{background:rgba(255,255,255,.05);border-radius:10px;padding:10px 6px}#storyEnd .sstats b{display:block;font-size:22px;color:#6fd3c1}#storyEnd .sstats span{font-size:13px;color:var(--mute)}
 #storyEnd ul{text-align:left;margin:6px auto 16px;padding-left:20px;max-width:340px;font-size:15px;line-height:1.8}
-#storyEnd .q{font-size:clamp(17px,2.4vw,21px);line-height:1.6;margin:12px 0 18px}
-#storyEnd .ox{display:flex;gap:14px;justify-content:center;margin-bottom:12px}
-#storyEnd .ox button{width:110px;height:90px;font-size:44px;font-weight:800;border-radius:16px;border:2px solid var(--line2);background:rgba(255,255,255,.04);color:var(--ink);cursor:pointer}
-#storyEnd .ox button.ans-o{color:#6fd3c1}#storyEnd .ox button.ans-x{color:#f08a7e}
-#storyEnd .fb{font-size:16px;line-height:1.6;margin:8px 0 14px}#storyEnd .fb b{font-size:20px}
 #storyEnd .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 #storyEnd .row .btn{height:44px;font-size:15px}
 /* phones in landscape: one compact row, icon | line + dots | button, so the scene stays visible above it */
@@ -455,10 +457,10 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
     <button class="btn" id="bSetT">설정</button>
   </div>
   <p class="foot">진행 상황은 이 브라우저에 자동 저장됩니다.</p>
-  <p class="foot a2hs hidden" id="a2hs">📱 전체 화면으로 하려면: 사파리 공유 버튼 → 「홈 화면에 추가」 → 그 아이콘으로 열기</p>
+  <p class="foot a2hs hidden" id="a2hs">전체 화면으로 하려면: 사파리 공유 버튼 → 「홈 화면에 추가」 → 그 아이콘으로 열기</p>
 </div>
 <div id="safe" aria-hidden="true"></div>
-<div id="swipeHint" class="hidden" aria-live="polite"><div class="hand">☝️</div><b>화면을 위로 쓸어 올려 보세요</b><span>전체 화면으로 바뀌어요</span><button id="swipeSkip" class="btn">그냥 할래요</button></div>
+<div id="swipeHint" class="hidden" aria-live="polite"><div class="hand"><svg viewBox="0 0 24 24"><path d="M6 14l6-6 6 6"/><path d="M6 20l6-6 6 6"/></svg></div><b>화면을 위로 쓸어 올려 보세요</b><span>전체 화면으로 바뀌어요</span><button id="swipeSkip" class="btn">그냥 할래요</button></div>
 <div id="swipePad" aria-hidden="true"></div>
 
 <div id="dock" class="modal hidden"><div class="box">
@@ -501,13 +503,13 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
   </div>
 </div></div>
 
-<div id="pause" class="modal hidden"><div class="box narrow">
-  <h2 style="margin-bottom:16px">일시정지</h2>
-  <div style="display:flex;flex-direction:column;gap:8px">
+<div id="pause" class="modal hidden"><div class="box narrow pausebox">
+  <div class="mhead"><h2>일시정지</h2><p class="sub">진행 상황은 자동으로 저장됩니다.</p></div>
+  <div class="pauserow">
     <button class="btn primary" id="bResume">계속하기</button>
     <button class="btn" id="bHelpP">조작법</button>
     <button class="btn" id="bSetP">설정</button>
-    <button class="btn" id="bQuit">저장하고 타이틀로</button>
+    <button class="btn quiet" id="bQuit">타이틀로</button>
   </div>
 </div></div>
 
@@ -534,7 +536,7 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
     <span><kbd>상승</kbd><kbd>하강</kbd></span><span>누르고 있으면 위아래로 움직입니다.</span>
     <span><kbd>소나</kbd></span><span>주변 쓰레기를 찾고 상어를 쫓아냅니다.</span>
     <span><kbd>가속</kbd></span><span>누르고 있으면 빨라집니다. 에너지를 더 씁니다.</span>
-    <span><kbd>👁</kbd><kbd>지도</kbd><kbd>도감</kbd></span><span>오른쪽 위 버튼: 시점 전환 · 지도 · 해양 도감 · 전체 화면 · 일시정지</span>
+    <span><kbd>시점</kbd><kbd>지도</kbd><kbd>도감</kbd></span><span>오른쪽 위 버튼: 시점 전환 · 지도 · 해양 도감 · 전체 화면 · 일시정지</span>
   </div>
   <div class="keys kbkeys">
     <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>이동. 바라보는 방향으로 전진합니다.</span>

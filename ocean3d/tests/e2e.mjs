@@ -1,6 +1,7 @@
 // End-to-end checks for the built game (../ocean-cleanup-3d.html), run in headless Chromium with a
 // software GPU. `npm test` runs every suite; `npm test -- core story` runs the named ones.
-// Each check prints ok/FAIL; the process exits non-zero if any check failed or the page logged an error.
+// Each check prints ok/FAIL; the process exits non-zero if any check failed or the page logged an error
+// (a resource that would not load, such as the web font with no network, is not one).
 import { chromium, devices } from 'playwright';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -14,7 +15,7 @@ const check = (name, ok, info) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}
 async function open(browser, { query = '', settings = { quality: 0, master: 0, fp: 1 }, save = null, device = null, init = null } = {}) {
   const ctx = await browser.newContext(device ? { ...devices[device] } : { viewport: { width: 900, height: 560 } }); OPEN.push(ctx);
   const page = await ctx.newPage(); page.setDefaultTimeout(240000);
-  const errors = []; page.on('pageerror', (e) => errors.push(e.message)); page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); }); page.on('crash', () => errors.push('page crashed')); PAGES.push({ page, errors });
+  const errors = []; page.on('pageerror', (e) => errors.push(e.message)); page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()); }); page.on('crash', () => errors.push('page crashed')); PAGES.push({ page, errors });
   await page.addInitScript(([sk, s, vk, v]) => { if (s) localStorage.setItem(sk, JSON.stringify(s)); if (v) localStorage.setItem(vk, JSON.stringify(v)); }, [SET_KEY, settings, SAVE_KEY, save]);
   if (init) await page.addInitScript(init);
   await page.goto(GAME + query); await page.waitForFunction(() => window.__game, null, { timeout: 120000 });

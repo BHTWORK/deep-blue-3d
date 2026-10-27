@@ -1297,8 +1297,8 @@ $('swipeSkip').onclick = () => { IOS.skip = true; swipeCheck(); };
   $('a2hs').classList.toggle('hidden', !IOS.on);
   // every iPhone browser runs on Safari's engine, so none can go full screen; Safari can at least hide its toolbars on the spot,
   // the others (Chrome, Firefox, Edge for iPhone) only offer the home-screen route
-  $('a2hs').textContent = /CriOS|FxiOS|EdgiOS/.test(ua) ? '📱 위로 쓸어도 안 되면: 공유 버튼 → 「홈 화면에 추가」 → 그 아이콘으로 열기'
-    : '📱 위로 쓸어도 안 되면: 주소창 왼쪽 「가가」 → 「툴바 가리기」 · 앱처럼: 공유 → 「홈 화면에 추가」'; }
+  $('a2hs').textContent = /CriOS|FxiOS|EdgiOS/.test(ua) ? '위로 쓸어도 안 되면: 공유 버튼 → 「홈 화면에 추가」 → 그 아이콘으로 열기'
+    : '위로 쓸어도 안 되면: 주소창 왼쪽 「가가」 → 「툴바 가리기」 · 앱처럼: 공유 → 「홈 화면에 추가」'; }
 // on a phone or tablet, starting play (a tap, so the browser allows it) goes full screen
 function startGame(d) { AU.init(); if (IN.touch) goFull(); applySave(d); hide('title'); show('hud'); if (IN.touch) show('touch'); G.state = 'play'; swipeCheck(); G.tick = 0; SUB.root.visible = true; applyView(); update(1 / 60); updateCamera(1); if (!G.story) requestLock();
   const hint = $('hint'); hint.style.opacity = 1; hint.innerHTML = IN.touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>빔으로 수거·절단</span>' : '<span><kbd>WASD</kbd>이동</span><span><kbd>Space</kbd><kbd>C</kbd>상승·하강</span><span><kbd>클릭</kbd>빔</span><span><kbd>Q</kbd>소나</span><span><kbd>Shift</kbd>가속</span><span><kbd>V</kbd>시점</span><span><kbd>F</kbd>카메라</span><span><kbd>M</kbd>지도</span><span><kbd>Tab</kbd>도감</span>';
