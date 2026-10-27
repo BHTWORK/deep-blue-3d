@@ -334,6 +334,23 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
 #storyEnd .cert h2{color:#ffe3a1;margin-bottom:4px}#storyEnd .cert .lead{margin-bottom:8px}#storyEnd .cert small{color:#c9a85a;font-size:12px}
 #storyEnd .namein{width:min(260px,100%);height:36px;border-radius:8px;border:1px solid rgba(217,182,90,.5);background:rgba(0,0,0,.3);color:var(--ink);text-align:center;font:500 14px var(--font);outline:none}
 #storyEnd .namein:focus{border-color:#d9b65a}
+/* a held cinematic (the quiz): bars stay, no title, taps go through to the buttons beneath */
+#cine.hold{pointer-events:none}#cine.hold .ct,#cine.hold .skip{display:none}
+/* the quiz's O and X, either side of the screen, above the cinematic bars */
+#quizOX{position:fixed;inset:0;z-index:17;pointer-events:none}
+#quizOX button{position:absolute;top:38%;transform:translateY(-50%);width:clamp(96px,14vmin,150px);height:clamp(96px,14vmin,150px);border-radius:50%;border:3px solid;background:rgba(6,18,26,.82);color:var(--ink);font:800 clamp(44px,7vmin,72px)/1 var(--font);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;pointer-events:auto;box-shadow:0 8px 30px rgba(0,0,0,.4);animation:qIn .4s ease-out both}
+#quizOX button small{font-size:13px;font-weight:600;color:var(--mute)}
+#quizOX .qo{left:max(5vw,env(safe-area-inset-left,0px));border-color:#6fd3c1;color:#8ff0dc}#quizOX .qx{right:max(5vw,env(safe-area-inset-right,0px));border-color:#f08a7e;color:#ffb0a6;animation-delay:.08s}
+#quizOX button:disabled{opacity:.4}
+@keyframes qIn{from{opacity:0;transform:translateY(-50%) scale(.6)}to{opacity:1;transform:translateY(-50%) scale(1)}}
+#quizStamp{position:fixed;left:50%;top:34%;z-index:18;transform:translate(-50%,-50%) rotate(-8deg);padding:10px 26px;border:5px solid;border-radius:14px;font:900 clamp(34px,6vmin,64px) var(--font);letter-spacing:.04em;pointer-events:none;animation:stamp .5s cubic-bezier(.2,1.6,.4,1) both}
+#quizStamp.ok{color:#6fd3c1;border-color:#6fd3c1;text-shadow:0 0 18px rgba(111,211,193,.6)}#quizStamp.no{color:#f08a7e;border-color:#f08a7e}
+@keyframes stamp{from{opacity:0;transform:translate(-50%,-50%) rotate(-8deg) scale(2.2)}to{opacity:1;transform:translate(-50%,-50%) rotate(-8deg) scale(1)}}
+/* the certificate's stars, landing one after another */
+#storyEnd .stars{display:flex;justify-content:center;gap:10px;margin:2px 0 10px;font-size:34px;line-height:1}
+#storyEnd .stars i{font-style:normal;color:rgba(217,182,90,.25);opacity:0;animation:starIn .5s cubic-bezier(.2,1.6,.4,1) both}#storyEnd .stars i.on{color:#ffd45e;text-shadow:0 0 14px rgba(255,212,94,.7)}
+@keyframes starIn{from{opacity:0;transform:scale(2.4)}to{opacity:1;transform:scale(1)}}
+@media (max-height:520px){#quizOX button{top:50%}}
 #storyEnd .send{text-align:center}
 #storyEnd h2{font-size:24px;margin-bottom:6px}
 #storyEnd .lead{font-size:15px;color:var(--mute);margin-bottom:14px}
@@ -561,6 +578,8 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
 </div></div>
 
 <div id="cine" class="hidden"><div class="bar top"></div><div class="bar bot"></div><div class="ct"><b id="cineT"></b><span id="cineS"></span></div><i class="skip">탭하면 건너뛰기</i></div>
+<div id="quizOX" class="hidden" aria-label="정답 고르기"><button class="qo" data-a="1" aria-label="O, 맞아요">O<small>맞아요</small></button><button class="qx" data-a="0" aria-label="X, 아니에요">X<small>아니에요</small></button></div>
+<div id="quizStamp" class="hidden"></div>
 <div id="storyEnd" class="modal hidden"><div class="box narrow send">
   <div id="seBody"></div>
 </div></div>

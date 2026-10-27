@@ -98,7 +98,7 @@ const SUITES = {
     let goals = 0;
     for (let guard = 0; guard < 120; guard++) {
       const st = await E(() => ({ talk: window.__game.G.talk, state: window.__game.G.state })); if (st.state === 'menu') break;
-      if (st.talk) { await page.keyboard.press('Enter'); await page.waitForTimeout(30); continue; }
+      if (st.talk) { if (await E(() => !document.getElementById('quizOX').classList.contains('hidden'))) { await page.click('#quizOX .qo'); await page.waitForTimeout(60); } else { await page.keyboard.press('Enter'); await page.waitForTimeout(30); } continue; }
       await page.keyboard.down('KeyW'); await page.keyboard.down('KeyE');
       for (let chunk = 0; chunk < 40; chunk++) {
         const r = await E(() => { const g = window.__game; for (let n = 0; n < 150 && !g.G.talk && g.G.state === 'play'; n++) { const gd = g.G.guide; if (gd) { const dx = gd.p.x - g.P.pos.x, dy = gd.p.y - g.P.pos.y, dz = gd.p.z - g.P.pos.z; g.P.yaw = g.P.vyaw = Math.atan2(dx, dz); g.P.pitch = Math.max(-1.2, Math.min(1.2, Math.atan2(dy, Math.hypot(dx, dz)))); if (Math.hypot(dx, dy, dz) < 3) g.P.vel.multiplyScalar(0.7); } g.simulate(1 / 30); } return g.G.talk || g.G.state !== 'play'; });
@@ -107,13 +107,12 @@ const SUITES = {
       await page.keyboard.up('KeyW'); await page.keyboard.up('KeyE'); goals++;
     }
     const end = await E(() => { const g = window.__game; return { shown: !document.getElementById('storyEnd').classList.contains('hidden'), hold: g.P.cargo.length, secs: Math.round(g.SV().stats.time) }; });
-    check('story reaches the ending card after six goals', end.shown && goals === 6, { goals, secs: end.secs });
+    check('story reaches the ending card after six goals and the quiz', end.shown && goals === 6, { goals, secs: end.secs });
+    check('the quiz was asked in the scene and O,O,O scores 2/3: two stars, 바다 지킴이', await E(() => document.querySelectorAll('#storyEnd .stars i.on').length === 2 && document.getElementById('seName').textContent === '바다 지킴이'));
     check('the ending card is a certificate with the dolphin portrait set', await E(() => !!document.querySelector('#storyEnd .cert') && document.getElementById('stFace').style.backgroundImage.startsWith('url("data:image')));
     await page.fill('#seNameIn', '지민'); check('a name goes onto the certificate', await E(() => document.getElementById('seName').textContent === '지민 바다 지킴이'));
     check('the last goal brings the trash back to the ship', end.hold === 0);
     check('reef healed and fish back in the story', await E(() => window.__game.G.bleachH > 0.5 && window.__game.schools.filter((s) => s.site === 'bleach').every((s) => s.on)));
-    await page.click('#seQuiz'); for (let i = 0; i < 3; i++) { await page.click('#storyEnd .ox .ans-o'); await page.click('#seNext'); }
-    check('quiz scores 2/3 for O,O,O', await E(() => document.getElementById('seBody').innerText.includes('2문제')));
     await page.click('#seHome'); await page.waitForTimeout(300);
     check('back at the title', await E(() => window.__game.G.state === 'title'));
     check('main save untouched', await E((k) => { const d = JSON.parse(localStorage.getItem(k)); return d.money === 4321 && d.mission === 9 && d.stats.collected === 77; }, SAVE_KEY));

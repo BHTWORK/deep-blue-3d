@@ -633,6 +633,7 @@ const angDelta = (a, b) => ((((a - b + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
 // or Space skips. Input is off (talk) and the cockpit steps aside so the sub itself is in the shot.
 const CINE = { on: false, t: 0, dur: 0, c: new V3(), r: 18, h: 6, a0: 0, done: null };
 function cineStart(center, r, h, dur, title, sub, done) {
+  CINE.hold = !isFinite(dur); $('cine').classList.toggle('hold', CINE.hold);
   CINE.on = true; CINE.t = 0; CINE.dur = dur; CINE.c.copy(center); CINE.r = r; CINE.h = h; CINE.a0 = P.yaw + Math.PI * 0.75; CINE.done = done; G.cine = true;
   setTalk(true); hide('storyBox'); hide('hud'); $('cineT').textContent = title; $('cineS').textContent = sub; $('cine').classList.remove('hidden'); $('cine').classList.remove('out');
   applyView(); updateCamera(1);
@@ -642,9 +643,9 @@ function cineEnd() {
   const f = CINE.done; CINE.done = null; if (f) f();
 }
 function cineUpdate(dt) { if (!CINE.on) return; CINE.t += dt; if (CINE.t > CINE.dur - 0.8) $('cine').classList.add('out'); if (CINE.t >= CINE.dur) cineEnd(); }
-$('cine').addEventListener('click', () => cineEnd());
+$('cine').addEventListener('click', () => { if (!CINE.hold) cineEnd(); });
 function updateCamera(dt) {
-  if (CINE.on) { const u = CINE.t / CINE.dur, a = CINE.a0 + u * 1.9, r = CINE.r * (1.15 - 0.3 * u), h = CINE.h * (1.3 - 0.5 * u);
+  if (CINE.on) { const u = CINE.hold ? 0.6 : CINE.t / CINE.dur, a = CINE.a0 + (CINE.hold ? CINE.t * 0.12 + 1.2 : u * 1.9), r = CINE.r * (1.15 - 0.3 * u), h = CINE.h * (1.3 - 0.5 * u);
     tv2.set(CINE.c.x + Math.sin(a) * r, Math.max(CINE.c.y + h, heightAt(CINE.c.x + Math.sin(a) * r, CINE.c.z + Math.cos(a) * r) + 3), CINE.c.z + Math.cos(a) * r);
     camera.position.lerp(tv2, CINE.t < 0.05 ? 1 : 1 - Math.exp(-dt * 4)); tv3.copy(CINE.c); tv3.y += 1; camera.lookAt(tv3); return; }
   if (G.fp) { // cockpit view: eye just behind the front viewport
@@ -1182,15 +1183,15 @@ function buddySay() { const st = STORY.steps[SS.i]; if (BUDDY.party > 0 || SS.wa
 function storyUpdate(dt) { if (SS.wait > 0 && (SS.wait -= dt) <= 0) storyStep(SS.i + 1); }
 function storyStep(i) {
   SS.i = i; const st = STORY.steps[i];
-  if (!st) { const c = SITE.bleach.c; cineStart(tv1.set(c.x, heightAt(c.x, c.z) + 4, c.z), 34, 12, 8, '바다가 다시 웃어요', '산호가 빛깔을 되찾고 물고기들이 돌아왔어요', storyEnd); return; }
+  if (!st) { const c = SITE.bleach.c; cineStart(tv1.set(c.x, heightAt(c.x, c.z) + 4, c.z), 34, 12, 8, '바다가 다시 웃어요', '산호가 빛깔을 되찾고 물고기들이 돌아왔어요', storyQuizStart); return; }
   if (st.talk) { storyTalk(st.talk); return; }
   SS.base = ST().collected; if (st.goal === 'coral') SS.coralBase = storyCoral() + SS.coralBase;
   toast(`할 일: ${st.t}`, 'tip', st.d); G.tick = 0.29;
 }
 // dialogue on/off; the touch controls do nothing while it is open, so the page hides them (body.talking)
 function setTalk(on) { G.talk = on; document.body.classList.toggle('talking', on); }
-function storyTalk(lines) {
-  setTalk(true); SS.line = 0; IN.keys = {}; IN.lmb = false; IN.tBeam = IN.tBoost = IN.tUp = IN.tDown = false; unlockPointer();
+function storyTalk(lines, done) {
+  SS.lines = lines; SS.onDone = done || null; setTalk(true); SS.line = 0; IN.keys = {}; IN.lmb = false; IN.tBeam = IN.tBoost = IN.tUp = IN.tDown = false; unlockPointer();
   $('stDots').innerHTML = lines.map(() => '<i></i>').join(''); show('storyBox'); storyLine();
 }
 // the line types itself out at 28 ms a character (a soft click every fourth); a tap while it types shows it whole
@@ -1198,19 +1199,20 @@ const TW = { full: '', n: 0, acc: 0, on: false };
 function typeUpdate(dt) { if (!TW.on) return; TW.acc += dt; let k = 0; while (TW.acc >= 0.028 && TW.n < TW.full.length) { TW.acc -= 0.028; TW.n++; k++; } if (k) { $('stText').textContent = TW.full.slice(0, TW.n); if (TW.n % 4 < k) AU.tone(1800, 0.02, 'sine', 0.012); } if (TW.n >= TW.full.length) TW.on = false; }
 function typeDone() { if (!TW.on) return false; TW.on = false; TW.n = TW.full.length; $('stText').textContent = TW.full; return true; }
 function storyLine() {
-  const lines = STORY.steps[SS.i].talk, t = lines[SS.line];
+  const lines = SS.lines, t = lines[SS.line];
   TW.full = t === '@controls' ? (IN.touch ? STORY.controls.touch : STORY.controls.keys) : t; TW.n = 0; TW.acc = 0; TW.on = true; $('stText').textContent = '';
   $('stDots').querySelectorAll('i').forEach((d, k) => d.classList.toggle('on', k === SS.line));
-  $('stNext').textContent = SS.line < lines.length - 1 ? '다음 ▶' : STORY.steps[SS.i + 1] ? '좋아! ▶' : '끝내기 ▶'; AU.chirp(); SS.lineAt = performance.now();
+  $('stNext').textContent = SS.line < lines.length - 1 ? '다음 ▶' : SS.onDone ? '좋아! ▶' : STORY.steps[SS.i + 1] ? '좋아! ▶' : '끝내기 ▶'; $('stNext').classList.toggle('hidden', !!SS.noNext); AU.chirp(); SS.lineAt = performance.now();
 }
 function storyNext() {
-  if (!G.talk || CINE.on) return; if (typeDone()) return; const lines = STORY.steps[SS.i].talk;
+  if (!G.talk || (CINE.on && !CINE.hold) || SS.noNext) return; if (typeDone()) return; const lines = SS.lines;
   if (SS.line < lines.length - 1) { SS.line++; storyLine(); return; }
+  if (SS.onDone) { const f = SS.onDone; SS.onDone = null; hide('storyBox'); f(); return; }
   hide('storyBox'); setTalk(false); const nx = STORY.steps[SS.i + 1]; if (nx && nx.goal) requestLock(); // not before the ending card, which needs the cursor
   storyStep(SS.i + 1);
 }
 function startStory() {
-  AU.init(); hide('storyEnd'); G.story = true; SS.coralDone = false; SS.coralBase = 0; SS.wait = 0; SS.unloaded = 0;
+  AU.init(); hide('storyEnd'); hide('quizOX'); SS.noNext = false; SS.onDone = null; G.story = true; SS.coralDone = false; SS.coralBase = 0; SS.wait = 0; SS.unloaded = 0;
   startGame(null);
   // a comfortable sub for a short lesson: quicker, a longer beam and a roomy hold
   Object.assign(SV.up, { engine: 2, beam: 2, cargo: 3, light: 1 }); calcStats(); P.bat = S.bat; P.hull = S.hull;
@@ -1220,29 +1222,43 @@ function startStory() {
   buddyShow(); buddyPortrait();
   cineStart(P.pos, 15, 8, 7.5, '푸른이와 바다 구하기', '돌고래 푸른이의 안내로 바다를 되살리는 5분 모험', () => storyStep(0));
 }
-function storyEnd() {
-  G.state = 'menu'; setTalk(false); unlockPointer(); hide('storyBox'); AU.mission(); AU.whale(0.18);
-  const s = ST(), t = Math.round(s.time), kg = Math.round(s.kg * 10) / 10;
+// The quiz is the story's last scene: the camera keeps circling the healed reef (a held cinematic) while 푸른이 asks the
+// three questions from the dialogue box; O and X stand either side of the screen. A right answer gets a flip, a chirp, a burst
+// of bubbles and a stamp; a wrong one a kind correction. Then the certificate, with a star for each right answer.
+const QZ = { i: 0, score: 0 };
+function storyQuizStart() {
+  const c = SITE.bleach.c; cineStart(tv1.set(c.x, heightAt(c.x, c.z) + 4, c.z), 30, 10, Infinity, '', '', null); QZ.i = 0; QZ.score = 0;
+  storyTalk(['이제 거의 다 끝났어! 마지막으로 내가 내는 문제 세 개만 맞혀 줄래?', '맞으면 O, 아니면 X야. 같이 생각해 보자!'], () => storyQuizAsk());
+}
+function storyQuizAsk() {
+  const Q = STORY.quiz[QZ.i]; if (!Q) { cineEnd(); storyEnd(QZ.score); return; }
+  SS.noNext = true; storyTalk([`문제 ${QZ.i + 1}. ${Q.q}`]); $('quizOX').classList.remove('hidden'); $('quizOX').querySelectorAll('button').forEach((b) => { b.disabled = false; });
+}
+function storyQuizAnswer(a) {
+  const Q = STORY.quiz[QZ.i], ok = a === Q.a; $('quizOX').querySelectorAll('button').forEach((b) => { b.disabled = true; }); $('quizOX').classList.add('hidden'); SS.noNext = false;
+  if (ok) { QZ.score++; AU.mission(); AU.chirp(); BUDDY.party = 1.8; burst(BUDDY.pos, 40, 0.6, 1, 0.95, 5, 0.22); for (let k = 0; k < 18; k++) bubble(BUDDY.pos.x + rnd(-1.5, 1.5), BUDDY.pos.y + rnd(-1, 1), BUDDY.pos.z + rnd(-1.5, 1.5), 0, rnd(0.5, 1.5), 0, rnd(0.05, 0.12)); }
+  else AU.click();
+  const st = $('quizStamp'); st.textContent = ok ? '정답!' : '아쉬워요'; st.className = ok ? 'ok' : 'no'; st.classList.remove('hidden'); setTimeout(() => st.classList.add('hidden'), 1500);
+  const last = QZ.i + 1 >= STORY.quiz.length;
+  storyTalk([ok ? `딩동댕, 정답이야! ${Q.e}` : `아쉽지만 정답은 ${Q.a ? 'O' : 'X'}야. ${Q.e}`, last ? '고마워! 이제 네 인증서를 보여 줄게.' : '다음 문제!'], () => { QZ.i++; storyQuizAsk(); });
+}
+$('quizOX').querySelectorAll('button').forEach((b) => { b.onclick = () => storyQuizAnswer(b.dataset.a === '1'); });
+function storyEnd(score = 0) {
+  G.state = 'menu'; setTalk(false); unlockPointer(); hide('storyBox'); hide('quizOX'); AU.mission(); AU.whale(0.18);
+  const s = ST(), t = Math.round(s.time), kg = Math.round(s.kg * 10) / 10, n = STORY.quiz.length;
+  const rank = score >= n ? '바다 박사' : score >= n - 1 ? '바다 지킴이' : '바다 친구';
   const d = new Date(), date = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
-  $('seBody').innerHTML = `<div class="cert"><div class="ribbon">🐬 바다 지킴이 인증서</div>
-    <h2><span id="seName">바다 지킴이</span></h2><p class="lead">푸른이와 함께 바다를 다시 웃게 만들었어요.<br><small>${date}</small></p>
+  $('seBody').innerHTML = `<div class="cert"><div class="ribbon">🐬 ${rank} 인증서</div>
+    <h2><span id="seName">${rank}</span></h2><p class="lead">푸른이와 함께 바다를 다시 웃게 만들었어요.<br><small>${date} · 퀴즈 ${score}/${n}</small></p>
+    <div class="stars">${Array.from({ length: n }, (_, k) => `<i class="${k < score ? 'on' : ''}" style="animation-delay:${0.6 + k * 0.45}s">★</i>`).join('')}</div>
     <input id="seNameIn" class="namein" maxlength="12" placeholder="이름을 적으면 인증서에 들어가요" autocomplete="off"></div>
     <div class="sstats"><div><b>${s.collected}개</b><span>주운 쓰레기 (${kg}kg)</span></div><div><b>${s.rescues}마리</b><span>구한 바다거북</span></div><div><b>1곳</b><span>되살린 산호 지대</span></div><div><b>${Math.floor(t / 60)}분 ${t % 60}초</b><span>걸린 시간</span></div></div>
     <h3>우리도 바다를 지킬 수 있어요</h3><ul>${STORY.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>
-    <div class="row"><button class="btn primary" id="seQuiz">OX 퀴즈 풀기</button><button class="btn" id="seHome">처음으로</button></div>`;
-  show('storyEnd'); $('seQuiz').onclick = () => storyQuiz(0, 0); $('seHome').onclick = () => { hide('storyEnd'); showTitle(); };
-  $('seNameIn').oninput = (e) => { const v = e.target.value.trim(); $('seName').textContent = v ? `${v} 바다 지킴이` : '바다 지킴이'; };
-}
-function storyQuiz(i, score) {
-  const Q = STORY.quiz[i]; AU.click();
-  if (!Q) { $('seBody').innerHTML = `<h2>퀴즈 끝!</h2><p class="q">${STORY.quiz.length}문제 중 <b>${score}문제</b>를 맞혔어요.</p><p class="lead">${score === STORY.quiz.length ? '바다 박사님이네요!' : '오늘 배운 것을 친구들에게도 알려 주세요.'}</p>
-      <div class="row"><button class="btn primary" id="seAgain">다시 하기</button><button class="btn" id="seHome">처음으로</button></div>`;
-    $('seAgain').onclick = () => startStory(); $('seHome').onclick = () => { hide('storyEnd'); showTitle(); }; return; }
-  $('seBody').innerHTML = `<h2>OX 퀴즈 ${i + 1}/${STORY.quiz.length}</h2><p class="q">${esc(Q.q)}</p><div class="ox"><button class="ans-o" data-a="1" aria-label="O, 맞아요">O</button><button class="ans-x" data-a="0" aria-label="X, 아니에요">X</button></div><div id="seFb"></div>`;
-  $('seBody').querySelectorAll('.ox button').forEach((b) => { b.onclick = () => { const ok = (b.dataset.a === '1') === Q.a; $('seBody').querySelectorAll('.ox button').forEach((x) => { x.disabled = true; x.style.opacity = x === b ? 1 : 0.35; });
-    if (ok) AU.mission(); else AU.click();
-    $('seFb').innerHTML = `<p class="fb"><b>${ok ? '정답이에요!' : '아쉬워요!'}</b><br>정답은 ${Q.a ? 'O' : 'X'}. ${esc(Q.e)}</p><div class="row"><button class="btn primary" id="seNext">${i + 1 < STORY.quiz.length ? '다음 문제' : '결과 보기'}</button></div>`;
-    $('seNext').onclick = () => storyQuiz(i + 1, score + (ok ? 1 : 0)); }; });
+    <div class="row"><button class="btn primary" id="seHome">처음으로</button><button class="btn" id="seAgain">다시 하기</button></div>`;
+  show('storyEnd'); $('seAgain').onclick = () => startStory(); $('seHome').onclick = () => { hide('storyEnd'); showTitle(); };
+  $('seNameIn').oninput = (e) => { const v = e.target.value.trim(); $('seName').textContent = v ? `${v} ${rank}` : rank; };
+  // a chime as each star lands
+  for (let k = 0; k < score; k++) setTimeout(() => AU.tone(880 + k * 220, 0.25, 'sine', 0.08), 600 + k * 450);
 }
 $('bStory').onclick = () => startStory();
 const STORY_LINK = /[?&]story\b/.test(location.search); // class link: ocean-cleanup-3d.html?story (or story.html)
@@ -1334,7 +1350,7 @@ const BLOCK = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight
 addEventListener('keydown', (e) => {
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
   if (BLOCK.has(e.code)) e.preventDefault(); AU.init();
-  if (G.talk && !e.repeat && (e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter')) { if (CINE.on) cineEnd(); else storyNext(); return; }
+  if (G.talk && !e.repeat && (e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter')) { if (CINE.on && !CINE.hold) cineEnd(); else storyNext(); return; }
   IN.keys[e.code] = true; if (e.repeat) return;
   if (G.state === 'play') { if (e.code === 'KeyQ' || e.code === 'KeyR') doSonar(); else if (e.code === 'KeyM') openMap(); else if (e.code === 'Tab' || e.code === 'KeyB') openCodex(); else if (e.code === 'Escape' || e.code === 'KeyP') togglePause(); else if (e.code === 'KeyV') toggleView(); else if (e.code === 'KeyF') cycleCam(); }
   else if (G.state === 'menu') { if (e.code === 'KeyM' && !$('mapm').classList.contains('hidden')) openMap(); else if ((e.code === 'Tab' || e.code === 'KeyB') && !$('codex').classList.contains('hidden')) openCodex(); else if (e.code === 'Escape') { if (!$('mapm').classList.contains('hidden')) closeModal('mapm'); else if (!$('codex').classList.contains('hidden')) closeModal('codex'); else if (!$('win').classList.contains('hidden')) { hide('win'); G.state = 'play'; } } }
