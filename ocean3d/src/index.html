@@ -312,12 +312,28 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
 #storyBox{position:fixed;left:50%;bottom:max(22vh,150px);transform:translateX(-50%);width:min(640px,calc(100vw - 32px));z-index:15}
 #storyBox .sbox{cursor:pointer;background:rgba(6,18,26,.92);border:2px solid #6fd3c1;border-radius:16px;padding:16px 18px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
 #storyBox .who{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-#storyBox .face{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:28px;background:#123a44;border:2px solid #6fd3c1}
+#storyBox .face{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:28px;background:#123a44 center/cover no-repeat;border:2px solid #6fd3c1}
 #storyBox .who b{font-size:16px;color:#bff3ea}
 #storyBox p{font-size:clamp(16px,2.2vw,20px);line-height:1.6;color:#f2f7fa;min-height:3.2em}
 #storyBox .sfoot{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
 #storyBox .dots{display:flex;gap:6px}#storyBox .dots i{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.25)}#storyBox .dots i.on{background:#6fd3c1}
 #storyBox .btn{height:44px;font-size:16px;padding:0 22px}
+/* story cinematic: letterbox bars slide in, the title fades up, everything fades out at the end */
+#cine{position:fixed;inset:0;z-index:16;cursor:pointer}
+#cine .bar{position:absolute;left:0;right:0;height:11vh;background:#020507;animation:barIn .9s ease-out both}#cine .top{top:0;transform-origin:top}#cine .bot{bottom:0;transform-origin:bottom}
+#cine .ct{position:absolute;left:50%;bottom:max(16vh,calc(11vh + 36px));transform:translateX(-50%);text-align:center;color:#f2f7fa;text-shadow:0 2px 12px rgba(0,0,0,.7);animation:ctIn 1.6s .5s ease-out both;white-space:nowrap}
+#cine .ct b{display:block;font-size:clamp(28px,5vw,54px);font-weight:800;letter-spacing:-.02em}#cine .ct span{display:block;margin-top:8px;font-size:clamp(13px,1.8vw,18px);color:#bff3ea}
+#cine .skip{position:absolute;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(11vh + 10px);font:500 12px var(--font);color:rgba(232,237,241,.55);font-style:normal}
+#cine.out{animation:fadeOut .8s ease-in both}
+@keyframes barIn{from{transform:scaleY(0)}to{transform:scaleY(1)}}@keyframes ctIn{from{opacity:0;transform:translate(-50%,14px)}to{opacity:1;transform:translate(-50%,0)}}@keyframes fadeOut{to{opacity:0}}
+@media (max-height:520px){#cine .ct{bottom:calc(11vh + 14px)}#cine .ct b{font-size:26px}}
+/* the certificate */
+#storyEnd .cert{position:relative;padding:14px 12px 10px;border:2px solid #d9b65a;border-radius:12px;background:linear-gradient(180deg,rgba(217,182,90,.12),rgba(217,182,90,.03));margin-bottom:12px}
+#storyEnd .cert::before{content:'';position:absolute;inset:5px;border:1px solid rgba(217,182,90,.45);border-radius:8px;pointer-events:none}
+#storyEnd .ribbon{display:inline-block;padding:4px 14px;border-radius:999px;background:#d9b65a;color:#1a1408;font-weight:800;font-size:13px;margin-bottom:10px}
+#storyEnd .cert h2{color:#ffe3a1;margin-bottom:4px}#storyEnd .cert .lead{margin-bottom:8px}#storyEnd .cert small{color:#c9a85a;font-size:12px}
+#storyEnd .namein{width:min(260px,100%);height:36px;border-radius:8px;border:1px solid rgba(217,182,90,.5);background:rgba(0,0,0,.3);color:var(--ink);text-align:center;font:500 14px var(--font);outline:none}
+#storyEnd .namein:focus{border-color:#d9b65a}
 #storyEnd .send{text-align:center}
 #storyEnd h2{font-size:24px;margin-bottom:6px}
 #storyEnd .lead{font-size:15px;color:var(--mute);margin-bottom:14px}
@@ -544,6 +560,7 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
   <div class="sfoot"><span class="dots" id="stDots"></span><button class="btn primary" id="stNext">다음 ▶</button></div>
 </div></div>
 
+<div id="cine" class="hidden"><div class="bar top"></div><div class="bar bot"></div><div class="ct"><b id="cineT"></b><span id="cineS"></span></div><i class="skip">탭하면 건너뛰기</i></div>
 <div id="storyEnd" class="modal hidden"><div class="box narrow send">
   <div id="seBody"></div>
 </div></div>

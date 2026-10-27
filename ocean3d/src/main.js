@@ -629,7 +629,24 @@ function updatePlayer(dt) {
 // the green ring and the light column under it, from the surface down to the bottom of the beam
 function inDockZone(m) { return Math.hypot(P.pos.x - DOCK.x, P.pos.z - DOCK.z) < 6 + m && P.pos.y < 1.5 + m && P.pos.y > DOCK.y - 30 - m; }
 const angDelta = (a, b) => ((((a - b + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+// story cinematics: the camera circles a point of interest while a title fades in and out over letterbox bars; a tap, Enter
+// or Space skips. Input is off (talk) and the cockpit steps aside so the sub itself is in the shot.
+const CINE = { on: false, t: 0, dur: 0, c: new V3(), r: 18, h: 6, a0: 0, done: null };
+function cineStart(center, r, h, dur, title, sub, done) {
+  CINE.on = true; CINE.t = 0; CINE.dur = dur; CINE.c.copy(center); CINE.r = r; CINE.h = h; CINE.a0 = P.yaw + Math.PI * 0.75; CINE.done = done; G.cine = true;
+  setTalk(true); hide('storyBox'); hide('hud'); $('cineT').textContent = title; $('cineS').textContent = sub; $('cine').classList.remove('hidden'); $('cine').classList.remove('out');
+  applyView(); updateCamera(1);
+}
+function cineEnd() {
+  if (!CINE.on) return; CINE.on = false; G.cine = false; setTalk(false); show('hud'); $('cine').classList.add('hidden'); applyView(); updateCamera(1);
+  const f = CINE.done; CINE.done = null; if (f) f();
+}
+function cineUpdate(dt) { if (!CINE.on) return; CINE.t += dt; if (CINE.t > CINE.dur - 0.8) $('cine').classList.add('out'); if (CINE.t >= CINE.dur) cineEnd(); }
+$('cine').addEventListener('click', () => cineEnd());
 function updateCamera(dt) {
+  if (CINE.on) { const u = CINE.t / CINE.dur, a = CINE.a0 + u * 1.9, r = CINE.r * (1.15 - 0.3 * u), h = CINE.h * (1.3 - 0.5 * u);
+    tv2.set(CINE.c.x + Math.sin(a) * r, Math.max(CINE.c.y + h, heightAt(CINE.c.x + Math.sin(a) * r, CINE.c.z + Math.cos(a) * r) + 3), CINE.c.z + Math.cos(a) * r);
+    camera.position.lerp(tv2, CINE.t < 0.05 ? 1 : 1 - Math.exp(-dt * 4)); tv3.copy(CINE.c); tv3.y += 1; camera.lookAt(tv3); return; }
   if (G.fp) { // cockpit view: eye just behind the front viewport
     SUB.root.updateMatrixWorld(); camera.position.set(0, 0.12, 1.0).applyMatrix4(SUB.root.matrixWorld);
     const sp = clamp(P.vel.length() / S.speed, 0, 1.6); camera.position.y += Math.sin(G.t * 1.1) * 0.05 + Math.sin(G.t * 7.5) * 0.03 * sp;
@@ -955,7 +972,7 @@ function drawOverlayIn(c, W, H) {
 // =====================================================================
 // VIEW MODE (first / third person) + COCKPIT
 // =====================================================================
-const inCockpit = () => G.fp && G.state !== 'title';
+const inCockpit = () => G.fp && G.state !== 'title' && !G.cine;
 const CK = new CockpitUI($('ckdyn'));
 function redrawCockpit() { if (!inCockpit() || !G.ck) return; drawCockpit($('cockpit'), G.ck, Math.min(devicePixelRatio || 1, 2), G.fpTier < 0 ? 0 : G.fpTier); }
 // HUD lives inside the visible viewport: the canopy glass above the instrument row in first person, the screen in third person
@@ -1071,7 +1088,7 @@ function updateHUD() {
   H.hLimit.textContent = `한계 ${S.depth}m`;
   H.hClean.textContent = cleanPct().toFixed(1) + '%';
   const m = MISSIONS[SV.mission], sg = G.story && STORY.steps[SS.i];
-  H.mTag.textContent = G.story ? '이야기' : '임무';
+  H.mTag.textContent = G.story ? `이야기 ${Math.min(STORY.goals, STORY.steps.slice(0, SS.i + 1).filter((x) => x.goal).length + (STORY.steps[SS.i] && STORY.steps[SS.i].goal ? 0 : 1))}/${STORY.goals}` : '임무';
   if (G.story) { const has = sg && sg.goal; H.mName.textContent = has ? sg.t : STORY.guide.n; H.mDesc.textContent = has ? sg.d : '푸른이의 이야기를 들어 보세요.'; const [c, g] = has ? storyProg(sg) : [0, 1]; H.mProgRow.style.display = has ? '' : 'none'; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = has ? `${c}/${g}` : ''; }
   else if (m) { H.mName.textContent = m.t; H.mDesc.textContent = ctlText(m.d); const [c, g] = mProg(m); H.mProgRow.style.display = ''; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = m.poi || m.sp ? (c ? '완료' : '탐색 중') : `${fmt(c)}/${fmt(g)}`; }
   else { H.mName.textContent = '자유 탐험'; H.mDesc.textContent = '남은 쓰레기를 찾아 바다를 끝까지 되살려 보세요.'; H.mProg.textContent = ''; H.mProgRow.style.display = 'none'; }
@@ -1130,6 +1147,14 @@ function storyTick() {
 // 푸른이 swims with the sub: in front of the glass while talking, ahead toward the goal while the child
 // plays (circling the target once it is close), and a loop of joy after each goal.
 const BUDDY = { model: null, pos: new V3(), vel: new V3(), q: new THREE.Quaternion(), t: 0, ph: 0, party: 0 }, BV = [new V3(), new V3(), new V3(), new V3(), new V3(), new V3()], ZAX = new V3(0, 0, 1);
+// the dialogue box shows the buddy itself: the model with its collar, rendered once into the face circle
+function buddyPortrait() {
+  if (BUDDY.face) return; thumbFor('dolphin'); const b = BUILD.dolphin(); b.root.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.set('#9fd0ff'); } });
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.04, 6, 18), new THREE.MeshStandardMaterial({ color: '#3fbfa8', emissive: 0x0d3a33 })); collar.position.z = 0.55; collar.scale.x = 0.88; b.root.add(collar);
+  b.root.rotation.y = -Math.PI / 2 + 0.55; b.root.rotation.z = -0.15; TR.scene.add(b.root); b.root.updateMatrixWorld(true); const ctr = b.root.localToWorld(new V3(0, 0.05, 0.75));
+  TR.cam.position.copy(ctr).add(new V3(0.9, 0.45, 1.7)); TR.cam.lookAt(ctr); TR.r.setClearColor(0x0d2e3a, 1); TR.r.render(TR.scene, TR.cam); TR.scene.remove(b.root); TR.r.setClearColor(0x000000, 0);
+  BUDDY.face = TR.r.domElement.toDataURL(); $('stFace').style.backgroundImage = `url(${BUDDY.face})`; $('stFace').textContent = '';
+}
 function buddyShow() {
   if (!BUDDY.model) { const b = BUILD.dolphin(); b.root.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.set('#9fd0ff'); } });
     const collar = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.04, 6, 18), new THREE.MeshStandardMaterial({ color: '#3fbfa8', emissive: 0x0d3a33, roughness: 0.5 })); collar.position.z = 0.55; collar.scale.x = 0.88; b.root.add(collar); scene.add(b.root); BUDDY.model = b; }
@@ -1157,7 +1182,7 @@ function buddySay() { const st = STORY.steps[SS.i]; if (BUDDY.party > 0 || SS.wa
 function storyUpdate(dt) { if (SS.wait > 0 && (SS.wait -= dt) <= 0) storyStep(SS.i + 1); }
 function storyStep(i) {
   SS.i = i; const st = STORY.steps[i];
-  if (!st) { storyEnd(); return; }
+  if (!st) { const c = SITE.bleach.c; cineStart(tv1.set(c.x, heightAt(c.x, c.z) + 4, c.z), 34, 12, 8, '바다가 다시 웃어요', '산호가 빛깔을 되찾고 물고기들이 돌아왔어요', storyEnd); return; }
   if (st.talk) { storyTalk(st.talk); return; }
   SS.base = ST().collected; if (st.goal === 'coral') SS.coralBase = storyCoral() + SS.coralBase;
   toast(`할 일: ${st.t}`, 'tip', st.d); G.tick = 0.29;
@@ -1168,14 +1193,18 @@ function storyTalk(lines) {
   setTalk(true); SS.line = 0; IN.keys = {}; IN.lmb = false; IN.tBeam = IN.tBoost = IN.tUp = IN.tDown = false; unlockPointer();
   $('stDots').innerHTML = lines.map(() => '<i></i>').join(''); show('storyBox'); storyLine();
 }
+// the line types itself out at 28 ms a character (a soft click every fourth); a tap while it types shows it whole
+const TW = { full: '', n: 0, acc: 0, on: false };
+function typeUpdate(dt) { if (!TW.on) return; TW.acc += dt; let k = 0; while (TW.acc >= 0.028 && TW.n < TW.full.length) { TW.acc -= 0.028; TW.n++; k++; } if (k) { $('stText').textContent = TW.full.slice(0, TW.n); if (TW.n % 4 < k) AU.tone(1800, 0.02, 'sine', 0.012); } if (TW.n >= TW.full.length) TW.on = false; }
+function typeDone() { if (!TW.on) return false; TW.on = false; TW.n = TW.full.length; $('stText').textContent = TW.full; return true; }
 function storyLine() {
   const lines = STORY.steps[SS.i].talk, t = lines[SS.line];
-  $('stText').textContent = t === '@controls' ? (IN.touch ? STORY.controls.touch : STORY.controls.keys) : t;
+  TW.full = t === '@controls' ? (IN.touch ? STORY.controls.touch : STORY.controls.keys) : t; TW.n = 0; TW.acc = 0; TW.on = true; $('stText').textContent = '';
   $('stDots').querySelectorAll('i').forEach((d, k) => d.classList.toggle('on', k === SS.line));
   $('stNext').textContent = SS.line < lines.length - 1 ? '다음 ▶' : STORY.steps[SS.i + 1] ? '좋아! ▶' : '끝내기 ▶'; AU.chirp(); SS.lineAt = performance.now();
 }
 function storyNext() {
-  if (!G.talk) return; const lines = STORY.steps[SS.i].talk;
+  if (!G.talk || CINE.on) return; if (typeDone()) return; const lines = STORY.steps[SS.i].talk;
   if (SS.line < lines.length - 1) { SS.line++; storyLine(); return; }
   hide('storyBox'); setTalk(false); const nx = STORY.steps[SS.i + 1]; if (nx && nx.goal) requestLock(); // not before the ending card, which needs the cursor
   storyStep(SS.i + 1);
@@ -1188,16 +1217,21 @@ function startStory() {
   for (const k of ['site_bleach', 'valve', 'net', 'depth', 'drum']) SV.tips[k] = 1; // the guide explains these instead
   SS.turtle = rescues.filter((r) => r.sp === 'turtle').sort((a, b) => a.pos.distanceToSquared(DOCK) - b.pos.distanceToSquared(DOCK))[0];
   document.querySelectorAll('#toasts .toast').forEach((t) => t.remove());
-  buddyShow(); storyStep(0);
+  buddyShow(); buddyPortrait();
+  cineStart(P.pos, 15, 8, 7.5, '푸른이와 바다 구하기', '돌고래 푸른이의 안내로 바다를 되살리는 5분 모험', () => storyStep(0));
 }
 function storyEnd() {
   G.state = 'menu'; setTalk(false); unlockPointer(); hide('storyBox'); AU.mission(); AU.whale(0.18);
   const s = ST(), t = Math.round(s.time), kg = Math.round(s.kg * 10) / 10;
-  $('seBody').innerHTML = `<h2>바다를 지켜 줘서 고마워요!</h2><p class="lead">푸른이와 함께 바다를 다시 웃게 만들었어요.</p>
+  const d = new Date(), date = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
+  $('seBody').innerHTML = `<div class="cert"><div class="ribbon">🐬 바다 지킴이 인증서</div>
+    <h2><span id="seName">바다 지킴이</span></h2><p class="lead">푸른이와 함께 바다를 다시 웃게 만들었어요.<br><small>${date}</small></p>
+    <input id="seNameIn" class="namein" maxlength="12" placeholder="이름을 적으면 인증서에 들어가요" autocomplete="off"></div>
     <div class="sstats"><div><b>${s.collected}개</b><span>주운 쓰레기 (${kg}kg)</span></div><div><b>${s.rescues}마리</b><span>구한 바다거북</span></div><div><b>1곳</b><span>되살린 산호 지대</span></div><div><b>${Math.floor(t / 60)}분 ${t % 60}초</b><span>걸린 시간</span></div></div>
     <h3>우리도 바다를 지킬 수 있어요</h3><ul>${STORY.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>
     <div class="row"><button class="btn primary" id="seQuiz">OX 퀴즈 풀기</button><button class="btn" id="seHome">처음으로</button></div>`;
   show('storyEnd'); $('seQuiz').onclick = () => storyQuiz(0, 0); $('seHome').onclick = () => { hide('storyEnd'); showTitle(); };
+  $('seNameIn').oninput = (e) => { const v = e.target.value.trim(); $('seName').textContent = v ? `${v} 바다 지킴이` : '바다 지킴이'; };
 }
 function storyQuiz(i, score) {
   const Q = STORY.quiz[i]; AU.click();
@@ -1300,7 +1334,7 @@ const BLOCK = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight
 addEventListener('keydown', (e) => {
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
   if (BLOCK.has(e.code)) e.preventDefault(); AU.init();
-  if (G.talk && !e.repeat && (e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter')) { storyNext(); return; }
+  if (G.talk && !e.repeat && (e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter')) { if (CINE.on) cineEnd(); else storyNext(); return; }
   IN.keys[e.code] = true; if (e.repeat) return;
   if (G.state === 'play') { if (e.code === 'KeyQ' || e.code === 'KeyR') doSonar(); else if (e.code === 'KeyM') openMap(); else if (e.code === 'Tab' || e.code === 'KeyB') openCodex(); else if (e.code === 'Escape' || e.code === 'KeyP') togglePause(); else if (e.code === 'KeyV') toggleView(); else if (e.code === 'KeyF') cycleCam(); }
   else if (G.state === 'menu') { if (e.code === 'KeyM' && !$('mapm').classList.contains('hidden')) openMap(); else if ((e.code === 'Tab' || e.code === 'KeyB') && !$('codex').classList.contains('hidden')) openCodex(); else if (e.code === 'Escape') { if (!$('mapm').classList.contains('hidden')) closeModal('mapm'); else if (!$('codex').classList.contains('hidden')) closeModal('codex'); else if (!$('win').classList.contains('hidden')) { hide('win'); G.state = 'play'; } } }
@@ -1373,7 +1407,7 @@ function updateTouchHints(dt) {
 }
 function update(dt) {
   G.dayT = (G.dayT + dt / 600) % 1; G.alert = ''; G.alertPri = 0; ST().time += dt;
-  updatePlayer(dt); updateItems(dt); updateSuck(dt); updateTouchHints(dt); updateSites(dt); updateValve(dt); if (G.story) { storyUpdate(dt); updateBuddy(dt); } updateBleach(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
+  updatePlayer(dt); updateItems(dt); updateSuck(dt); updateTouchHints(dt); updateSites(dt); updateValve(dt); if (G.story) { cineUpdate(dt); typeUpdate(dt); storyUpdate(dt); updateBuddy(dt); } updateBleach(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
   for (const c of creatures) updateCreature(c, dt); for (const s of schools) updateSchool(s, dt);
   updateCamera(dt);
   G.shake *= Math.pow(0.02, dt); if (G.shake < 0.01) G.shake = 0; G.flash = Math.max(0, G.flash - dt * 1.4);
@@ -1436,6 +1470,6 @@ genItems(); genRescues(); genSiteItems(); buildItemMeshes(); genCreatures(); bui
 G.poll = items.length;
 loadSettings(); resize(); showTitle();
 function simulate(sec) { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) { const dt = 1 / 30; G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); FXA.update(dt); FXN.update(dt); } writeFish(); }
-window.__game = { AU, IN, SUB, composer, SITES, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
+window.__game = { AU, IN, SUB, composer, SITES, storyStep, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
 $('loading').classList.add('hidden');
 requestAnimationFrame((t) => { last = t; frame(t); });

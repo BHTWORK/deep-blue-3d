@@ -93,8 +93,10 @@ const SUITES = {
     const { ctx, page, errors, E } = await open(browser, { query: '?story', save });
     check('class link highlights story mode', await E(() => document.getElementById('bStory').classList.contains('primary')));
     await page.click('#bStory'); await page.waitForTimeout(400);
+    check('story opens on a cinematic', await E(() => window.__game.G.cine && !document.getElementById('cine').classList.contains('hidden')));
+    // Enter skips the cinematic, then shows a typing line whole, then goes on: three presses a line at most
     let goals = 0;
-    for (let guard = 0; guard < 40; guard++) {
+    for (let guard = 0; guard < 120; guard++) {
       const st = await E(() => ({ talk: window.__game.G.talk, state: window.__game.G.state })); if (st.state === 'menu') break;
       if (st.talk) { await page.keyboard.press('Enter'); await page.waitForTimeout(30); continue; }
       await page.keyboard.down('KeyW'); await page.keyboard.down('KeyE');
@@ -106,6 +108,8 @@ const SUITES = {
     }
     const end = await E(() => { const g = window.__game; return { shown: !document.getElementById('storyEnd').classList.contains('hidden'), hold: g.P.cargo.length, secs: Math.round(g.SV().stats.time) }; });
     check('story reaches the ending card after six goals', end.shown && goals === 6, { goals, secs: end.secs });
+    check('the ending card is a certificate with the dolphin portrait set', await E(() => !!document.querySelector('#storyEnd .cert') && document.getElementById('stFace').style.backgroundImage.startsWith('url("data:image')));
+    await page.fill('#seNameIn', '지민'); check('a name goes onto the certificate', await E(() => document.getElementById('seName').textContent === '지민 바다 지킴이'));
     check('the last goal brings the trash back to the ship', end.hold === 0);
     check('reef healed and fish back in the story', await E(() => window.__game.G.bleachH > 0.5 && window.__game.schools.filter((s) => s.site === 'bleach').every((s) => s.on)));
     await page.click('#seQuiz'); for (let i = 0; i < 3; i++) { await page.click('#storyEnd .ox .ans-o'); await page.click('#seNext'); }
@@ -204,9 +208,10 @@ const SUITES = {
     const s0 = await sw(); await ph.page.setViewportSize({ width: 750, height: 390 }); const s1 = await until(false);
     await ph.page.setViewportSize({ width: 750, height: 342 }); const s2 = await until(true);
     check('iPhone: swipe-up hint while the bars show, gone at full height', s0.hint && s0.scroll > 100 && !s1.hint && s2.hint, { s0, s1, s2 });
-    await ph.page.tap('#bStory'); await ph.page.waitForTimeout(500);
-    const t0 = await ph.E(() => { const b = document.getElementById('storyBox').getBoundingClientRect(); return { h: +(b.height / innerHeight).toFixed(2), text: document.getElementById('stText').textContent, touch: getComputedStyle(document.getElementById('touch')).visibility }; });
-    await ph.page.tap('#stText'); const t1 = await ph.E(() => document.getElementById('stText').textContent);
+    await ph.page.tap('#bStory'); await ph.page.waitForTimeout(500); await ph.page.tap('#cine'); await ph.page.waitForTimeout(400);
+    // the line is typing: the first tap shows it whole, the next goes on to a different line
+    await ph.page.tap('#stText'); const t0 = await ph.E(() => { const b = document.getElementById('storyBox').getBoundingClientRect(); return { h: +(b.height / innerHeight).toFixed(2), text: document.getElementById('stText').textContent, touch: getComputedStyle(document.getElementById('touch')).visibility }; });
+    await ph.page.waitForTimeout(350); await ph.page.tap('#stText'); await ph.page.waitForTimeout(100); await ph.E(() => { window.__game.simulate(2); }); const t1 = await ph.E(() => document.getElementById('stText').textContent);
     check('phone story: compact box, tap to go on, controls hidden while talking', t0.h < 0.25 && t1 !== t0.text && t0.touch === 'hidden', { h: t0.h, touch: t0.touch });
     check('phone: no page errors', ph.errors.length === 0, ph.errors.slice(0, 3)); await ph.ctx.close();
   },
