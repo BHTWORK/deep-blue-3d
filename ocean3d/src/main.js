@@ -1224,7 +1224,7 @@ function startStory() {
 }
 // The quiz is the story's last scene: the camera keeps circling the healed reef (a held cinematic) while 푸른이 asks the
 // three questions from the dialogue box; O and X stand either side of the screen. A right answer gets a flip, a chirp, a burst
-// of bubbles and a stamp; a wrong one a kind correction. Then the certificate, with a star for each right answer.
+// of bubbles and a stamp; a wrong one a kind correction. Then the result card.
 const QZ = { i: 0, score: 0 };
 function storyQuizStart() {
   const c = SITE.bleach.c; cineStart(tv1.set(c.x, heightAt(c.x, c.z) + 4, c.z), 30, 10, Infinity, '', '', null); QZ.i = 0; QZ.score = 0;
@@ -1240,25 +1240,17 @@ function storyQuizAnswer(a) {
   else AU.click();
   const st = $('quizStamp'); st.textContent = ok ? '정답!' : '아쉬워요'; st.className = ok ? 'ok' : 'no'; st.classList.remove('hidden'); setTimeout(() => st.classList.add('hidden'), 1500);
   const last = QZ.i + 1 >= STORY.quiz.length;
-  storyTalk([ok ? `딩동댕, 정답이야! ${Q.e}` : `아쉽지만 정답은 ${Q.a ? 'O' : 'X'}야. ${Q.e}`, last ? '고마워! 이제 네 인증서를 보여 줄게.' : '다음 문제!'], () => { QZ.i++; storyQuizAsk(); });
+  storyTalk([ok ? `딩동댕, 정답이야! ${Q.e}` : `아쉽지만 정답은 ${Q.a ? 'O' : 'X'}야. ${Q.e}`, last ? '고마워! 네 덕분에 바다가 다시 웃고 있어.' : '다음 문제!'], () => { QZ.i++; storyQuizAsk(); });
 }
 $('quizOX').querySelectorAll('button').forEach((b) => { b.onclick = () => storyQuizAnswer(b.dataset.a === '1'); });
 function storyEnd(score = 0) {
   G.state = 'menu'; setTalk(false); unlockPointer(); hide('storyBox'); hide('quizOX'); AU.mission(); AU.whale(0.18);
   const s = ST(), t = Math.round(s.time), kg = Math.round(s.kg * 10) / 10, n = STORY.quiz.length;
-  const rank = score >= n ? '바다 박사' : score >= n - 1 ? '바다 지킴이' : '바다 친구';
-  const d = new Date(), date = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
-  $('seBody').innerHTML = `<div class="cert"><div class="ribbon">🐬 ${rank} 인증서</div>
-    <h2><span id="seName">${rank}</span></h2><p class="lead">푸른이와 함께 바다를 다시 웃게 만들었어요.<br><small>${date} · 퀴즈 ${score}/${n}</small></p>
-    <div class="stars">${Array.from({ length: n }, (_, k) => `<i class="${k < score ? 'on' : ''}" style="animation-delay:${0.6 + k * 0.45}s">★</i>`).join('')}</div>
-    <input id="seNameIn" class="namein" maxlength="12" placeholder="이름을 적으면 인증서에 들어가요" autocomplete="off"></div>
-    <div class="sstats"><div><b>${s.collected}개</b><span>주운 쓰레기 (${kg}kg)</span></div><div><b>${s.rescues}마리</b><span>구한 바다거북</span></div><div><b>1곳</b><span>되살린 산호 지대</span></div><div><b>${Math.floor(t / 60)}분 ${t % 60}초</b><span>걸린 시간</span></div></div>
+  $('seBody').innerHTML = `<h2>바다를 지켜 줘서 고마워요!</h2><p class="lead">푸른이와 함께 바다를 다시 웃게 만들었어요.</p>
+    <div class="sstats"><div><b>${s.collected}개</b><span>주운 쓰레기 (${kg}kg)</span></div><div><b>${s.rescues}마리</b><span>구한 바다거북</span></div><div><b>1곳</b><span>되살린 산호 지대</span></div><div><b>${score}/${n}</b><span>퀴즈 정답</span></div></div>
     <h3>우리도 바다를 지킬 수 있어요</h3><ul>${STORY.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>
     <div class="row"><button class="btn primary" id="seHome">처음으로</button><button class="btn" id="seAgain">다시 하기</button></div>`;
   show('storyEnd'); $('seAgain').onclick = () => startStory(); $('seHome').onclick = () => { hide('storyEnd'); showTitle(); };
-  $('seNameIn').oninput = (e) => { const v = e.target.value.trim(); $('seName').textContent = v ? `${v} ${rank}` : rank; };
-  // a chime as each star lands
-  for (let k = 0; k < score; k++) setTimeout(() => AU.tone(880 + k * 220, 0.25, 'sine', 0.08), 600 + k * 450);
 }
 $('bStory').onclick = () => startStory();
 const STORY_LINK = /[?&]story\b/.test(location.search); // class link: ocean-cleanup-3d.html?story (or story.html)

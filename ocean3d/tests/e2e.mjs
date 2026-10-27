@@ -108,9 +108,8 @@ const SUITES = {
     }
     const end = await E(() => { const g = window.__game; return { shown: !document.getElementById('storyEnd').classList.contains('hidden'), hold: g.P.cargo.length, secs: Math.round(g.SV().stats.time) }; });
     check('story reaches the ending card after six goals and the quiz', end.shown && goals === 6, { goals, secs: end.secs });
-    check('the quiz was asked in the scene and O,O,O scores 2/3: two stars, 바다 지킴이', await E(() => document.querySelectorAll('#storyEnd .stars i.on').length === 2 && document.getElementById('seName').textContent === '바다 지킴이'));
-    check('the ending card is a certificate with the dolphin portrait set', await E(() => !!document.querySelector('#storyEnd .cert') && document.getElementById('stFace').style.backgroundImage.startsWith('url("data:image')));
-    await page.fill('#seNameIn', '지민'); check('a name goes onto the certificate', await E(() => document.getElementById('seName').textContent === '지민 바다 지킴이'));
+    check('the quiz was asked in the scene and O,O,O scores 2/3', await E(() => document.getElementById('seBody').innerText.includes('2/3')));
+    check('the dolphin portrait is set in the dialogue box', await E(() => document.getElementById('stFace').style.backgroundImage.startsWith('url("data:image')));
     check('the last goal brings the trash back to the ship', end.hold === 0);
     check('reef healed and fish back in the story', await E(() => window.__game.G.bleachH > 0.5 && window.__game.schools.filter((s) => s.site === 'bleach').every((s) => s.on)));
     await page.click('#seHome'); await page.waitForTimeout(300);

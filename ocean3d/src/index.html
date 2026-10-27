@@ -327,13 +327,6 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
 #cine.out{animation:fadeOut .8s ease-in both}
 @keyframes barIn{from{transform:scaleY(0)}to{transform:scaleY(1)}}@keyframes ctIn{from{opacity:0;transform:translate(-50%,14px)}to{opacity:1;transform:translate(-50%,0)}}@keyframes fadeOut{to{opacity:0}}
 @media (max-height:520px){#cine .ct{bottom:calc(11vh + 14px)}#cine .ct b{font-size:26px}}
-/* the certificate */
-#storyEnd .cert{position:relative;padding:14px 12px 10px;border:2px solid #d9b65a;border-radius:12px;background:linear-gradient(180deg,rgba(217,182,90,.12),rgba(217,182,90,.03));margin-bottom:12px}
-#storyEnd .cert::before{content:'';position:absolute;inset:5px;border:1px solid rgba(217,182,90,.45);border-radius:8px;pointer-events:none}
-#storyEnd .ribbon{display:inline-block;padding:4px 14px;border-radius:999px;background:#d9b65a;color:#1a1408;font-weight:800;font-size:13px;margin-bottom:10px}
-#storyEnd .cert h2{color:#ffe3a1;margin-bottom:4px}#storyEnd .cert .lead{margin-bottom:8px}#storyEnd .cert small{color:#c9a85a;font-size:12px}
-#storyEnd .namein{width:min(260px,100%);height:36px;border-radius:8px;border:1px solid rgba(217,182,90,.5);background:rgba(0,0,0,.3);color:var(--ink);text-align:center;font:500 14px var(--font);outline:none}
-#storyEnd .namein:focus{border-color:#d9b65a}
 /* a held cinematic (the quiz): bars stay, no title, taps go through to the buttons beneath */
 #cine.hold{pointer-events:none}#cine.hold .ct,#cine.hold .skip{display:none}
 /* the quiz's O and X, either side of the screen, above the cinematic bars */
@@ -346,10 +339,6 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
 #quizStamp{position:fixed;left:50%;top:34%;z-index:18;transform:translate(-50%,-50%) rotate(-8deg);padding:10px 26px;border:5px solid;border-radius:14px;font:900 clamp(34px,6vmin,64px) var(--font);letter-spacing:.04em;pointer-events:none;animation:stamp .5s cubic-bezier(.2,1.6,.4,1) both}
 #quizStamp.ok{color:#6fd3c1;border-color:#6fd3c1;text-shadow:0 0 18px rgba(111,211,193,.6)}#quizStamp.no{color:#f08a7e;border-color:#f08a7e}
 @keyframes stamp{from{opacity:0;transform:translate(-50%,-50%) rotate(-8deg) scale(2.2)}to{opacity:1;transform:translate(-50%,-50%) rotate(-8deg) scale(1)}}
-/* the certificate's stars, landing one after another */
-#storyEnd .stars{display:flex;justify-content:center;gap:10px;margin:2px 0 10px;font-size:34px;line-height:1}
-#storyEnd .stars i{font-style:normal;color:rgba(217,182,90,.25);opacity:0;animation:starIn .5s cubic-bezier(.2,1.6,.4,1) both}#storyEnd .stars i.on{color:#ffd45e;text-shadow:0 0 14px rgba(255,212,94,.7)}
-@keyframes starIn{from{opacity:0;transform:scale(2.4)}to{opacity:1;transform:scale(1)}}
 @media (max-height:520px){#quizOX button{top:50%}}
 #storyEnd .send{text-align:center}
 #storyEnd h2{font-size:24px;margin-bottom:6px}
