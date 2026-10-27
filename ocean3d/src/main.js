@@ -587,7 +587,8 @@ function updatePlayer(dt) {
   const f = fwdOf(P.yaw, P.pitch, P.fwd), r = rightOf(P.yaw, tv2);
   tv1.set(0, 0, 0).addScaledVector(f, inp.f).addScaledVector(r, inp.s).addScaledVector(UPV, inp.u); let ml = tv1.length(); if (ml > 1) { tv1.divideScalar(ml); ml = 1; }
   P.alive = P.bat > 0; if (!P.alive) { tv1.set(0, 0.5, 0); ml = 0; }
-  const boosting = inp.boost && P.alive && ml > 0.1; P.boost = boosting; const spd = S.speed * (boosting ? 1.55 : 1);
+  // boost: 55% on top; in the story a fifth, so the sub cannot run away from the guide
+  const boosting = inp.boost && P.alive && ml > 0.1; P.boost = boosting; const spd = S.speed * (boosting ? (G.story ? 1.2 : 1.55) : 1);
   tv1.multiplyScalar(spd); P.vel.lerp(tv1, Math.min(1, 2.6 * dt));
   const op = OPV.copy(P.pos); P.pos.addScaledVector(P.vel, dt);
   let impact = 0; const fl = heightAt(P.pos.x, P.pos.z) + 1.5;
@@ -1169,8 +1170,9 @@ function updateBuddy(dt) {
   else if (B.party > 0) { B.party -= dt; const a = (1 - B.party / 1.8) * TAU; want.copy(P.pos).addScaledVector(f, 8).addScaledVector(rt, Math.cos(a) * 2.5); want.y += 1 + Math.sin(a) * 2.5; spd = 20; roll = a * 2; }
   else if (gd) { const d = gd.p.distanceTo(P.pos);
     if (d < 14) want.set(gd.p.x + Math.cos(B.t * 0.9) * 5, gd.p.y + 2.5, gd.p.z + Math.sin(B.t * 0.9) * 5);
-    else { dir.subVectors(gd.p, P.pos).normalize(); want.copy(P.pos).addScaledVector(dir, Math.min(12, d * 0.5)).addScaledVector(rt, 2.5); want.y += 1.2; }
-    spd = Math.max(14, P.vel.length() + 8); }
+    else { dir.subVectors(gd.p, P.pos).normalize(); want.copy(P.pos).addScaledVector(dir, Math.min(12 + P.vel.length() * 0.4, d * 0.5)).addScaledVector(rt, 2.5); want.y += 1.2; }
+    // well faster than the sub, and further ahead the faster it goes, so the guide stays in front even under boost
+    spd = Math.max(14, P.vel.length() * 1.4 + 8); }
   else { want.copy(P.pos).addScaledVector(f, 8).addScaledVector(rt, 3); want.y += 1; }
   want.y = clamp(want.y, heightAt(want.x, want.z) + 1.8, -1.2);
   tmp.subVectors(want, B.pos); const dist = tmp.length(); if (dist > 0.01) tmp.multiplyScalar(Math.min(spd, dist * 2) / dist); B.vel.lerp(tmp, 1 - Math.exp(-3 * dt)); B.pos.addScaledVector(B.vel, dt);
@@ -1478,6 +1480,6 @@ genItems(); genRescues(); genSiteItems(); buildItemMeshes(); genCreatures(); bui
 G.poll = items.length;
 loadSettings(); resize(); showTitle();
 function simulate(sec) { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) { const dt = 1 / 30; G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); FXA.update(dt); FXN.update(dt); } writeFish(); }
-window.__game = { AU, IN, SUB, composer, SITES, storyStep, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
+window.__game = { AU, IN, SUB, BUDDY, composer, SITES, storyStep, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
 $('loading').classList.add('hidden');
 requestAnimationFrame((t) => { last = t; frame(t); });
