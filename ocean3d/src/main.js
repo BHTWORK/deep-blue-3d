@@ -963,7 +963,7 @@ function drawOverlayIn(c, W, H) {
     const ax = cx + dx * k, ay = cy + dy * k, ang = Math.atan2(dy, dx);
     c.save(); c.translate(ax, ay); c.rotate(ang); c.globalAlpha = t.big ? 0.95 : 0.55; c.fillStyle = t.col; const sz = t.big ? 12 : 7; c.beginPath(); c.moveTo(sz, 0); c.lineTo(-sz * 0.8, -sz * 0.75); c.lineTo(-sz * 0.4, 0); c.lineTo(-sz * 0.8, sz * 0.75); c.closePath(); c.fill(); c.restore(); c.globalAlpha = 1;
     if (t.big) { const lx = ax - Math.cos(ang) * 36, ly = ay - Math.sin(ang) * 26; c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; const txt = `${t.label} ${dm}m`; c.strokeText(txt, lx, ly + 4); c.fillStyle = t.col; c.fillText(txt, lx, ly + 4); } }
-  // 푸른이's speech bubble above its head while the child plays
+  // 부캉이's speech bubble above its head while the child plays
   if (G.story && !G.talk && BUDDY.model && BUDDY.model.root.visible) { const txt = buddySay(); if (txt) { const s = project(BV[5].copy(BUDDY.pos).add(tv1.set(0, 1.5, 0)), pv);
     if (!s.behind && s.x > 0 && s.x < W && s.y > 0 && s.y < H) { c.font = '700 15px sans-serif'; const w = c.measureText(txt).width + 24, h = 32, x = clamp(s.x - w / 2, 8, W - w - 8), y = s.y - h - 10;
       c.fillStyle = 'rgba(255,255,255,.94)'; c.strokeStyle = '#3fbfa8'; c.lineWidth = 2; c.beginPath(); if (c.roundRect) c.roundRect(x, y, w, h, 14); else c.rect(x, y, w, h); c.fill(); c.stroke(); // roundRect is missing on older iPads
@@ -1091,7 +1091,7 @@ function updateHUD() {
   H.hClean.textContent = cleanPct().toFixed(1) + '%';
   const m = MISSIONS[SV.mission], sg = G.story && STORY.steps[SS.i];
   H.mTag.textContent = G.story ? `이야기 ${Math.min(STORY.goals, STORY.steps.slice(0, SS.i + 1).filter((x) => x.goal).length + (STORY.steps[SS.i] && STORY.steps[SS.i].goal ? 0 : 1))}/${STORY.goals}` : '임무';
-  if (G.story) { const has = sg && sg.goal; H.mName.textContent = has ? sg.t : STORY.guide.n; H.mDesc.textContent = has ? sg.d : '푸른이의 이야기를 들어 보세요.'; const [c, g] = has ? storyProg(sg) : [0, 1]; H.mProgRow.style.display = has ? '' : 'none'; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = has ? `${c}/${g}` : ''; }
+  if (G.story) { const has = sg && sg.goal; H.mName.textContent = has ? sg.t : STORY.guide.n; H.mDesc.textContent = has ? sg.d : '부캉이의 이야기를 들어 보세요.'; const [c, g] = has ? storyProg(sg) : [0, 1]; H.mProgRow.style.display = has ? '' : 'none'; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = has ? `${c}/${g}` : ''; }
   else if (m) { H.mName.textContent = m.t; H.mDesc.textContent = ctlText(m.d); const [c, g] = mProg(m); H.mProgRow.style.display = ''; H.mBar.style.width = (c / g) * 100 + '%'; H.mProg.textContent = m.poi || m.sp ? (c ? '완료' : '탐색 중') : `${fmt(c)}/${fmt(g)}`; }
   else { H.mName.textContent = '자유 탐험'; H.mDesc.textContent = '남은 쓰레기를 찾아 바다를 끝까지 되살려 보세요.'; H.mProg.textContent = ''; H.mProgRow.style.display = 'none'; }
   // guide: arrow turned by the target's bearing relative to the sub's heading, plus distance and height difference
@@ -1146,7 +1146,7 @@ function storyTick() {
   // the hold goes up to the ship for sorting; in story mode the dock has no shop
   if (st.goal === 'dock') { SS.unloaded = P.cargo.length; P.cargo = []; P.kg = 0; recount(); AU.sell(); }
 }
-// 푸른이 swims with the sub: in front of the glass while talking, ahead toward the goal while the child
+// 부캉이 swims with the sub: in front of the glass while talking, ahead toward the goal while the child
 // plays (circling the target once it is close), and a loop of joy after each goal.
 const BUDDY = { model: null, pos: new V3(), vel: new V3(), q: new THREE.Quaternion(), t: 0, ph: 0, party: 0 }, BV = [new V3(), new V3(), new V3(), new V3(), new V3(), new V3()], ZAX = new V3(0, 0, 1);
 // the dialogue box shows the buddy itself: the model with its collar, rendered once into the face circle
@@ -1222,9 +1222,9 @@ function startStory() {
   SS.turtle = rescues.filter((r) => r.sp === 'turtle').sort((a, b) => a.pos.distanceToSquared(DOCK) - b.pos.distanceToSquared(DOCK))[0];
   document.querySelectorAll('#toasts .toast').forEach((t) => t.remove());
   buddyShow(); buddyPortrait();
-  cineStart(P.pos, 15, 8, 7.5, '푸른이와 바다 구하기', '돌고래 푸른이의 안내로 바다를 되살리는 5분 모험', () => storyStep(0));
+  cineStart(P.pos, 15, 8, 7.5, '부캉이와 바다 구하기', '돌고래 부캉이의 안내로 바다를 되살리는 5분 모험', () => storyStep(0));
 }
-// The quiz is the story's last scene: the camera keeps circling the healed reef (a held cinematic) while 푸른이 asks the
+// The quiz is the story's last scene: the camera keeps circling the healed reef (a held cinematic) while 부캉이 asks the
 // three questions from the dialogue box; O and X stand either side of the screen. A right answer gets a flip, a chirp, a burst
 // of bubbles and a stamp; a wrong one a kind correction. Then the result card.
 const QZ = { i: 0, score: 0 };
@@ -1248,7 +1248,7 @@ $('quizOX').querySelectorAll('button').forEach((b) => { b.onclick = () => storyQ
 function storyEnd(score = 0) {
   G.state = 'menu'; setTalk(false); unlockPointer(); hide('storyBox'); hide('quizOX'); AU.mission(); AU.whale(0.18);
   const s = ST(), t = Math.round(s.time), kg = Math.round(s.kg * 10) / 10, n = STORY.quiz.length;
-  $('seBody').innerHTML = `<h2>바다를 지켜 줘서 고마워요!</h2><p class="lead">푸른이와 함께 바다를 다시 웃게 만들었어요.</p>
+  $('seBody').innerHTML = `<h2>바다를 지켜 줘서 고마워요!</h2><p class="lead">부캉이와 함께 바다를 다시 웃게 만들었어요.</p>
     <div class="sstats"><div><b>${s.collected}개</b><span>주운 쓰레기 (${kg}kg)</span></div><div><b>${s.rescues}마리</b><span>구한 바다거북</span></div><div><b>1곳</b><span>되살린 산호 지대</span></div><div><b>${score}/${n}</b><span>퀴즈 정답</span></div></div>
     <h3>우리도 바다를 지킬 수 있어요</h3><ul>${STORY.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>
     <div class="row"><button class="btn primary" id="seHome">처음으로</button><button class="btn" id="seAgain">다시 하기</button></div>`;

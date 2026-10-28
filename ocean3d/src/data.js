@@ -68,9 +68,9 @@ export const POIS = [
 // Story mode: a guided run of about five minutes for an elementary-school SDG 14 class. Steps are either
 // a conversation with the guide (`talk`) or a goal the player completes in the world (`goal`).
 export const STORY = {
-  guide: { n: '돌고래 푸른이', icon: '🐬' },
+  guide: { n: '돌고래 부캉이', icon: '🐬' },
   steps: [
-    { talk: ['안녕! 나는 돌고래 푸른이야. 우리 바다가 쓰레기 때문에 많이 아파.', '1분마다 쓰레기 트럭 한 대만큼의 플라스틱이 바다로 들어온대.', '세계 여러 나라가 2030년까지 함께 지키기로 한 17가지 약속(SDGs)이 있어. 그중 14번째가 「바닷속 생명을 지켜요」야.', '잠수정을 타고 나랑 같이 바다를 구해 줄래?', '@controls'] },
+    { talk: ['안녕! 나는 돌고래 부캉이야. 우리 바다가 쓰레기 때문에 많이 아파.', '1분마다 쓰레기 트럭 한 대만큼의 플라스틱이 바다로 들어온대.', '세계 여러 나라가 2030년까지 함께 지키기로 한 17가지 약속(SDGs)이 있어. 그중 14번째가 「바닷속 생명을 지켜요」야.', '잠수정을 타고 나랑 같이 바다를 구해 줄래?', '@controls'] },
     { goal: 'trash', t: '쓰레기 5개 줍기', d: '화살표를 따라가서, 빔으로 끌어오거나 가까이 다가가 주워요.', n: 5 },
     { talk: ['정말 잘했어! 바다거북은 물에 뜬 비닐봉지를 해파리인 줄 알고 먹기도 해.', '앗, 저기 그물에 걸린 바다거북이 있어! 빔을 비춰서 그물을 끊어 주자.'] },
     { goal: 'turtle', t: '바다거북 구하기', d: '거북이를 감싼 그물에 빔을 계속 비춰요.', n: 1 },
@@ -86,7 +86,7 @@ export const STORY = {
   ],
   goals: 6,
   controls: { touch: '왼쪽 화면을 손가락으로 끌면 앞뒤, 옆으로 움직여. 방향을 바꾸려면 오른쪽 화면을 끌어서 둘러봐. 「빔」 버튼을 누르고 있으면 쓰레기를 끌어와!', keys: 'W·A·S·D 키로 움직이고, 마우스로 둘러봐. 마우스 왼쪽 버튼이나 E 키를 누르고 있으면 빔이 나가!' },
-  // what 푸른이 says in the speech bubble while swimming along: [far from the goal, close to it]
+  // what 부캉이 says in the speech bubble while swimming along: [far from the goal, close to it]
   hints: { trash: ['이쪽이야, 따라와!', '빔을 눌러서 쓰레기를 끌어와!'], turtle: ['거북이가 저기 있어, 따라와!', '그물에 빔을 계속 비춰 줘!'], reach: ['북쪽으로 가자, 따라와!', '거의 다 왔어!'], valve: ['밸브는 저쪽이야!', '빨간 밸브에 빔을 비춰!'], coral: ['산호 위 쓰레기는 이쪽이야!', '빔으로 끌어와 줘!'], dock: ['배는 이쪽이야, 따라와!', '초록색 고리 안으로 쏙!'], cheer: '잘했어!' },
   actions: ['일회용 컵과 빨대 대신 텀블러를 써요.', '쓰레기는 종류별로 나눠서 버려요.', '바닷가나 공원에서 쓰레기를 주워요.'],
   quiz: [
