@@ -7,7 +7,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { TAU, clamp, lerp, smooth, rnd, fmt, $, esc, seed, rr, rpick, wpick, SR } from './util.js';
 import { TRASH, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS, STORY } from './data.js';
 import { AU, Music } from './audio.js';
-import { MAT, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO } from './models.js';
+import { MAT, ENVMATS, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO, NET_MAT } from './models.js';
 import { drawCockpit, cockpitLayout, CockpitUI } from './cockpit.js';
 import { WORLD, heightAt, heightAt0, normalAt, reefPoint, reefFree, U, SEABED, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBleach, buildBaseShip, buildDockRing, gradTex } from './world.js';
 
@@ -71,6 +71,11 @@ const POI = Object.fromEntries(POIS.map((p) => [p.id, p]));
 // WORLD BUILD
 // =====================================================================
 initMaterials();
+// what glossy things mirror under water: a small pre-filtered picture of open water, bright overhead and dark below
+{ const pm = new THREE.PMREMGenerator(renderer), sc = new THREE.Scene();
+  sc.add(new THREE.Mesh(new THREE.SphereGeometry(5, 24, 12), new THREE.ShaderMaterial({ side: THREE.BackSide, vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'varying vec3 vD; void main(){ float y = normalize(vD).y; vec3 c = mix(vec3(0.02, 0.07, 0.1), vec3(0.08, 0.32, 0.45), smoothstep(-0.6, 0.25, y)); c = mix(c, vec3(0.55, 0.9, 1.0), smoothstep(0.35, 0.9, y)); c += vec3(1.0, 0.97, 0.9) * smoothstep(0.93, 1.0, y) * 2.0; gl_FragColor = vec4(c, 1.0); }' })));
+  const tex = pm.fromScene(sc, 0, 0.1, 20).texture; pm.dispose(); for (const m of ENVMATS) { m.envMap = tex; m.envMapIntensity = m.userData.env; } }
 const colliders = [];
 const terrain = buildTerrain(); scene.add(terrain);
 const water = buildWater(); scene.add(water);
@@ -283,17 +288,29 @@ function genRescues() {
   defs.forEach(([sp, x, z, dy], i) => { const y = dy > 0 ? heightAt(x, z) + dy + 1 : Math.max(dy, heightAt(x, z) + 8);
     const net = addItem('net', x, y, z, { buoy: dy > 0 ? -1 : 0, locked: true });
     const b = BUILD[sp](); const sc = { turtle: 1.3, dolphin: 1.2, manta: 0.7, shark: 0.8 }[sp]; b.root.scale.setScalar(sc); b.root.position.set(x, y, z); b.root.rotation.y = rr(0, TAU); scene.add(b.root);
-    const nm = new THREE.Mesh(NET_GEO(), new THREE.MeshStandardMaterial({ color: 0x6fc4b4, wireframe: true, emissive: 0x0a2a24 })); nm.scale.set(2.4 * sc * (sp === 'manta' ? 2.5 : 1), 1.6 * sc, 2.6 * sc * (sp === 'shark' ? 1.4 : 1)); nm.position.set(x, y, z); scene.add(nm);
+    const nm = new THREE.Mesh(NET_GEO(), NET_MAT()); nm.scale.set(2.4 * sc * (sp === 'manta' ? 2.5 : 1), 1.6 * sc, 2.6 * sc * (sp === 'shark' ? 1.4 : 1)); nm.position.set(x, y, z); scene.add(nm);
     rescues.push({ id: i, sp, pos: new V3(x, y, z), prog: 0, freed: false, t: rr(0, 10), net: net.id, known: false, model: b, netMesh: nm, cutting: false }); });
 }
 function buildItemMeshes() {
   const counts = {}; for (const it of items) counts[it.key] = (counts[it.key] || 0) + 1;
-  for (const key in counts) { const geo = TGEO[key]; const mat = key === 'bag' ? MAT.bag : key === 'panel' ? MAT.vcD : key === 'net' ? new THREE.MeshStandardMaterial({ color: 0x5fb8a8, wireframe: true, emissive: 0x0a2a24 }) : MAT.vc;
-    const im = new THREE.InstancedMesh(geo, mat, counts[key]); im.frustumCulled = false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(im); IM[key] = { im, n: 0 }; }
-  const cols = ['#b8392b', '#2d6fb0', '#2e8b57'], bags = ['#c0392b', '#1f3a68', '#b8bec6', '#e0a526', '#2c7a4b', '#6b3fa0'];
-  for (const it of items) { const r = IM[it.key]; it.idx = r.n++; if (it.type === 'container') r.im.setColorAt(it.idx, new THREE.Color(cols[it.id % 3])); if (it.type === 'luggage') r.im.setColorAt(it.idx, new THREE.Color(bags[it.id % bags.length])); }
+  for (const key in counts) { const geo = TGEO[key], mat = geo.userData.mat;
+    const im = new THREE.InstancedMesh(geo, mat, counts[key]); im.frustumCulled = false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(im); IM[key] = { im, n: 0, vis: counts[key], slot: [] }; }
+  const cols = ['#b8392b', '#2d6fb0', '#2e8b57'], bags = ['#c0392b', '#1f3a68', '#b8bec6', '#e0a526', '#2c7a4b', '#6b3fa0'], film = ['#ffffff', '#ffffff', '#e2edf6', '#f4ecca', '#4a4d55', '#d4ecdd'];
+  for (const it of items) { const r = IM[it.key]; it.idx = r.n++; r.slot[it.idx] = it; it.shown = true; if (it.type === 'container') r.im.setColorAt(it.idx, new THREE.Color(cols[it.id % 3])); if (it.type === 'luggage') r.im.setColorAt(it.idx, new THREE.Color(bags[it.id % bags.length])); if (it.type === 'bag') r.im.setColorAt(it.idx, new THREE.Color(film[it.id % film.length])); }
   for (const it of items) writeItem(it);
 }
+// Litter beyond the fog's reach is not drawn. Each mesh keeps the pieces in view packed at the front of its buffers and draws
+// only those; a piece changing sides swaps buffer slots with the one at the boundary.
+function showItem(it, on) { if (on === it.shown) return; const r = IM[it.key], j = on ? r.vis : r.vis - 1, o = r.slot[j], i = it.idx;
+  if (o !== it) { const M = r.im.instanceMatrix.array, C = r.im.instanceColor && r.im.instanceColor.array;
+    for (let k = 0; k < 16; k++) { const t = M[i * 16 + k]; M[i * 16 + k] = M[j * 16 + k]; M[j * 16 + k] = t; }
+    if (C) { for (let k = 0; k < 3; k++) { const t = C[i * 3 + k]; C[i * 3 + k] = C[j * 3 + k]; C[j * 3 + k] = t; } r.im.instanceColor.needsUpdate = true; }
+    r.slot[i] = o; o.idx = i; r.slot[j] = it; it.idx = j; r.im.instanceMatrix.needsUpdate = true; }
+  it.shown = on; r.vis += on ? 1 : -1; r.im.count = r.vis; }
+const ITEMCULL = { x: NaN, z: NaN, r: 0 };
+function cullItems() { const R = Math.min(1200, fogReach() + 20), cx = camera.position.x, cz = camera.position.z, e = ITEMCULL;
+  if ((cx - e.x) ** 2 + (cz - e.z) ** 2 < 100 && Math.abs(R - e.r) < e.r * 0.08) return; e.x = cx; e.z = cz; e.r = R;
+  for (const it of items) { const d = R + 12 + it.r * 4, dx = it.pos.x - cx, dz = it.pos.z - cz; showItem(it, !it.col && dx * dx + dz * dz < d * d); } }
 function writeItem(it, bob = 0) {
   const r = IM[it.key]; if (it.col || it.locked) { tm.makeScale(0, 0, 0); r.im.setMatrixAt(it.idx, tm); r.im.instanceMatrix.needsUpdate = true; return; }
   tv1.copy(it.pos); let q = it.q;
@@ -893,8 +910,11 @@ function updateEnv(dt) {
     scene.fog.density = lerp(0.0078, 0.0105, smooth(0, 300, dep)) * lerp(1.3, 0.85, cv); sky.visible = false;
     hemi.intensity = lerp(1.35, 0.22, smooth(0, 330, dep)) * (0.35 + 0.65 * day); sun.intensity = 2.2 * Math.exp(-dep / 55) * day * smooth(-0.05, 0.2, G.sunH); U.caust.value = day * smooth(-0.05, 0.25, G.sunH); }
   hemi.color.set(cy > 0 ? '#bfe6ff' : '#8fd6ff'); hemi.groundColor.set(cy > 0 ? '#50606a' : '#1a2e38');
+  // sunlight loses its red, then its green, on the way down: below a few tens of metres only the sub's own lamp shows true colours
+  sun.color.set('#fff2d8'); if (cy <= 0) { const kr = Math.exp(-dep * 0.022), kg = Math.exp(-dep * 0.005); sun.color.r *= kr; sun.color.g *= kg; hemi.color.r *= kr; hemi.color.g *= kg; }
   scene.fog.color.copy(fogCol); if (cy <= 0) scene.background = fogCol; else scene.background = skyHor;
   waterDome.visible = cy <= 0; waterDome.position.copy(camera.position);
+  { const ek = (0.2 + 0.8 * day) * (cy > 0 ? 1 : lerp(1, 0.1, smooth(0, 330, dep))); for (const m of ENVMATS) m.envMapIntensity = m.userData.env * ek; }
   amb.intensity = 0.05 + (1 - smooth(0, 400, dep)) * 0.05;
   const wu = water.material.uniforms; wu.uCam.value.copy(camera.position); wu.uFogC.value.copy(fogCol); wu.uFogD.value = cy > 0 ? 0.0009 : scene.fog.density; wu.uNight.value = G.night; wu.uSky.value.copy(skyHor).lerp(skyTop, 0.3); wu.uDeep.value.set('#0b4f78').multiplyScalar(0.4 + 0.6 * day); wu.uSun.value.copy(sunDir);
   snow.visible = cy < 0.2; // marine snow only below the waterline
@@ -902,10 +922,10 @@ function updateEnv(dt) {
   { const reef = Math.hypot(camera.position.x - 90, camera.position.z - 30) < 560 && cy > -260; for (const m of flora.reefMeshes) m.visible = reef; for (const m of flora.deepMeshes) m.visible = cy < -140; }
   // set pieces (wrecks, the whale fall, vents, the trench floor) show within the fog's reach plus their own size, at most 420 m
   { const rf = Math.min(420, fogReach() + 70) ** 2; for (const f of pieces.far) f.o.visible = (camera.position.x - f.x) ** 2 + (camera.position.z - f.z) ** 2 < rf; }
-  cullScatter(); cullTerrain();
+  cullScatter(); cullTerrain(); cullItems();
   const su = snow.material.uniforms; su.uCam.value.copy(camera.position); su.uLP.value.copy(P.nose); su.uLD.value.copy(P.fwd); su.uLR.value = S.light || 50; su.uAmb.value = hemi.intensity * 0.5 + 0.1; su.uPR.value = renderer.getPixelRatio();
   // god rays follow the camera near the surface
-  const ra = rays.userData; ra.mat.opacity = 0.05 * day * (1 - smooth(10, 140, dep)) * (0.6 + 0.4 * cv); rays.visible = ra.mat.opacity > 0.003 && cy < 0;
+  const ra = rays.userData; ra.mat.opacity = 0.07 * day * (1 - smooth(10, 140, dep)) * (0.6 + 0.4 * cv); rays.visible = ra.mat.opacity > 0.003 && cy < 0;
   if (rays.visible) for (const m of ra.rays) { const u = m.userData; m.position.set(Math.round(camera.position.x / 40) * 40 + u.ox, 0, Math.round(camera.position.z / 40) * 40 + u.oz); m.rotation.set(u.tilt + sunDir.x * 0.2, Math.atan2(camera.position.x - m.position.x, camera.position.z - m.position.z), 0); m.scale.x = 0.7 + 0.3 * Math.sin(G.t * 0.4 + u.ph); }
   const shallow = 1 - smooth(0, 60, dep); lightCone.material.uniforms.uA.value = P.alive ? (0.01 + 0.12 * (1 - shallow * 0.95)) * (inCockpit() ? 0.45 : 1) : 0; lightCone.scale.set(S.light * 0.42 * 0.55, S.light * 0.42 * 0.55, S.light * 0.55);
   SUB.spot.intensity = P.alive ? (90 + SV.up.light * 35) * SPOT_K * lerp(0.25, 1, smooth(10, 120, dep)) * (P.bat < S.bat * 0.08 ? rnd(0.3, 1) : 1) : 0; SUB.lamps.visible = P.alive;

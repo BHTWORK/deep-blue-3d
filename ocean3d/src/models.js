@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { TAU, NZ, mulberry32 } from './util.js';
+import { addCaustics, addGrime } from './world.js';
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
 
@@ -35,16 +36,21 @@ const col = (h) => new THREE.Color(h);
 const topBottom = (top, bottom, split = 0, soft = 0.15) => { const a = col(top), b = col(bottom); return (x, y) => { const t = THREE.MathUtils.smoothstep(y, split - soft, split + soft); return [b.r + (a.r - b.r) * t, b.g + (a.g - b.g) * t, b.b + (a.b - b.b) * t]; }; };
 
 export const MAT = {};
+export const ENVMATS = []; // materials that mirror their surroundings; main.js gives them the environment map
+const envMat = (m, k) => { m.userData.env = k; ENVMATS.push(m); return m; };
 export function initMaterials() {
-  MAT.vc = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.05 });
-  MAT.vcD = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.05, side: THREE.DoubleSide });
-  MAT.metal = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.35 });
-  MAT.glass = new THREE.MeshStandardMaterial({ color: 0x9fe8ff, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.55, emissive: 0x0a3a50, emissiveIntensity: 0.6 });
+  // skin, shell, paint: sunlight ripples over whatever faces up, the surface is faintly mottled, and wet things catch a little of the light around them
+  const live = (m) => envMat(addGrime(addCaustics(m, 0.45), { silt: 0, algae: 0, wear: 0.14, scale: 1.6 }), 0.35);
+  MAT.vc = live(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.05 }));
+  MAT.vcD = live(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.05, side: THREE.DoubleSide }));
+  MAT.metal = envMat(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.6 }), 0.8);
+  MAT.glass = envMat(new THREE.MeshStandardMaterial({ color: 0xa8dcee, roughness: 0.03, metalness: 0.1, transparent: true, opacity: 0.3, emissive: 0x0a3a50, emissiveIntensity: 0.2 }), 1.6);
   MAT.bag = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, transparent: true, opacity: 0.62, side: THREE.DoubleSide, depthWrite: false });
   MAT.net = new THREE.MeshBasicMaterial({ color: 0x7fd0c0, wireframe: true, transparent: true, opacity: 0.85 });
   MAT.bone = new THREE.MeshStandardMaterial({ color: 0xe6dcc4, roughness: 0.9 });
   MAT.glowCyan = new THREE.MeshBasicMaterial({ color: 0xa8fbff, fog: false });
   MAT.glowCyan.color.multiplyScalar(2.2);
+  trashMaterials();
 }
 
 // ---------------------------------------------------------------- submarine
@@ -115,7 +121,7 @@ export function buildSub() {
     ...fins, ...pods, ...skids, ...rails,
   );
   const g = new THREE.Group();
-  const bodyMesh = new THREE.Mesh(body, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.38, metalness: 0.12, emissive: 0x2a1a00, emissiveIntensity: 0.6 })); g.add(bodyMesh);
+  const bodyMesh = new THREE.Mesh(body, envMat(addGrime(addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.25, emissive: 0x2a1a00, emissiveIntensity: 0.25 }), 0.5), { silt: 0.12, algae: 0.1, wear: 0.1, scale: 0.6 }), 0.9)); g.add(bodyMesh);
   const dome = new THREE.Mesh(new THREE.SphereGeometry(0.6, 24, 14, 0, TAU, 0, Math.PI / 2).rotateX(Math.PI / 2), MAT.glass); dome.position.set(0, 0.1, 1.38); g.add(dome);
   // glowing glass: portholes and the console screen
   const ports = new THREE.Mesh(M(...[1, -1].flatMap((sx) => [0.15, 0.55].map((z) => P(new THREE.SphereGeometry(0.1, 10, 8), '#8fe6ff', [sx * 0.835, 0.2, z], [0, 0, 0], [0.35, 1, 1]))),
@@ -139,26 +145,146 @@ export function buildSub() {
 }
 
 // ---------------------------------------------------------------- trash
-function bottleGeo(bodyCol, capCol, label) {
-  return M(
-    P(new THREE.CylinderGeometry(0.17, 0.17, 0.62, 12), bodyCol, [0, 0, 0]),
-    P(new THREE.CylinderGeometry(0.07, 0.17, 0.18, 12), bodyCol, [0, 0.4, 0]),
-    P(new THREE.CylinderGeometry(0.075, 0.075, 0.12, 10), bodyCol, [0, 0.54, 0]),
-    P(new THREE.CylinderGeometry(0.085, 0.085, 0.07, 10), capCol, [0, 0.62, 0]),
-    ...(label ? [P(new THREE.CylinderGeometry(0.175, 0.175, 0.24, 12, 1, true), label, [0, -0.02, 0])] : []),
-  ).rotateZ(Math.PI / 2);
+// Litter is modelled on the real objects. Printed surfaces (labels, the can's body, the cup's sleeve) take their
+// design from one small sheet drawn here; every brand on it is made up.
+function labelSheet() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 256; const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, 512, 256); x.textAlign = 'center'; x.textBaseline = 'middle';
+  // bottled water label (0..256, 0..128)
+  let g = x.createLinearGradient(0, 0, 0, 128); g.addColorStop(0, '#1d7fd0'); g.addColorStop(1, '#0f4f9a'); x.fillStyle = g; x.fillRect(0, 0, 256, 128);
+  x.fillStyle = '#eaf6ff'; x.beginPath(); x.moveTo(0, 96); for (let i = 0; i <= 256; i += 8) x.lineTo(i, 96 + Math.sin(i * 0.07) * 9); x.lineTo(256, 128); x.lineTo(0, 128); x.fill();
+  x.fillStyle = '#fff'; x.font = 'bold 44px sans-serif'; x.fillText('맑은샘', 82, 44); x.font = '15px sans-serif'; x.fillText('먹는샘물 500mL', 82, 78);
+  x.fillStyle = '#fff'; x.fillRect(176, 22, 62, 56); x.fillStyle = '#111'; for (let i = 0; i < 26; i++) if ((i * 7) % 5 < 3) x.fillRect(180 + i * 2.1, 26, 1.4, 40); x.font = '8px sans-serif'; x.fillText('8 801234 567890', 207, 72);
+  // soda can body (256..512, 0..128): bare aluminium at the two ends
+  x.fillStyle = '#c3c8cc'; x.fillRect(256, 0, 256, 128); g = x.createLinearGradient(0, 10, 0, 118); g.addColorStop(0, '#f59a1b'); g.addColorStop(1, '#e2620f'); x.fillStyle = g; x.fillRect(256, 10, 256, 108);
+  x.strokeStyle = '#fff3d6'; x.lineWidth = 9; x.beginPath(); x.moveTo(256, 104); x.bezierCurveTo(330, 60, 420, 120, 512, 70); x.stroke();
+  x.fillStyle = '#fff'; x.font = 'italic bold 46px sans-serif'; x.fillText('FIZZ', 330, 52); x.font = 'bold 12px sans-serif'; x.fillText('ORANGE SODA', 330, 84);
+  x.fillStyle = '#fff3d6'; x.beginPath(); x.arc(452, 58, 26, 0, TAU); x.fill(); x.fillStyle = '#e2620f'; x.beginPath(); x.arc(452, 58, 19, 0, TAU); x.fill(); x.fillStyle = '#fff'; x.font = 'bold 13px sans-serif'; x.fillText('355', 452, 58);
+  // paper cup with its sleeve (0..200, 128..256)
+  x.fillStyle = '#f4f1ea'; x.fillRect(0, 128, 200, 128); x.fillStyle = '#8a5a34'; x.fillRect(0, 166, 200, 58); x.fillStyle = '#6f4526'; for (let i = 0; i < 200; i += 6) x.fillRect(i, 166, 1.5, 58);
+  x.fillStyle = '#f4f1ea'; x.beginPath(); x.arc(100, 195, 21, 0, TAU); x.fill(); x.fillStyle = '#6f4526'; x.font = 'bold 12px sans-serif'; x.fillText('CAFÉ', 100, 196);
+  // aged paper label of a glass bottle (200..360, 128..256)
+  x.fillStyle = '#e4d6ae'; x.fillRect(200, 128, 160, 128); x.strokeStyle = '#7a5b2a'; x.lineWidth = 3; x.strokeRect(210, 138, 140, 108);
+  x.fillStyle = '#5c4320'; x.font = 'bold 30px serif'; x.fillText('1987', 280, 178); x.font = '12px serif'; x.fillText('ORIGINAL', 280, 208); x.fillText('· 330 mL ·', 280, 226);
+  for (let i = 0; i < 420; i++) { x.fillStyle = `rgba(90,70,40,${Math.random() * 0.12})`; x.fillRect(200 + Math.random() * 160, 128 + Math.random() * 128, 3 + Math.random() * 10, 2 + Math.random() * 5); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+// a net's mesh: knotted diamonds on a transparent ground
+function netSheet() {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.clearRect(0, 0, 128, 128); x.strokeStyle = '#fff'; x.lineWidth = 5; x.lineCap = 'round';
+  for (let i = -4; i <= 8; i++) { x.beginPath(); x.moveTo(i * 32, 0); x.lineTo(i * 32 + 128, 128); x.stroke(); x.beginPath(); x.moveTo(i * 32, 0); x.lineTo(i * 32 - 128, 128); x.stroke(); }
+  x.fillStyle = '#fff'; for (let j = 0; j <= 4; j++) for (let i = 0; i <= 4; i++) { x.beginPath(); x.arc(i * 32 + (j % 2 ? 16 : 0), j * 16 * 2 - (j % 2 ? 0 : 0) + (j % 2 ? 0 : 0), 0, 0, TAU); x.fill(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t;
+}
+// like P, but keeps the texture coordinates
+function PT(geo, color, pos, rot, scl, colorFn) { const g0 = geo.index ? geo.toNonIndexed() : geo, uv = g0.attributes.uv.clone(), g = P(g0, color, pos, rot, scl, colorFn); g.setAttribute('uv', uv); return g; }
+// moves a part's texture coordinates into a rectangle of the label sheet (v runs upward); BLANK is a white corner of it
+const uvTo = (g, u0, v0, u1, v1) => { const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, u0 + uv.getX(i) * (u1 - u0), v0 + uv.getY(i) * (v1 - v0)); return g; };
+const blank = (g) => uvTo(g, 0.8, 0.1, 0.9, 0.3);
+// a body of revolution about y from [radius, height] pairs, optionally bent out of true by warp(v) before its normals are made
+const turn = (prof, seg = 18, warp) => { const g = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(Math.max(0.0005, r), y)), seg); if (warp) bend(g, warp); return g; };
+function bend(g, warp) { const p = g.attributes.position, v = new THREE.Vector3(); for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); warp(v); p.setXYZ(i, v.x, v.y, v.z); } g.computeVertexNormals(); return g; }
+// several material groups in one geometry: parts = [[geometry, material], ...]
+function grouped(parts) { const g = mergeGeometries(parts.map((p) => p[0]), true); g.computeBoundingSphere(); g.userData.mat = parts.map((p) => p[1]); return g; }
+const TM = {};
+function trashMaterials() {
+  const sheet = labelSheet(), std = (o) => new THREE.MeshStandardMaterial({ vertexColors: true, ...o }), env = (m, k) => { m.userData.env = k; ENVMATS.push(m); return m; };
+  TM.junk = env(addGrime(addCaustics(std({ roughness: 0.7, metalness: 0.05 }), 0.35)), 0.25);
+  TM.junkD = env(addGrime(addCaustics(std({ roughness: 0.7, metalness: 0.05, side: THREE.DoubleSide }), 0.35)), 0.25);
+  TM.rust = env(addGrime(addCaustics(std({ roughness: 0.8, metalness: 0.3 }), 0.35), { silt: 0.6, algae: 0.5, wear: 0.4 }), 0.3);
+  TM.print = env(addGrime(addCaustics(std({ map: sheet, roughness: 0.5 }), 0.35), { silt: 0.45, algae: 0.3 }), 0.4);
+  TM.alu = env(addGrime(addCaustics(std({ map: sheet, roughness: 0.34, metalness: 0.85 }), 0.35), { silt: 0.45, algae: 0.3, wear: 0.15 }), 1);
+  TM.pet = env(addGrime(addCaustics(std({ roughness: 0.06, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }), 0.2), { silt: 0.5, algae: 0.4, wear: 0.1 }), 1.3);
+  TM.glassT = env(addGrime(addCaustics(std({ roughness: 0.05, transparent: true, opacity: 0.8, side: THREE.DoubleSide }), 0.2), { silt: 0.5, algae: 0.45, wear: 0.1 }), 1.2);
+  TM.film = env(addGrime(addCaustics(std({ roughness: 0.22, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }), 0.3), { silt: 0.25, algae: 0.25, wear: 0.1, bump: 0.035, bumpFreq: 9 }), 1.1);
+  TM.foam = addGrime(addCaustics(std({ roughness: 0.95 }), 0.4), { silt: 0.4, algae: 0.4, wear: 0.12, bump: 0.02, bumpFreq: 34 });
+  TM.rubber = addGrime(addCaustics(std({ roughness: 0.92 }), 0.3), { silt: 0.65, algae: 0.45, wear: 0.3 });
+  TM.rope = addGrime(addCaustics(std({ roughness: 0.95 }), 0.35), { silt: 0.4, algae: 0.5, wear: 0.4, bump: 0.02, bumpFreq: 60 });
+  TM.net = addCaustics(new THREE.MeshStandardMaterial({ map: netSheet(), color: '#69b39f', alphaTest: 0.3, side: THREE.DoubleSide, roughness: 1 }), 0.3);
+}
+const shadeY = (y0, y1, a, b) => (x, y) => { const v = a + (b - a) * THREE.MathUtils.clamp((y - y0) / (y1 - y0), 0, 1); return [v, v, v]; };
+function petBottle() {
+  // crushed a little: flattened where a hand squeezed it
+  const sq = (v) => { const k = Math.exp(-(((v.y - 0.02) / 0.16) ** 2)) * 0.2; v.x *= 1 - k * 0.9; v.z *= 1 + k * 0.25; v.x += Math.sin(v.y * 9) * 0.006; };
+  const body = turn([[0, -0.29], [0.05, -0.3], [0.1, -0.312], [0.15, -0.3], [0.168, -0.27], [0.17, -0.22], [0.161, -0.2], [0.17, -0.18], [0.17, -0.14], [0.161, -0.12], [0.17, -0.1], [0.168, -0.06], [0.168, 0.2], [0.17, 0.22], [0.161, 0.24], [0.17, 0.26], [0.166, 0.31], [0.146, 0.37], [0.11, 0.43], [0.076, 0.49], [0.062, 0.525], [0.062, 0.55], [0.076, 0.556], [0.076, 0.568], [0.062, 0.574], [0.062, 0.6]], 14, sq);
+  const label = bend(new THREE.CylinderGeometry(0.1705, 0.1705, 0.25, 14, 2, true).translate(0, 0.07, 0), sq);
+  const cap = new THREE.CylinderGeometry(0.073, 0.073, 0.055, 16).translate(0, 0.61, 0);
+  return grouped([[blank(PT(body, '#a9cfe0')), TM.pet], [M(uvTo(PT(label, '#fff'), 0, 0.5, 0.5, 1), blank(PT(cap, '#1f6fd0', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => (Math.sin(Math.atan2(z, x) * 30) > 0.2 ? [0.1, 0.38, 0.78] : [0.13, 0.46, 0.86])))), TM.print]]);
+}
+function glassBottle() {
+  const body = turn([[0, -0.29], [0.1, -0.3], [0.14, -0.31], [0.152, -0.29], [0.152, 0.1], [0.146, 0.17], [0.118, 0.26], [0.08, 0.34], [0.058, 0.41], [0.052, 0.55], [0.064, 0.558], [0.064, 0.59], [0.05, 0.6], [0.04, 0.6]], 14);
+  const label = new THREE.CylinderGeometry(0.1535, 0.1535, 0.2, 10, 1, true, 0.4, 3.6).translate(0, -0.08, 0);
+  return grouped([[blank(PT(body, '#3f8a4c', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y) => { const k = 0.8 + 0.3 * THREE.MathUtils.clamp((y + 0.3) / 0.9, 0, 1); return [0.2 * k, 0.5 * k, 0.26 * k]; })), TM.glassT], [uvTo(PT(label, '#fff'), 0.39, 0, 0.7, 0.5), TM.print]]);
+}
+function sodaCan() {
+  // stepped on: creased across the middle and bent
+  const cr = (v) => { const k = Math.exp(-((v.y / 0.07) ** 2)), a = Math.atan2(v.z, v.x); const s = 1 - k * (0.2 + 0.2 * Math.cos(a * 2 + 0.6)); v.x *= s; v.z *= s; v.x += v.y * v.y * 0.5; };
+  const side = bend(new THREE.CylinderGeometry(0.14, 0.14, 0.36, 16, 6, true), cr);
+  const ends = [turn([[0, -0.17], [0.085, -0.172], [0.1, -0.2], [0.112, -0.205], [0.124, -0.198], [0.14, -0.18]], 16, cr), turn([[0.14, 0.18], [0.128, 0.208], [0.12, 0.218], [0.113, 0.21], [0.108, 0.196], [0, 0.196]], 16, cr)];
+  const tab = new THREE.BoxGeometry(0.05, 0.004, 0.09).translate(0.03, 0.2, 0);
+  const g = M(uvTo(PT(side, '#fff'), 0.5, 0.5, 1, 1), ...ends.map((e) => blank(PT(e, '#c9cdd1'))), blank(PT(tab, '#b8bdc2'))); g.rotateZ(Math.PI / 2); g.userData.mat = TM.alu; return g;
+}
+function plasticBag() {
+  // a billowed carrier bag: gathered toward the handles, crumpled all over
+  const g = new THREE.SphereGeometry(0.5, 18, 13, 0, TAU, 0.25, Math.PI - 0.25), p = g.attributes.position, v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); const t = (v.y + 0.5), top = THREE.MathUtils.smoothstep(v.y, 0.1, 0.5), n = NZ(v.x * 4.2 + 3, v.y * 4.2 + v.z * 3.1), n2 = NZ(v.x * 9 + v.z * 7, v.y * 9 - 4);
+    const r = 1 - top * 0.55 + n * 0.16 + n2 * 0.06; v.x *= r * 0.9; v.z *= r * 0.62; v.y = v.y * 1.25 + n2 * 0.04 + t * 0.02; p.setXYZ(i, v.x, v.y, v.z); }
+  g.computeVertexNormals();
+  const handle = (sx) => bend(new THREE.TorusGeometry(0.13, 0.016, 5, 14, Math.PI * 1.1).translate(0, 0, 0), (q) => { q.z *= 0.4; }).rotateZ(-0.15 * sx).translate(sx * 0.1, 0.62, 0);
+  const col = (x, y) => { const k = 0.9 + 0.1 * NZ(x * 6, y * 6); return [k, k, k]; };
+  const out = M(P(g, '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], col), P(handle(1), '#f4f4f4'), P(handle(-1), '#f4f4f4')); out.userData.mat = TM.film; return out;
+}
+function paperCup() {
+  const side = new THREE.CylinderGeometry(0.15, 0.105, 0.36, 20, 1, true), base = new THREE.CircleGeometry(0.105, 20).rotateX(Math.PI / 2).translate(0, -0.17, 0);
+  const lid = turn([[0.156, 0.165], [0.162, 0.175], [0.16, 0.195], [0.148, 0.205], [0.14, 0.222], [0.06, 0.226], [0, 0.226]], 20);
+  const straw = new THREE.CylinderGeometry(0.014, 0.014, 0.42, 6).translate(0, 0.21, 0).rotateZ(-0.22).translate(0.05, 0.2, 0.02);
+  const g = M(uvTo(PT(side, '#fff'), 0, 0, 0.39, 0.5), blank(PT(base, '#e8e3d8')), blank(PT(lid, '#f2f2f0')), blank(PT(straw, '#2f9a4a', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y) => (Math.sin(y * 60) > 0 ? [0.2, 0.62, 0.3] : [0.92, 0.92, 0.9])))); g.userData.mat = TM.print; return g;
+}
+function faceMask() {
+  // a pleated surgical mask with its ear loops, curved as it was worn
+  const g = new THREE.PlaneGeometry(0.56, 0.34, 10, 10).rotateX(-Math.PI / 2);
+  bend(g, (v) => { const u = v.x / 0.28, w = v.z / 0.17; v.y = 0.05 * (1 - u * u) + 0.012 * Math.sin(w * 9.5) * (1 - u * u * 0.6) + 0.03 * (1 - w * w); });
+  const loop = (sx) => bend(new THREE.TorusGeometry(0.15, 0.007, 3, 10, Math.PI * 1.25), (q) => { q.z += q.x * q.x * 0.6; }).rotateX(Math.PI / 2).rotateY(sx > 0 ? -0.6 : Math.PI + 0.6).translate(sx * 0.33, 0.0, 0);
+  const out = M(P(g, '#9fd0e6', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => { const k = 0.9 + 0.1 * Math.sin(z / 0.17 * 9.5 + 1.2), e = Math.abs(z) > 0.155 || Math.abs(x) > 0.265 ? 1.12 : 1; return [0.3 * k * e, 0.56 * k * e, 0.78 * k * e]; }), P(loop(1), '#f4f6f7'), P(loop(-1), '#f4f6f7'));
+  out.userData.mat = TM.junkD; return out;
+}
+function foamChunk() {
+  // a broken block of expanded polystyrene: one corner snapped off, edges crumbled
+  const g = new THREE.BoxGeometry(0.7, 0.4, 0.5, 7, 4, 5);
+  bend(g, (v) => { const n = NZ(v.x * 5 + 1, v.y * 5 + v.z * 4), c = Math.max(0, v.x * 1.1 + v.y * 0.9 + v.z * 0.8 - 0.42); v.x -= c * 0.9; v.y -= c * 0.75; v.z -= c * 0.6; const l = v.length() || 1; v.multiplyScalar(1 + n * 0.035 / l); });
+  const out = P(g, '#f3f1ea', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => { const k = 0.9 + 0.1 * NZ(x * 9, y * 9 + z * 7); return [0.95 * k, 0.94 * k, 0.9 * k]; }); out.userData.mat = TM.foam; return out;
+}
+function ropeTangle() {
+  // a length of polypropylene rope dropped in a loose heap
+  const r = mulberry32(77), pts = []; for (let i = 0; i < 26; i++) { const a = i * 0.95 + r() * 0.5, d = 0.2 + 0.24 * r() + 0.1 * Math.sin(i * 0.7); pts.push(new THREE.Vector3(Math.cos(a) * d, 0.04 + 0.2 * r() * (i % 3 ? 0.5 : 1), Math.sin(a) * d * 0.85)); }
+  const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.6), 80, 0.034, 5, false);
+  const out = P(g, '#e0862e', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => { const k = 0.75 + 0.3 * (NZ(x * 20, z * 20 + y * 14) * 0.5 + 0.5); return [0.84 * k, 0.5 * k, 0.17 * k]; }); out.userData.mat = TM.rope; return out;
+}
+function tyre() {
+  // section through the tyre: bead, sidewall, shoulder, flat tread (corners doubled to keep them crisp), with two rows of raised tread blocks
+  const sec = [[0.5, -0.1], [0.47, -0.13], [0.45, -0.2], [0.5, -0.25], [0.68, -0.285], [0.88, -0.28], [0.955, -0.262], [0.96, -0.26], [0.995, -0.225], [1, -0.22], [1, 0.22], [0.995, 0.225], [0.96, 0.26], [0.955, 0.262], [0.88, 0.28], [0.68, 0.285], [0.5, 0.25], [0.45, 0.2], [0.47, 0.13], [0.5, 0.1], [0.5, -0.1]];
+  const parts = [P(turn(sec, 30).rotateX(Math.PI / 2), '#141416', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => { const rr = Math.hypot(x, y), a = Math.atan2(y, x), t = rr > 0.62 && rr < 0.8 && Math.sin(a * 5) > 0.3 && Math.abs(Math.sin(a * 60)) > 0.6 ? 0.15 : 0.085; return [t, t, t * 1.05]; })];
+  for (let i = 0; i < 30; i++) for (const sd of [-1, 1]) { const a = ((i + (sd > 0 ? 0.5 : 0)) / 30) * TAU;
+    parts.push(P(new THREE.BoxGeometry(0.035, 0.13, 0.2), '#101012', [Math.cos(a) * 1.0, Math.sin(a) * 1.0, sd * 0.125], [0, 0, a + sd * 0.25])); }
+  const out = M(...parts); out.userData.mat = TM.rubber; return out;
+}
+function oilDrum(colorFn) {
+  const ring = (y) => [[0.62, y - 0.05], [0.655, y - 0.02], [0.655, y + 0.02], [0.62, y + 0.05]];
+  const prof = [[0, -0.86], [0.6, -0.86], [0.64, -0.875], [0.645, -0.84], [0.62, -0.82], ...ring(-0.3), ...ring(0.3), [0.62, 0.82], [0.645, 0.84], [0.64, 0.875], [0.6, 0.86], [0.6, 0.83], [0, 0.83]];
+  // dented in one side
+  const g = turn(prof, 20, (v) => { const k = Math.exp(-(((v.y - 0.1) / 0.3) ** 2)) * Math.max(0, v.x / 0.62) ** 3; v.x -= k * 0.16; });
+  const bung = (x, z, r) => P(new THREE.CylinderGeometry(r, r, 0.04, 10), '#6d6a5a', [x, 0.85, z]);
+  const out = M(P(g, '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], colorFn), bung(0.36, 0, 0.07), bung(-0.3, 0.2, 0.04)); out.userData.mat = TM.rust; return out;
+}
+function ghostNet() {
+  // a lost fishing net heaped on itself, with a few floats still tied on
+  const g = new THREE.SphereGeometry(1.5, 24, 14), p = g.attributes.position, uv = g.attributes.uv, v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); const n = NZ(v.x * 1.3 + 2, v.y * 1.3 + v.z * 1.1) * 0.42 + NZ(v.x * 3.1, v.z * 3.1 + v.y * 2.6) * 0.16; v.multiplyScalar(1 + n); v.y = v.y * 0.62 - 0.1; p.setXYZ(i, v.x, v.y, v.z); uv.setXY(i, uv.getX(i) * 40, uv.getY(i) * 20); }
+  g.computeVertexNormals(); g.computeBoundingSphere(); g.userData.mat = TM.net; return g;
 }
 export function buildTrashGeos() {
   const G = {};
-  G.bottle = bottleGeo('#a8def5', '#1e7be0', '#e8453c');
-  G.glass = bottleGeo('#2f8f4c', '#b38b5a', '#e9dcb0');
-  G.can = M(P(new THREE.CylinderGeometry(0.14, 0.14, 0.44, 14), '#d62d20', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y) => (Math.abs(y) > 0.17 ? [0.78, 0.8, 0.82] : [0.84, 0.18, 0.13])), P(new THREE.CylinderGeometry(0.1, 0.1, 0.02, 10), '#bfc6cc', [0, 0.23, 0])).rotateZ(Math.PI / 2).scale(1, 0.8, 1);
-  G.bag = displace(P(new THREE.IcosahedronGeometry(0.55, 2), '#eef2f6', [0, 0, 0], [0, 0, 0], [1, 0.75, 0.9]), 0.18, 2.4, 3);
-  G.mask = M(P(new THREE.BoxGeometry(0.55, 0.04, 0.34), '#9fd3ea'), P(new THREE.TorusGeometry(0.16, 0.012, 4, 12), '#f2f6f8', [0.36, 0, 0], [Math.PI / 2, 0, 0]), P(new THREE.TorusGeometry(0.16, 0.012, 4, 12), '#f2f6f8', [-0.36, 0, 0], [Math.PI / 2, 0, 0]));
-  G.styro = displace(P(new THREE.BoxGeometry(0.7, 0.4, 0.5, 3, 2, 2), '#f5f3ec'), 0.06, 3, 1);
-  G.cup = M(P(new THREE.CylinderGeometry(0.15, 0.1, 0.36, 12), '#e4eff5', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y) => (y < 0 ? [0.47, 0.31, 0.16] : [0.9, 0.94, 0.96])), P(new THREE.CylinderGeometry(0.16, 0.16, 0.04, 12), '#ffffff', [0, 0.2, 0]), P(new THREE.CylinderGeometry(0.015, 0.015, 0.4, 5), '#4caf50', [0.04, 0.35, 0], [0, 0, 0.3]));
-  G.rope = M(...[0, 1, 2, 3].map((i) => P(new THREE.TorusGeometry(0.42 - i * 0.07, 0.06, 6, 20), i % 2 ? '#c96a1a' : '#e8892b', [0, i * 0.08, 0], [Math.PI / 2, 0, i])));
-  G.tire = M(P(new THREE.TorusGeometry(0.72, 0.3, 10, 26), '#1b1b1e', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => { const a = Math.atan2(y, x); const t = Math.sin(a * 22) > 0.3 && Math.hypot(x, y) > 0.9 ? 0.05 : 0.11; return [t, t, t + 0.01]; }), P(new THREE.CylinderGeometry(0.45, 0.45, 0.3, 16), '#4a4f55', [0, 0, 0], [Math.PI / 2, 0, 0]));
+  G.bottle = petBottle(); G.glass = glassBottle(); G.can = sodaCan(); G.bag = plasticBag(); G.mask = faceMask(); G.styro = foamChunk(); G.cup = paperCup(); G.rope = ropeTangle(); G.tire = tyre();
   const bars = [];
   for (let i = -3; i <= 3; i++) bars.push(P(new THREE.BoxGeometry(0.03, 0.03, 1.5), '#a9b1b8', [i * 0.18, 0.2, 0]), P(new THREE.BoxGeometry(0.03, 0.6, 0.03), '#a9b1b8', [i * 0.18, 0.5, 0.75]));
   for (let j = -3; j <= 3; j++) bars.push(P(new THREE.BoxGeometry(1.1, 0.03, 0.03), '#a9b1b8', [0, 0.2, j * 0.22]), P(new THREE.BoxGeometry(0.03, 0.6, 0.03), '#a9b1b8', [0.55, 0.5, j * 0.22]), P(new THREE.BoxGeometry(0.03, 0.6, 0.03), '#a9b1b8', [-0.55, 0.5, j * 0.22]));
@@ -166,12 +292,12 @@ export function buildTrashGeos() {
   G.cart = M(...bars).translate(0, -0.3, 0);
   G.ewaste = M(P(new THREE.BoxGeometry(0.36, 0.05, 0.7), '#1c1d21'), P(new THREE.BoxGeometry(0.3, 0.01, 0.6), '#1d4a70', [0, 0.03, 0]), P(new THREE.BoxGeometry(0.45, 0.03, 0.32), '#1f7a3a', [0.35, 0, 0.2], [0, 0.4, 0]), P(new THREE.BoxGeometry(0.1, 0.04, 0.1), '#111', [0.35, 0.03, 0.2]));
   G.battery = M(P(new THREE.BoxGeometry(0.85, 0.5, 0.45), '#2b2f36'), P(new THREE.BoxGeometry(0.85, 0.08, 0.46), '#ffc93a', [0, -0.05, 0]), P(new THREE.CylinderGeometry(0.06, 0.06, 0.1, 8), '#d63b2f', [0.28, 0.3, 0]), P(new THREE.CylinderGeometry(0.06, 0.06, 0.1, 8), '#222', [-0.28, 0.3, 0]));
-  G.drum = M(P(new THREE.CylinderGeometry(0.62, 0.62, 1.75, 18), '#e8b92a', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => { const r = NZ(x * 3, y * 3 + z * 2); if (r > 0.25) return [0.45, 0.22, 0.08]; if (Math.abs(Math.abs(y) - 0.45) < 0.06) return [0.3, 0.24, 0.05]; if (Math.abs(y) < 0.2 && z > 0.3 && Math.abs(x) < 0.3) return [0.05, 0.05, 0.05]; return [0.91, 0.72, 0.16]; }), P(new THREE.CylinderGeometry(0.6, 0.6, 0.02, 18), '#9c8a50', [0, 0.88, 0]));
+  G.drum = oilDrum((x, y, z) => { const r = NZ(x * 3, y * 3 + z * 2); if (r > 0.25) return [0.45, 0.22, 0.08]; if (Math.abs(Math.abs(y) - 0.45) < 0.06) return [0.3, 0.24, 0.05]; if (Math.abs(y) < 0.2 && z > 0.3 && Math.abs(x) < 0.3) return [0.05, 0.05, 0.05]; return [0.91, 0.72, 0.16]; });
   G.scrap = M(displace(P(new THREE.BoxGeometry(2.2, 0.16, 1.4, 6, 1, 4), '#8a5230', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => { const n = NZ(x * 2, z * 2) * 0.5 + 0.5; return [0.35 + 0.25 * n, 0.2 + 0.1 * n, 0.1 + 0.05 * n]; }), 0.15, 1.2, 7), P(new THREE.BoxGeometry(0.2, 0.2, 1.8), '#5b3a26', [0.6, 0.2, 0], [0.3, 0.4, 0]));
   const cont = [P(new THREE.BoxGeometry(7.2, 2.6, 2.6), '#ffffff', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y, z) => { const rib = Math.sin(x * 9) > 0.6 ? 0.78 : 0.92; const rust = NZ(x * 0.8, y + z) > 0.3 ? 0.6 : 1; return [rib * rust, rib * rust * 0.95, rib * rust * 0.95]; })];
   cont.push(P(new THREE.BoxGeometry(0.06, 2.4, 0.06), '#555555', [3.62, 0, 0.5]), P(new THREE.BoxGeometry(0.06, 2.4, 0.06), '#555555', [3.62, 0, -0.5]));
   G.container = M(...cont);
-  G.net = displace(new THREE.IcosahedronGeometry(1.5, 1), 0.35, 1.5, 4);
+  G.net = ghostNet();
   // debris from the shipwreck and the crashed airliner
   const moss = (x, y, z, f = 1.4) => NZ(x * f + 9, z * f + y) > 0.45;
   const wood = (x, y, z) => { if (moss(x, y, z)) return [0.22, 0.32, 0.18]; const n = NZ(x * 3 + 1, y * 3 + z * 2) * 0.5 + 0.5, gap = Math.abs((((y + 0.425) / 0.2125) % 1) - 0.5) > 0.42, k = gap ? 0.4 : 0.8 + n * 0.35; return [0.46 * k, 0.31 * k, 0.17 * k]; };
@@ -194,6 +320,8 @@ export function buildTrashGeos() {
   const shell = (x, y, z) => (moss(x, y, z, 2.4) ? [0.42, 0.52, 0.38] : Math.abs(Math.sin(x * 18)) > 0.9 ? [0.78, 0.78, 0.78] : [1, 1, 1]); // tinted per bag by instance colour
   G.luggage = M(P(new THREE.BoxGeometry(0.72, 0.5, 0.28, 12, 4, 2), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], shell), P(new THREE.BoxGeometry(0.73, 0.51, 0.02), '#2a2a2e'),
     P(new THREE.TorusGeometry(0.08, 0.018, 4, 10, Math.PI), '#1c1c1c', [0, 0.25, 0]), ...[-1, 1].flatMap((sd) => [0.1, -0.1].map((zz) => P(new THREE.CylinderGeometry(0.04, 0.04, 0.03, 8), '#151515', [sd * 0.3, -0.27, zz], [Math.PI / 2, 0, 0]))));
+  // everything else that has no material of its own: painted or rusting metal, wood, cloth
+  for (const k in G) if (!G[k].userData.mat) G[k].userData.mat = k === 'panel' ? TM.junkD : ['cart', 'battery', 'scrap', 'container', 'ewaste'].includes(k) ? TM.rust : TM.junk;
   return G;
 }
 
@@ -416,4 +544,8 @@ export const BUILD = {
     return { root: g, anim(t) { for (const [p, sx] of ears) p.rotation.z = sx * Math.sin(t * 3) * 0.6; } };
   },
 };
-export const NET_GEO = () => displace(new THREE.IcosahedronGeometry(1, 1), 0.12, 2, 9);
+// the net an animal is caught in: a loose, lumpy wrap with the net's mesh drawn on it
+export const NET_GEO = () => { const g = new THREE.SphereGeometry(1, 24, 16), p = g.attributes.position, uv = g.attributes.uv, v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); v.multiplyScalar(1 + NZ(v.x * 2 + 9, v.y * 2 + v.z * 1.7) * 0.13 + NZ(v.x * 5, v.z * 5 + v.y * 4) * 0.05); p.setXYZ(i, v.x, v.y, v.z); uv.setXY(i, uv.getX(i) * 36, uv.getY(i) * 18); }
+  g.computeVertexNormals(); return g; };
+export const NET_MAT = () => TM.net;
