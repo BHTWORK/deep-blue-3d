@@ -224,7 +224,8 @@ async function report() {
   }
 }
 const want = process.argv.slice(2).filter((a) => SUITES[a]), run = want.length ? want : Object.keys(SUITES);
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+// PW_CHROMIUM points at a browser binary when the one this Playwright version downloads is not installed
+const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], ...(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {}) });
 for (const name of run) { const t = Date.now(); console.log(`# ${name}`); try { await SUITES[name](browser); } catch (e) { check(`${name} crashed`, false, e.message.split('\n').filter((l) => l.trim()).slice(0, 12).join(' | ')); await report(); } PAGES.length = 0; for (const c of OPEN.splice(0)) await c.close().catch(() => {}); console.log(`# ${name} done in ${Math.round((Date.now() - t) / 1000)}s`); }
 await browser.close();
 console.log(failed ? `${failed} check(s) failed` : 'all checks passed'); process.exit(failed ? 1 : 0);

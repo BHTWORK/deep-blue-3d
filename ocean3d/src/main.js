@@ -75,6 +75,8 @@ const colliders = [];
 const terrain = buildTerrain(); scene.add(terrain);
 const water = buildWater(); scene.add(water);
 const sky = buildSky(); scene.add(sky);
+// the open water behind everything: a dome far enough out to be pure fog, so it takes the fog's colour and its up/down gradient (world.js)
+const waterDome = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide, depthWrite: false, depthTest: false })); waterDome.renderOrder = -3; waterDome.frustumCulled = false; waterDome.scale.setScalar(3000); scene.add(waterDome);
 const snow = buildSnow(); scene.add(snow);
 const rays = buildRays(); scene.add(rays);
 const flora = buildFlora(scene, colliders);
@@ -892,6 +894,7 @@ function updateEnv(dt) {
     hemi.intensity = lerp(1.35, 0.22, smooth(0, 330, dep)) * (0.35 + 0.65 * day); sun.intensity = 2.2 * Math.exp(-dep / 55) * day * smooth(-0.05, 0.2, G.sunH); U.caust.value = day * smooth(-0.05, 0.25, G.sunH); }
   hemi.color.set(cy > 0 ? '#bfe6ff' : '#8fd6ff'); hemi.groundColor.set(cy > 0 ? '#50606a' : '#1a2e38');
   scene.fog.color.copy(fogCol); if (cy <= 0) scene.background = fogCol; else scene.background = skyHor;
+  waterDome.visible = cy <= 0; waterDome.position.copy(camera.position);
   amb.intensity = 0.05 + (1 - smooth(0, 400, dep)) * 0.05;
   const wu = water.material.uniforms; wu.uCam.value.copy(camera.position); wu.uFogC.value.copy(fogCol); wu.uFogD.value = cy > 0 ? 0.0009 : scene.fog.density; wu.uNight.value = G.night; wu.uSky.value.copy(skyHor).lerp(skyTop, 0.3); wu.uDeep.value.set('#0b4f78').multiplyScalar(0.4 + 0.6 * day); wu.uSun.value.copy(sunDir);
   snow.visible = cy < 0.2; // marine snow only below the waterline

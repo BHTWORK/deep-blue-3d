@@ -4,6 +4,18 @@ import { TAU, clamp, lerp, smooth, NZ, fbm, seed, rr, rpick, wpick, mixHex } fro
 import { P, M, displace, lathe, vFin, hFin, MAT } from './models.js';
 import { POIS } from './data.js';
 
+// ---- water colour by view direction. Under water the fog is the water itself, and it is not one colour: brighter
+// toward the surface, darker toward the depths. three.js fogs everything toward a single colour, so its fog chunks
+// are patched here, once, before any material compiles; above the waterline the tint is 1 and nothing changes.
+// A fully fogged dome around the camera (main.js) then shows the same gradient as the open water behind everything.
+export const FOG_TINT_GLSL = `vec3 fogTintAt(float dy, float camY) { float w = 1.0 - smoothstep(-3.0, 0.0, camY), up = smoothstep(0.0, 0.85, dy), dn = smoothstep(0.0, 0.85, -dy);
+  return vec3(1.0) + w * (vec3(0.22, 0.5, 0.46) * up - vec3(0.42, 0.38, 0.3) * dn); }`;
+{ const C = THREE.ShaderChunk, sub = (k, a, b) => { if (!C[k].includes(a)) throw new Error('fog chunk changed: ' + k); C[k] = C[k].replace(a, b); };
+  sub('fog_pars_vertex', 'varying float vFogDepth;', 'varying float vFogDepth; varying vec3 vFogTint;\n' + FOG_TINT_GLSL);
+  sub('fog_vertex', 'vFogDepth = - mvPosition.z;', 'vFogDepth = - mvPosition.z; vFogTint = fogTintAt(dot(viewMatrix[1].xyz, mvPosition.xyz) / max(length(mvPosition.xyz), 0.0001), cameraPosition.y);');
+  sub('fog_pars_fragment', 'varying float vFogDepth;', 'varying float vFogDepth; varying vec3 vFogTint;');
+  sub('fog_fragment', 'mix( gl_FragColor.rgb, fogColor, fogFactor )', 'mix( gl_FragColor.rgb, fogColor * vFogTint, fogFactor )'); }
+
 export const WORLD = { size: 1800, half: 900, N: 360 };
 const GN = WORLD.N + 1, CELL = WORLD.size / WORLD.N;
 export const HGT = new Float32Array(GN * GN);
@@ -51,6 +63,13 @@ function sampleGrid(A, x, z) {
 }
 export const heightAt = (x, z) => sampleGrid(HGT, x, z);
 export const heightAt0 = (x, z) => sampleGrid(HGT0, x, z);
+// Height of the drawn seabed: the terrain's own triangles. heightAt blends a cell's four corners smoothly, the mesh
+// folds the cell along a diagonal, and the two differ by decimetres on dunes; things laid flat on the sand need this one.
+function meshHeightAt(x, z) {
+  const gx = clamp((x + WORLD.half) / CELL, 0, WORLD.N - 0.001), gz = clamp((z + WORLD.half) / CELL, 0, WORLD.N - 0.001);
+  const i = Math.floor(gx), j = Math.floor(gz), fx = gx - i, fz = gz - j, k = j * GN + i, a = HGT[k], d = HGT[k + 1], b = HGT[k + GN], c = HGT[k + GN + 1];
+  return fx + fz <= 1 ? a + (d - a) * fx + (b - a) * fz : c + (b - c) * (1 - fx) + (d - c) * (1 - fz);
+}
 export function normalAt(x, z) { const e = 2; return new THREE.Vector3(heightAt(x - e, z) - heightAt(x + e, z), 2 * e, heightAt(x, z - e) - heightAt(x, z + e)).normalize(); }
 
 // ---- caustics shader injection (world-space, top-facing surfaces, fades with depth)
@@ -102,6 +121,7 @@ export function addSeabed(mat) {
       float sbTurn = 0.4 + sbNoise(vWPos.xz * 0.045) * 1.6;
       vec2 sbDir = vec2(cos(sbTurn), sin(sbTurn));
       float sbPh = dot(vWPos.xz, sbDir) * 5.4 + sbNoise(vWPos.xz * 0.32) * 3.6 + sbNoise(vWPos.xz * 1.1) * 0.8;
+      sbRip *= 1.0 - smoothstep(0.35, 1.3, fwidth(sbPh)); // a ripple narrower than a few pixels would shimmer and moire
       vec2 sbGrad = sbDir * (5.4 * 0.035 * cos(sbPh) * sbRip);
       float sbGrain = sbNoise(vWPos.xz * 3.3) * 0.6 + sbNoise(vWPos.xz * 10.0) * 0.4, sbMott = sbNoise(vWPos.xz * 0.55);
       diffuseColor.rgb *= 1.0 + ((sbGrain - 0.5) * 0.18 + (sbMott - 0.5) * 0.14) * sbFade + sin(sbPh) * 0.03 * sbRip;`)
@@ -173,7 +193,8 @@ export function buildWater() {
     side: THREE.DoubleSide, transparent: false,
     uniforms: { uTime: U.time, uCam: { value: new THREE.Vector3() }, uDeep: { value: new THREE.Color('#0b4f78') }, uSky: { value: new THREE.Color('#9fd8ff') }, uFogC: { value: new THREE.Color() }, uFogD: { value: 0.01 }, uNight: { value: 0 }, uSun: { value: new THREE.Vector3(0.3, 0.8, 0.2) } },
     vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.0); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }',
-    fragmentShader: `uniform float uTime; uniform vec3 uCam; uniform vec3 uDeep; uniform vec3 uSky; uniform vec3 uFogC; uniform float uFogD; uniform float uNight; uniform vec3 uSun; varying vec3 vW;
+    fragmentShader: FOG_TINT_GLSL + `
+      uniform float uTime; uniform vec3 uCam; uniform vec3 uDeep; uniform vec3 uSky; uniform vec3 uFogC; uniform float uFogD; uniform float uNight; uniform vec3 uSun; varying vec3 vW;
       float h(vec2 p){ return sin(p.x*0.35+uTime*1.2)*0.5 + sin(p.y*0.27-uTime*0.9)*0.5 + sin((p.x+p.y)*0.6+uTime*1.7)*0.25 + sin((p.x-p.y)*1.3-uTime*2.1)*0.12 + sin(p.x*2.1+p.y*1.7+uTime*3.0)*0.05; }
       void main(){
         vec2 e = vec2(0.25, 0.0);
@@ -190,7 +211,7 @@ export function buildWater() {
           vec3 sky = uSky*0.85 + vec3(0.08)*(1.0-uNight);
           col = mix(uDeep*0.9, sky, snell);
           col += vec3(0.8,0.95,1.0) * pow(max(n.x*n.z*8.0+0.5, 0.0), 12.0) * 0.06 * (1.0 - uNight);
-          col = mix(uFogC, col, exp(-dist*uFogD*0.9));
+          col = mix(uFogC * fogTintAt(-V.y, uCam.y), col, exp(-dist*uFogD*0.9));
         }
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
@@ -239,12 +260,12 @@ export function gradTex(stops, w = 4, h = 128, vertical = true) {
 }
 export function buildRays() {
   const tc = document.createElement('canvas'); tc.width = 64; tc.height = 256; const tx = tc.getContext('2d');
-  const gv = tx.createLinearGradient(0, 0, 0, 256); gv.addColorStop(0, 'rgba(255,250,230,1)'); gv.addColorStop(0.45, 'rgba(255,250,230,.35)'); gv.addColorStop(1, 'rgba(255,250,230,0)'); tx.fillStyle = gv; tx.fillRect(0, 0, 64, 256);
-  tx.globalCompositeOperation = 'destination-in'; const gh = tx.createLinearGradient(0, 0, 64, 0); gh.addColorStop(0, 'rgba(0,0,0,0)'); gh.addColorStop(0.5, 'rgba(0,0,0,1)'); gh.addColorStop(1, 'rgba(0,0,0,0)'); tx.fillStyle = gh; tx.fillRect(0, 0, 64, 256);
+  const gv = tx.createLinearGradient(0, 0, 0, 256); gv.addColorStop(0, 'rgba(255,250,230,0)'); gv.addColorStop(0.1, 'rgba(255,250,230,1)'); gv.addColorStop(0.45, 'rgba(255,250,230,.4)'); gv.addColorStop(1, 'rgba(255,250,230,0)'); tx.fillStyle = gv; tx.fillRect(0, 0, 64, 256);
+  tx.globalCompositeOperation = 'destination-in'; const gh = tx.createLinearGradient(0, 0, 64, 0); gh.addColorStop(0, 'rgba(0,0,0,0)'); gh.addColorStop(0.2, 'rgba(0,0,0,.12)'); gh.addColorStop(0.4, 'rgba(0,0,0,.7)'); gh.addColorStop(0.5, 'rgba(0,0,0,1)'); gh.addColorStop(0.6, 'rgba(0,0,0,.7)'); gh.addColorStop(0.8, 'rgba(0,0,0,.12)'); gh.addColorStop(1, 'rgba(0,0,0,0)'); tx.fillStyle = gh; tx.fillRect(0, 0, 64, 256);
   const tex = new THREE.CanvasTexture(tc); tex.colorSpace = THREE.SRGBColorSpace;
   const g = new THREE.Group(); const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
   const rays = [];
-  for (let i = 0; i < 16; i++) { const w = 3 + Math.random() * 10, h = 90 + Math.random() * 90; const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h).translate(0, -h / 2, 0), mat); m.userData = { ox: (Math.random() - 0.5) * 160, oz: (Math.random() - 0.5) * 160, ph: Math.random() * TAU, tilt: (Math.random() - 0.5) * 0.25 }; g.add(m); rays.push(m); }
+  for (let i = 0; i < 16; i++) { const w = 6 + Math.random() * 16, h = 90 + Math.random() * 90; const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h).translate(0, -h / 2, 0), mat); m.userData = { ox: (Math.random() - 0.5) * 160, oz: (Math.random() - 0.5) * 160, ph: Math.random() * TAU, tilt: (Math.random() - 0.5) * 0.25 }; g.add(m); rays.push(m); }
   g.userData.rays = rays; g.userData.mat = mat; return g;
 }
 
@@ -280,6 +301,22 @@ export function reefPoint(minY = -78) {
   return null;
 }
 const lcg = (v) => () => (v = (v * 16807) % 2147483647) / 2147483647;
+// which of a coral kind's shapes grows at a spot: fixed by position, so it needs no random draw
+// soft dark patches on the sand under the corals: without a shadow they look pasted onto the seabed.
+// One merged mesh; each patch is a small grid draped over the terrain so slopes and dunes do not cut into it.
+let shadeTex = null;
+function blobShadows(spots) {
+  if (!shadeTex) { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, '#fff'); g.addColorStop(0.45, '#ededed'); g.addColorStop(0.7, '#8c8c8c'); g.addColorStop(0.88, '#2c2c2c'); g.addColorStop(1, '#000'); x.fillStyle = '#000'; x.fillRect(0, 0, 64, 64); x.fillStyle = g; x.fillRect(0, 0, 64, 64); shadeTex = new THREE.CanvasTexture(c); }
+  const N = 5, pos = [], uv = [], idx = [];
+  for (const [x, z, r] of spots) { const b = pos.length / 3;
+    for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) { const u = i / N, v = j / N, px = x + (u * 2 - 1) * r, pz = z + (v * 2 - 1) * r; pos.push(px, meshHeightAt(px, pz) + 0.08, pz); uv.push(u, v); }
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const a = b + j * (N + 1) + i; idx.push(a, a + N + 1, a + 1, a + 1, a + N + 1, a + N + 2); } }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeBoundingSphere();
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: '#0a2a36', alphaMap: shadeTex, transparent: true, opacity: 0.6, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 }));
+  m.renderOrder = 1; return m;
+}
+const coralShape = (x, z, n) => Math.floor(Math.abs(x * 7.3 + z * 3.1)) % n;
 export function buildFlora(scene, colliders) {
   const out = { reefMeshes: [] };
   seed(777);
@@ -292,7 +329,12 @@ export function buildFlora(scene, colliders) {
       m4.compose(new THREE.Vector3(x, y - 0.3, z), q, new THREE.Vector3(rr(2.2, 3.2), h, rr(2.2, 3.2))); im.setMatrixAt(n, m4); c.set(rpick(['#4f7a26', '#6f9a34', '#5b8a2e', '#7ea43c'])); im.setColorAt(n, c); n++; }
     im.count = n; im.frustumCulled = false; scene.add(im); out.kelp = im; }
   // seagrass tufts on shelf
-  { const blades = []; for (let b = 0; b < 5; b++) { const a = (b / 5) * TAU; blades.push(P(new THREE.PlaneGeometry(0.12, 1, 1, 3).translate(0, 0.5, 0), '#fff', [Math.cos(a) * 0.12, 0, Math.sin(a) * 0.12], [0.1 * Math.cos(a), a, 0.1 * Math.sin(a)], [1, 0.7 + (b % 3) * 0.2, 1])); }
+  // each tuft: narrow blades that taper to a point and arch outward, darker at the base
+  { const blades = [], R = lcg(4242); for (let b = 0; b < 7; b++) { const a = (b / 7) * TAU + R() * 0.6, h = 0.5 + R() * 0.55, w = 0.04 + R() * 0.025, lean = 0.15 + R() * 0.3, d = 0.02 + R() * 0.09;
+      const g = new THREE.PlaneGeometry(w, h, 1, 3).translate(0, h / 2, 0), p = g.attributes.position;
+      for (let i = 0; i < p.count; i++) { const t = p.getY(i) / h; p.setXYZ(i, p.getX(i) * (1 - 0.82 * t * t), p.getY(i) * (1 - 0.1 * lean * t), lean * t * t * h); }
+      g.computeVertexNormals();
+      blades.push(P(g, '#fff', [Math.cos(a) * d, 0, Math.sin(a) * d], [0, Math.PI / 2 - a, 0], [1, 1, 1], (x, y) => { const v = 0.48 + 0.62 * clamp(y / 0.9, 0, 1); return [v, v, v * 0.92]; })); }
     const geo = M(...blades); const mat = addSway(new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 }), 0.35);
     const N = 3200; const im = new THREE.InstancedMesh(geo, mat, N); const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color(); let n = 0;
     for (let i = 0; i < N * 2 && n < N; i++) { const a = rr(0, TAU), d = Math.sqrt(SRr()) * 250; const x = Math.cos(a) * d, z = Math.sin(a) * d; if (Math.hypot(x, z + 20) < 12) continue; const y = heightAt(x, z); if (y < -80) continue; const s = rr(0.8, 2.2);
@@ -304,14 +346,16 @@ export function buildFlora(scene, colliders) {
     const PAL = { whip: ['#ff5a36', '#ffb000', '#e63946', '#ff7f50', '#c77dff'], bubble: ['#e6f5d0', '#ffd6e8', '#d8f3ff', '#fff3b0'], soft: ['#ff8fab', '#c77dff', '#ffd166', '#ff9e5e', '#9bf6ff', '#f15bb5'] };
     const SCALE = { whip: 1.1, soft: 1.1 }, FOOT = { branch: 0.55, stag: 0.8, brain: 0.7, fan: 0.45, soft: 0.5, bubble: 0.4, whip: 0.35 }; // footprint radius at scale 1
     // instances are bucketed into 200 m cells so the renderer can frustum-cull whole cells
-    const mat = addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 }), 0.4);
-    for (const [name, geo, cnt] of kinds) { const cells = new Map();
+    const mat = addCoral(addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, side: THREE.DoubleSide }), 0.4));
+    const shade = [];
+    for (const [name, geos, cnt] of kinds) { const cells = new Map();
       let n = 0; for (let i = 0; i < cnt * 6 && n < cnt; i++) { const pt = reefPoint(); if (!pt) continue; const [x, y, z] = pt; const s = rr(0.8, 2.2) * (SCALE[name] || 1), fr = s * FOOT[name];
-        if (!occFree(x, z, fr)) continue; occAdd(x, z, fr);
-        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rr(-0.15, 0.15), rr(0, TAU), rr(-0.15, 0.15))), key = `${Math.floor(x / 200)},${Math.floor(z / 200)}`;
+        if (!occFree(x, z, fr)) continue; occAdd(x, z, fr); shade.push([x, z, fr * (name === 'fan' || name === 'whip' ? 1.5 : 2)]);
+        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rr(-0.15, 0.15), rr(0, TAU), rr(-0.15, 0.15))), key = `${coralShape(x, z, geos.length)}|${Math.floor(x / 200)},${Math.floor(z / 200)}`;
         if (!cells.has(key)) cells.set(key, []); cells.get(key).push([new THREE.Matrix4().compose(new THREE.Vector3(x, y - 0.2, z), q, new THREE.Vector3(s, s, s)), new THREE.Color(rpick(PAL[name] || palette))]); n++; }
-      for (const list of cells.values()) { const im = new THREE.InstancedMesh(geo, mat, list.length), vivid = [];
+      for (const [key, list] of cells) { const im = new THREE.InstancedMesh(geos[+key.split('|')[0]], mat, list.length), vivid = [];
         list.forEach(([m4, c], i) => { im.setMatrixAt(i, m4); im.setColorAt(i, c); vivid.push(c); }); im.computeBoundingSphere(); scene.add(im); out.corals.push({ im, vivid }); out.reefMeshes.push(im); } }
+    { const im = blobShadows(shade); scene.add(im); out.reefMeshes.push(im); }
     out.setCoralHealth = (h) => { const bl = new THREE.Color('#ece6da'), c = new THREE.Color(); for (const { im, vivid } of out.corals) { for (let i = 0; i < im.count; i++) { c.copy(bl).lerp(vivid[i], h); im.setColorAt(i, c); } im.instanceColor.needsUpdate = true; } };
   }
   // anemones (clownfish homes)
@@ -370,34 +414,146 @@ function mergeUV(geos) { // merge keeping uv
   const pos = [], uv = [], nrm = []; for (const g0 of geos) { const g = g0.index ? g0.toNonIndexed() : g0; pos.push(...g.attributes.position.array); uv.push(...g.attributes.uv.array); nrm.push(...g.attributes.normal.array); }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); return g;
 }
+// ---- coral shading: per-pixel polyp grain, brain-coral grooves and star-coral dots (as albedo and bump), pale
+// growing tips, and a soft rim glow that stands in for light scattering through the tissue. Geometry carries
+// `cfx` = (tip paleness, pattern: 0 plain, 1 meandering grooves, 2 polyp dots). Apply after addCaustics.
+export function addCoral(mat) {
+  setKey(mat, 'coral');
+  const prev = mat.onBeforeCompile;
+  mat.onBeforeCompile = (sh, r) => {
+    if (prev) prev(sh, r);
+    sh.vertexShader = 'attribute vec2 cfx; varying vec2 vCfx; varying vec3 vCPos;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vCfx = cfx; vCPos = position;');
+    sh.fragmentShader = `varying vec2 vCfx; varying vec3 vCPos;
+      float cHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+      float cNoise(vec3 x) { vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(cHash(i), cHash(i + vec3(1.0, 0.0, 0.0)), f.x), mix(cHash(i + vec3(0.0, 1.0, 0.0)), cHash(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+          mix(mix(cHash(i + vec3(0.0, 0.0, 1.0)), cHash(i + vec3(1.0, 0.0, 1.0)), f.x), mix(cHash(i + vec3(0.0, 1.0, 1.0)), cHash(i + vec3(1.0, 1.0, 1.0)), f.x), f.y), f.z); }
+      ` + sh.fragmentShader
+      .replace('#include <color_fragment>', `#include <color_fragment>
+      float cFoot = length(fwidth(vCPos)), cH = 0.0; // size of a pixel on the coral: detail fades out before it can shimmer
+      float cFine = 1.0 - smoothstep(0.005, 0.016, cFoot), cMid = 1.0 - smoothstep(0.012, 0.035, cFoot);
+      if (cMid > 0.01) {
+        float cG = cNoise(vCPos * 38.0), cAlb = 1.0 + (cG - 0.5) * 0.3 * cFine + (cNoise(vCPos * 6.0) - 0.5) * 0.22;
+        cH = (cG - 0.5) * 0.45 * cFine;
+        if (vCfx.y > 0.5 && vCfx.y < 1.5) { float cM = abs(sin(cNoise(vCPos * 5.0) * 24.0 + cNoise(vCPos * 11.0) * 1.6)); cM = smoothstep(0.0, 0.6, cM); cH += cM * 1.5; cAlb *= 0.48 + 0.52 * cM; }
+        else if (vCfx.y > 1.5) { vec3 cQ = vCPos * 52.0; float cD = sin(cQ.x + sin(cQ.y * 0.7)) * sin(cQ.y + sin(cQ.z * 0.7)) * sin(cQ.z + sin(cQ.x * 0.7)); cD = smoothstep(0.2, 0.55, abs(cD)); cH += cD * 0.8; cAlb *= 0.7 + 0.3 * cD; }
+        diffuseColor.rgb *= mix(1.0, cAlb, cMid); cH *= cMid;
+      }
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.4 + vec3(0.62, 0.61, 0.58), vCfx.x);`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      if (cMid > 0.01) { vec3 cSx = dFdx(-vViewPosition), cSy = dFdy(-vViewPosition), cR1 = cross(cSy, normal), cR2 = cross(normal, cSx); float cDet = dot(cSx, cR1);
+        normal = normalize(abs(cDet) * normal - sign(cDet) * (dFdx(cH) * cR1 + dFdy(cH) * cR2) * 0.022); }`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      { float cRim = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 2.5);
+        totalEmissiveRadiance += diffuseColor.rgb * (0.06 + 0.2 * cRim) * (0.35 + 0.65 * uCaust); }`);
+  };
+  return mat;
+}
+// Reef coral shapes. Every kind keeps its name, count and footprint (placement draws on the shared random
+// stream), but comes in several shapes; an instance picks one by its position. Vertex colour is a grey
+// brightness multiplied by the instance colour; values above 1 mark pale growing tips.
 export function coralGeos() {
-  const branch = (seedv, thick, tips) => { const parts = []; const rng = (() => { let s = seedv; return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; })();
-    const br = (x, y, z, dx, dy, dz, len, r, d) => { const ex = x + dx * len, ey = y + dy * len, ez = z + dz * len; const mid = new THREE.Vector3(x + ex, y + ey, z + ez).multiplyScalar(0.5);
-      const g = new THREE.CylinderGeometry(r * 0.75, r, len, 5, 1, true); const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz).normalize()); const e = new THREE.Euler().setFromQuaternion(q);
-      parts.push(P(g, '#ffffff', [mid.x, mid.y, mid.z], [e.x, e.y, e.z], [1, 1, 1], (px, py) => { const v = 0.75 + Math.min(0.25, py * 0.15); return [v, v, v]; }));
-      if (d <= 0) { if (tips) tips.push([ex, ey, ez, r]); else parts.push(P(new THREE.SphereGeometry(r * 0.9, 5, 3), '#ffffff', [ex, ey, ez])); return; }
-      const n = 2 + (rng() < 0.4 ? 1 : 0); for (let i = 0; i < n; i++) { const nd = new THREE.Vector3(dx + (rng() - 0.5) * 1.2, dy + 0.2, dz + (rng() - 0.5) * 1.2).normalize(); br(ex, ey, ez, nd.x, nd.y, nd.z, len * 0.72, r * 0.72, d - 1); } };
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z), UP = V3(0, 1, 0), _q = new THREE.Quaternion(), _e = new THREE.Euler();
+  const sat = (v) => Math.min(1, Math.max(0, v)), gray = (f) => (x, y, z) => { const v = f(x, y, z); return [v, v, v]; };
+  // moves the over-bright vertex colours into the tip channel and tags the surface pattern
+  const fin = (g, pat = 0) => { const c = g.attributes.color, n = c.count, fx = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) { const v = c.getX(i); fx[i * 2] = sat(v - 1); fx[i * 2 + 1] = pat; if (v > 1) c.setXYZ(i, 1, 1, 1); }
+    g.setAttribute('cfx', new THREE.BufferAttribute(fx, 2)); return g; };
+  // a tapered limb from a to b whose brightness runs from v0 to v1
+  const limb = (parts, a, b, r0, r1, seg, v0, v1) => { const d = b.clone().sub(a), len = d.length(); d.normalize(); _e.setFromQuaternion(_q.setFromUnitVectors(UP, d));
+    parts.push(P(new THREE.CylinderGeometry(r1, r0, len, seg, 1, true).translate(0, len / 2, 0), '#fff', [a.x, a.y, a.z], [_e.x, _e.y, _e.z], [1, 1, 1],
+      gray((x, y, z) => { const t = sat(((x - a.x) * d.x + (y - a.y) * d.y + (z - a.z) * d.z) / len); return v0 + (v1 - v0) * t; }))); };
+  const cap = (parts, b, d, r, seg, v) => { _e.setFromQuaternion(_q.setFromUnitVectors(UP, d));
+    parts.push(P(new THREE.SphereGeometry(r, seg, 2, 0, TAU, 0, Math.PI / 2), '#fff', [b.x, b.y, b.z], [_e.x, _e.y, _e.z], [1, 1.5, 1], () => [v, v, v])); };
+  // recursive branching colony
+  const tree = (sd, o) => { const R = lcg(sd), parts = [], vh = (y) => 0.5 + 0.5 * sat(y / o.h);
+    const go = (a, dir, len, r, d) => { const b = a.clone().addScaledVector(dir, len), r1 = r * o.taper, end = d <= 0;
+      limb(parts, a, b, r, r1, o.seg, vh(a.y), end ? o.tip : vh(b.y));
+      if (end) { cap(parts, b, dir, r1, o.seg, o.tip); return; }
+      const n = o.kids + (R() < o.extra ? 1 : 0), tw = R() * TAU;
+      for (let i = 0; i < n; i++) { const an = tw + (i / n) * TAU + (R() - 0.5) * 0.9, side = V3(Math.cos(an), 0, Math.sin(an)).multiplyScalar(o.spread * (0.6 + R() * 0.6));
+        const nd = dir.clone().add(side).add(V3(0, o.lift, 0)).normalize(); if (o.plane) { nd.z *= 0.12; nd.normalize(); }
+        go(b, nd, len * o.shrink * (0.85 + R() * 0.3), r1, d - 1); } };
+    for (let k = 0; k < o.trunks; k++) { const a = (k / o.trunks) * TAU + R() * 2, c = Math.cos(a), s = o.plane ? 0 : Math.sin(a);
+      go(V3(c * o.base, -0.05, s * o.base), V3(c * o.lean, 1, s * o.lean).normalize(), o.len * (0.85 + R() * 0.3), o.r, o.depth); }
+    return fin(M(...parts)); };
+  // upright fingers on a low mound
+  const fingers = (sd, n, hMax, rad) => { const R = lcg(sd), parts = [P(new THREE.SphereGeometry(0.42, 12, 4, 0, TAU, 0, Math.PI / 2), '#fff', [0, -0.03, 0], [0, 0, 0], [1, 0.4, 1], () => [0.5, 0.5, 0.5])];
+    for (let i = 0; i < n; i++) { const a = R() * TAU, d = Math.sqrt(R()) * 0.36, h = hMax * (0.45 + 0.55 * R()) * (1 - d * 0.9), r = rad * (0.8 + R() * 0.45), lean = 0.1 + d * 0.5;
+      const p0 = V3(Math.cos(a) * d, 0.02, Math.sin(a) * d), p1 = p0.clone().add(V3(Math.cos(a) * lean * h * 0.35, h * 0.55, Math.sin(a) * lean * h * 0.35)), p2 = p1.clone().add(V3(Math.cos(a) * lean * h * 0.1, h * 0.45, Math.sin(a) * lean * h * 0.1));
+      limb(parts, p0, p1, r, r * 0.92, 6, 0.5, 0.82); limb(parts, p1, p2, r * 0.92, r * 0.8, 6, 0.82, 1.25); cap(parts, p2, p2.clone().sub(p1).normalize(), r * 0.8, 6, 1.45); }
+    return fin(M(...parts)); };
+  // table coral: plates with a ragged outline on a short stalk
+  const table = (sd) => { const R = lcg(sd), parts = [], plate = (rad, y0, ox, oz, tilt) => { const ph = R() * TAU;
+      const g = new THREE.LatheGeometry([[0.07, 0], [0.1, 0.55], [0.22, 0.8], [0.6, 0.93], [0.93, 1], [1, 1.05], [0.95, 1.1], [0.6, 1.07], [0.25, 1.03], [0.001, 1.02]].map(([r, y]) => new THREE.Vector2(r * rad, y * y0)), 26), p = g.attributes.position;
+      for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i), a = Math.atan2(z, x), s = 1 + (0.13 * Math.sin(a * 3 + ph) + 0.07 * Math.sin(a * 7 + ph * 2) + 0.04 * Math.sin(a * 13)) * sat(Math.hypot(x, z) / rad * 1.4); p.setXYZ(i, x * s, p.getY(i), z * s); }
+      g.computeVertexNormals();
+      parts.push(P(g, '#fff', [ox, 0, oz], [tilt, 0, tilt * 0.6], [1, 1, 1], gray((x, y, z) => { const rr2 = Math.hypot(x - ox, z - oz) / rad; return y < y0 * 0.9 ? 0.42 + 0.2 * rr2 : 0.8 + 0.2 * rr2 + (rr2 > 0.8 ? (rr2 - 0.8) * 2.4 : 0); }))); };
+    plate(0.82, 0.55, 0, 0, 0.06); plate(0.5, 0.3, 0.42, 0.38, -0.12); if (sd % 2) plate(0.4, 0.8, -0.3, -0.2, 0.1);
+    return fin(M(...parts), 2); };
+  // massive corals: lumpy domes; pattern 1 draws brain grooves, 2 the dots of star coral
+  const dome = (sd, lobes, pat) => { const R = lcg(sd), parts = [];
+    for (let i = 0; i < lobes; i++) { const big = i === 0, r = big ? 0.62 : 0.3 + R() * 0.14, a = R() * TAU, d = big ? 0 : 0.36 + R() * 0.12;
+      const g = displace(new THREE.SphereGeometry(r, big ? 26 : 16, big ? 11 : 7, 0, TAU, 0, Math.PI * 0.56), r * 0.09, 2.6 / r, sd + i * 7);
+      parts.push(P(g, '#fff', [Math.cos(a) * d, big ? -0.04 : -0.06, Math.sin(a) * d], [0, R() * TAU, 0], [1, big ? 0.78 : 0.85, 1], gray((x, y) => 0.62 + 0.38 * sat(y / 0.45)))); }
+    return fin(M(...parts), pat); };
+  // tube sponges: open pipes with a pale lip and a dark throat
+  const tubes = (sd, n) => { const R = lcg(sd), parts = [P(new THREE.SphereGeometry(0.3, 10, 3, 0, TAU, 0, Math.PI / 2), '#fff', [0, -0.03, 0], [0, 0, 0], [1, 0.35, 1], () => [0.5, 0.5, 0.5])];
+    for (let i = 0; i < n; i++) { const a = (i / n) * TAU + R(), d = i ? 0.17 + R() * 0.14 : 0, h = (i ? 0.5 + R() * 0.75 : 1.25), r = 0.085 + R() * 0.05 + (i ? 0 : 0.03), cx = Math.cos(a) * d, cz = Math.sin(a) * d;
+      const g = new THREE.LatheGeometry([[0.75, 0], [0.9, 0.3], [1.05, 0.75], [1.12, 0.96], [1.05, 1], [0.84, 0.98], [0.72, 0.8], [0.55, 0.45], [0.001, 0.4]].map(([pr, py]) => new THREE.Vector2(pr * r, py * h)), 10);
+      parts.push(P(g, '#fff', [cx, 0, cz], [0, 0, 0], [1, 1, 1], gray((x, y, z) => { const rr2 = Math.hypot(x - cx, z - cz) / r, t = y / h; return rr2 < 0.86 && t > 0.35 ? 0.16 + 0.5 * sat((t - 0.4) / 0.6) * sat(rr2 - 0.3) : t > 0.94 ? 1.3 : 0.6 + 0.4 * t; }))); }
+    return fin(M(...parts)); };
+  // lettuce coral: a rosette of thin curled plates
+  const leaves = (sd, n) => { const R = lcg(sd), parts = [];
+    for (let i = 0; i < n; i++) { const inner = i < n / 3, rad = (inner ? 0.3 : 0.55) * (0.8 + R() * 0.4), ht = (inner ? 0.55 : 0.4) * (0.8 + R() * 0.4), ph = R() * TAU;
+      const g = new THREE.LatheGeometry([[0.06, 0], [0.3, 0.42], [0.62, 0.74], [0.88, 0.93], [1, 1]].map(([pr, py]) => new THREE.Vector2(pr * rad, py * ht)), 9, (i / n) * TAU * 2.4 + R(), 1.5 + R() * 1.1), p = g.attributes.position;
+      for (let k = 0; k < p.count; k++) { const x = p.getX(k), y = p.getY(k), z = p.getZ(k), t = y / ht; p.setY(k, y + Math.sin(Math.atan2(z, x) * 5 + ph) * 0.07 * t * t); }
+      g.computeVertexNormals();
+      parts.push(P(g, '#fff', [(R() - 0.5) * 0.12, -0.03, (R() - 0.5) * 0.12], [0, 0, 0], [1, 1, 1], gray((x, y) => { const t = sat(y / ht); return 0.42 + 0.6 * t + (t > 0.85 ? (t - 0.85) * 4 : 0); }))); }
+    return fin(M(...parts)); };
+  // soft tree coral: a pale trunk whose branches end in clusters of polyp balls
+  const softTree = (sd) => { const R = lcg(sd), parts = [];
+    limb(parts, V3(0, -0.05, 0), V3(0.03, 0.42, 0), 0.15, 0.1, 7, 0.55, 0.68);
+    for (let i = 0; i < 7; i++) { const a = (i / 7) * TAU + R(), e = 0.35 + R() * 0.75, len = 0.3 + R() * 0.3, y0 = 0.22 + R() * 0.2, dir = V3(Math.cos(a) * Math.sin(e), Math.cos(e), Math.sin(a) * Math.sin(e));
+      const b = V3(0.03, y0, 0).addScaledVector(dir, len); limb(parts, V3(0.02, y0, 0), b, 0.06, 0.04, 5, 0.66, 0.85);
+      for (let k = 0; k < 3; k++) { const rr2 = 0.085 + R() * 0.06; parts.push(P(new THREE.SphereGeometry(rr2, 7, 4), '#fff', [b.x + (R() - 0.5) * 0.17, b.y + (R() - 0.3) * 0.14, b.z + (R() - 0.5) * 0.17], [0, R() * 3, 0], [1, 1.15, 1], gray((x, y) => 0.9 + sat((y - b.y + 0.05) * 3) * 0.35))); } }
+    return fin(M(...parts)); };
+  // bubble coral: grape-like vesicles over a low base
+  const bubbles = (sd, n) => { const R = lcg(sd), parts = [P(new THREE.SphereGeometry(0.36, 10, 4, 0, TAU, 0, Math.PI / 2), '#fff', [0, -0.03, 0], [0, 0, 0], [1, 0.5, 1], () => [0.5, 0.5, 0.5])];
+    for (let i = 0; i < n; i++) { const a = R() * TAU, d = Math.sqrt(R()) * 0.31, rad = 0.07 + R() * 0.075, y0 = 0.17 * (1 - d * 1.6) + rad * 0.75 + R() * 0.05;
+      parts.push(P(new THREE.SphereGeometry(rad, 8, 5), '#fff', [Math.cos(a) * d, y0, Math.sin(a) * d], [0, 0, 0], [1, 1.15, 1], gray((x, y) => 0.78 + 0.34 * sat((y - y0 + rad) / (rad * 2))))); }
+    return fin(M(...parts)); };
+  // cup coral: a colony of short cups, pale rims around dark mouths
+  const cups = (sd, n) => { const R = lcg(sd), parts = [P(new THREE.SphereGeometry(0.34, 10, 4, 0, TAU, 0, Math.PI / 2), '#fff', [0, -0.03, 0], [0, 0, 0], [1, 0.55, 1], () => [0.55, 0.55, 0.55])];
+    for (let i = 0; i < n; i++) { const a = (i / n) * TAU + R() * 0.8, e = i ? 0.35 + R() * 0.75 : 0, r = 0.075 + R() * 0.035, h = 0.13 + R() * 0.08, s = 0.3 * Math.sin(e), c = V3(Math.cos(a) * s, 0.17 * Math.cos(e) - 0.02, Math.sin(a) * s), ax = V3(Math.cos(a) * Math.sin(e), Math.cos(e), Math.sin(a) * Math.sin(e));
+      _e.setFromQuaternion(_q.setFromUnitVectors(UP, ax)); const g = new THREE.LatheGeometry([[0.8, 0], [1, 0.8], [1.1, 1], [0.86, 1], [0.5, 0.62], [0.001, 0.5]].map(([pr, py]) => new THREE.Vector2(pr * r, py * h)), 9);
+      parts.push(P(g, '#fff', [c.x, c.y, c.z], [_e.x, _e.y, _e.z], [1, 1, 1], gray((x, y, z) => { const px = x - c.x, py = y - c.y, pz = z - c.z, t = (px * ax.x + py * ax.y + pz * ax.z) / h, rr2 = Math.sqrt(Math.max(0, px * px + py * py + pz * pz - t * t * h * h)) / r; return rr2 < 0.84 && t > 0.4 ? 0.2 + 0.5 * rr2 : t > 0.9 ? 1.4 : 0.7 + 0.3 * sat(t); }))); }
+    return fin(M(...parts)); };
+  // sea whips: tall, thin, gently curving rods with pale ends
+  const whips = (sd, n) => { const R = lcg(sd), parts = []; for (let i = 0; i < n; i++) { const a = R() * TAU, lean = 0.12 + R() * 0.28, h = 1.1 + R() * 1.6, bend = (R() - 0.5) * 0.5, pts = [];
+      for (let j = 0; j <= 7; j++) { const t = j / 7, o = lean * t * h + Math.sin(t * 4 + i) * 0.05; pts.push(V3(Math.cos(a) * o + Math.cos(a + 1.57) * bend * t * t, t * h - 0.05, Math.sin(a) * o + Math.sin(a + 1.57) * bend * t * t)); }
+      parts.push(P(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 9, 0.026, 5, false), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], gray((x, y) => 0.62 + 0.4 * sat(y / h) + (y > h * 0.88 ? 0.4 : 0)))); }
+    return fin(M(...parts)); };
+  // the bioluminescent deep corals reuse this simple branching stalk
+  coralGeos.branch = (seedv, thick, tips) => { const parts = [], rng = lcg(seedv);
+    const br = (x, y, z, dx, dy, dz, len, r, d) => { const ex = x + dx * len, ey = y + dy * len, ez = z + dz * len; limb(parts, V3(x, y, z), V3(ex, ey, ez), r, r * 0.75, 5, 0.75 + Math.min(0.25, y * 0.15), 0.75 + Math.min(0.25, ey * 0.15));
+      if (d <= 0) { tips.push([ex, ey, ez, r]); return; }
+      const n = 2 + (rng() < 0.4 ? 1 : 0); for (let i = 0; i < n; i++) { const nd = V3(dx + (rng() - 0.5) * 1.2, dy + 0.2, dz + (rng() - 0.5) * 1.2).normalize(); br(ex, ey, ez, nd.x, nd.y, nd.z, len * 0.72, r * 0.72, d - 1); } };
     for (let k = 0; k < 3; k++) { const a = k * 2.1; br(0, 0, 0, Math.cos(a) * 0.3, 1, Math.sin(a) * 0.3, 0.55, 0.09 * thick, 3); }
     return M(...parts); };
-  const brain = displace(P(new THREE.SphereGeometry(0.7, 20, 12, 0, TAU, 0, Math.PI / 2), '#fff', [0, 0, 0], [0, 0, 0], [1, 0.75, 1], (x, y, z) => { const v = Math.sin(x * 14 + Math.sin(z * 9) * 2) > 0.2 ? 0.95 : 0.7; return [v, v, v]; }), 0.04, 6, 2);
-  const fanParts = []; for (let i = 0; i < 14; i++) { const a = -0.9 + (i / 13) * 1.8; fanParts.push(P(new THREE.CylinderGeometry(0.012, 0.02, 1.4, 4).translate(0, 0.7, 0), '#fff', [0, 0, 0], [0, 0, a])); }
-  for (let k = 1; k < 5; k++) fanParts.push(P(new THREE.TorusGeometry(k * 0.28, 0.01, 3, 18, 1.8), '#fff', [0, 0, 0], [0, 0, Math.PI / 2 - 0.9]));
-  const fan = M(...fanParts);
-  coralGeos.branch = branch;
-  // soft coral: short trunk under a bushy crown of lobes
-  const soft = (() => { const r = lcg(11), parts = [P(new THREE.CylinderGeometry(0.08, 0.15, 0.5, 6).translate(0, 0.25, 0), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], () => [0.7, 0.7, 0.7])];
-    for (let i = 0; i < 14; i++) { const a = r() * TAU, e = r() * 1.2, d = 0.3 + r() * 0.25; parts.push(P(new THREE.SphereGeometry(0.15 + r() * 0.1, 7, 5), '#fff', [Math.cos(a) * Math.sin(e) * d, 0.5 + Math.cos(e) * d * 0.7, Math.sin(a) * Math.sin(e) * d], [0, 0, 0], [1, 1.25, 1], (x, y) => { const v = Math.min(1, 0.78 + Math.max(0, y - 0.4) * 0.4); return [v, v, v]; })); }
-    return M(...parts); })();
-  // bubble coral: a mound of translucent-looking vesicles
-  const bubble = (() => { const r = lcg(31), parts = [P(new THREE.SphereGeometry(0.35, 10, 6, 0, TAU, 0, Math.PI / 2), '#fff', [0, 0, 0], [0, 0, 0], [1, 0.5, 1], () => [0.55, 0.55, 0.55])];
-    for (let i = 0; i < 14; i++) { const a = r() * TAU, d = r() * 0.3, rad = 0.09 + r() * 0.08; parts.push(P(new THREE.SphereGeometry(rad, 8, 6), '#fff', [Math.cos(a) * d, 0.12 + r() * 0.2 + rad * 0.5, Math.sin(a) * d], [0, 0, 0], [1, 1, 1], () => [1, 1, 1])); }
-    return M(...parts); })();
-  // sea whips: tall, thin, gently curving rods
-  const whip = (() => { const r = lcg(47), parts = []; for (let i = 0; i < 7; i++) { const a = r() * TAU, lean = 0.15 + r() * 0.25, h = 1.2 + r() * 1.4, pts = [];
-      for (let j = 0; j <= 8; j++) { const t = j / 8; pts.push(new THREE.Vector3(Math.cos(a) * lean * t * h + Math.sin(t * 5 + i) * 0.06, t * h, Math.sin(a) * lean * t * h)); }
-      parts.push(P(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 10, 0.028, 4, false), '#fff', [0, 0, 0], [0, 0, 0], [1, 1, 1], (x, y) => { const v = 0.7 + Math.min(0.3, y * 0.15); return [v, v, v]; })); }
-    return M(...parts); })();
-  return [['branch', branch(7, 1), 110], ['stag', branch(99, 1.8), 60], ['brain', brain, 75], ['fan', fan, 60], ['soft', soft, 80], ['bubble', bubble, 55], ['whip', whip, 60]];
+  const bush = { trunks: 3, depth: 3, kids: 2, extra: 0.55, spread: 0.75, lift: 0.3, len: 0.42, shrink: 0.74, r: 0.085, taper: 0.76, seg: 5, base: 0.07, lean: 0.35, h: 1.2, tip: 1.6 };
+  const horn = { trunks: 3, depth: 3, kids: 2, extra: 0.3, spread: 1.05, lift: 0.12, len: 0.52, shrink: 0.8, r: 0.14, taper: 0.72, seg: 6, base: 0.1, lean: 0.55, h: 1.1, tip: 1.55 };
+  const fanO = { trunks: 3, depth: 4, kids: 2, extra: 0.35, spread: 0.5, lift: 0.22, len: 0.36, shrink: 0.8, r: 0.04, taper: 0.74, seg: 3, base: 0.05, lean: 0.5, h: 1.5, tip: 1.25, plane: true };
+  const rod = { trunks: 2, depth: 2, kids: 2, extra: 0.3, spread: 0.55, lift: 1.1, len: 0.45, shrink: 1.05, r: 0.05, taper: 0.9, seg: 5, base: 0.05, lean: 0.5, h: 1.6, tip: 1.3 };
+  return [
+    ['branch', [tree(7, bush), fingers(23, 11, 1.1, 0.075), tree(41, { ...bush, trunks: 4, depth: 2, kids: 3, len: 0.5, spread: 0.6, lift: 0.5 })], 110],
+    ['stag', [tree(99, horn), table(5), tree(57, { ...horn, lift: 0.3, spread: 0.85 }), table(8)], 60],
+    ['brain', [dome(3, 1, 1), dome(17, 3, 2), dome(29, 2, 1)], 75],
+    ['fan', [tree(61, fanO), tree(73, { ...fanO, spread: 0.62, lift: 0.15 })], 60],
+    ['soft', [softTree(11), tubes(19, 5), leaves(37, 8)], 80],
+    ['bubble', [bubbles(31, 22), cups(43, 8)], 55],
+    ['whip', [whips(47, 8), tree(53, rod)], 60],
+  ];
 }
 
 // ---------------------------------------------------------------- set pieces
@@ -624,15 +780,17 @@ export function buildBleach(scene, colliders, flora) {
   const SCALE = { whip: 1.1, soft: 1.1 }, FOOT = { branch: 0.55, stag: 0.8, brain: 0.7, fan: 0.45, soft: 0.5, bubble: 0.4, whip: 0.35 };
   const heads = []; for (let k = 0; k < 40 && heads.length < 9; k++) { const a = rnd(0, TAU), d = Math.sqrt(R()) * 36, x = B.x + Math.cos(a) * d, z = B.z + Math.sin(a) * d; if (heads.some((h) => Math.hypot(h[0] - x, h[1] - z) < 13)) continue; heads.push([x, z, rnd(5, 9)]); }
   const occ = [], free = (x, z, r) => occ.every(([px, pz, pr]) => (px - x) ** 2 + (pz - z) ** 2 >= (pr + r) ** 2) && reefFree(x, z, r);
-  const mat = addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }), 0.4);
-  for (const [name, geo, cnt] of flora.coralKinds) { const list = [], want = Math.round(cnt * 0.3);
+  const mat = addCoral(addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide }), 0.4));
+  const shade = [];
+  for (const [name, geos, cnt] of flora.coralKinds) { const lists = geos.map(() => []), want = Math.round(cnt * 0.3);
     for (let n = 0, g = 0; n < want && g < want * 25; g++) { const c = pick(heads), a = rnd(0, TAU), d = Math.sqrt(R()) * c[2], x = c[0] + Math.cos(a) * d, z = c[1] + Math.sin(a) * d, y = heightAt(x, z);
-      const sc = rnd(0.8, 2.2) * (SCALE[name] || 1), fr = sc * FOOT[name]; if (!free(x, z, fr)) continue; occ.push([x, z, fr]); n++;
-      q.setFromEuler(new THREE.Euler(rnd(-0.15, 0.15), rnd(0, TAU), rnd(-0.15, 0.15))); list.push([new THREE.Matrix4().compose(V(x, y - 0.2, z), q, V(sc, sc, sc)), new THREE.Color(pick(PAL[name] || palette)), R() < 0.22]);
+      const sc = rnd(0.8, 2.2) * (SCALE[name] || 1), fr = sc * FOOT[name]; if (!free(x, z, fr)) continue; occ.push([x, z, fr]); n++; shade.push([x, z, fr * (name === 'fan' || name === 'whip' ? 1.5 : 2)]);
+      q.setFromEuler(new THREE.Euler(rnd(-0.15, 0.15), rnd(0, TAU), rnd(-0.15, 0.15))); lists[coralShape(x, z, geos.length)].push([new THREE.Matrix4().compose(V(x, y - 0.2, z), q, V(sc, sc, sc)), new THREE.Color(pick(PAL[name] || palette)), R() < 0.22]);
       if (sc > 1.3 && name !== 'whip' && name !== 'fan') out.tops.push(V(x, y + sc * 0.55, z)); }
-    const im = new THREE.InstancedMesh(geo, mat, list.length), vivid = [], pale = [];
-    list.forEach(([mm, c, dead], i) => { im.setMatrixAt(i, mm); vivid.push(c); pale.push(new THREE.Color(dead ? '#b3aa94' : '#f3f0e8')); im.setColorAt(i, pale[i]); });
-    im.computeBoundingSphere(); scene.add(im); out.corals.push({ im, vivid, pale }); flora.reefMeshes.push(im); }
+    lists.forEach((list, gi) => { if (!list.length) return; const im = new THREE.InstancedMesh(geos[gi], mat, list.length), vivid = [], pale = [];
+      list.forEach(([mm, c, dead], i) => { im.setMatrixAt(i, mm); vivid.push(c); pale.push(new THREE.Color(dead ? '#b3aa94' : '#f3f0e8')); im.setColorAt(i, pale[i]); });
+      im.computeBoundingSphere(); scene.add(im); out.corals.push({ im, vivid, pale }); flora.reefMeshes.push(im); }); }
+  { const im = blobShadows(shade); scene.add(im); flora.reefMeshes.push(im); }
   // 0 = bleached white, 1 = fully recovered colour
   out.set = (h) => { const c = new THREE.Color(); for (const { im, vivid, pale } of out.corals) { for (let i = 0; i < im.count; i++) im.setColorAt(i, c.copy(pale[i]).lerp(vivid[i], h)); im.instanceColor.needsUpdate = true; } };
   // the outfall: a concrete pipe half-buried in the sand, running in from the north-west, with a hand-wheel valve near its broken mouth
