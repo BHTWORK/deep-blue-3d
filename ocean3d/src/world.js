@@ -11,9 +11,9 @@ import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 // A fully fogged dome around the camera (main.js) then shows the same gradient as the open water behind everything.
 // Water also absorbs light on its way from a thing to the eye, red first, then green: colours wash out to blue-green
 // with distance well before the haze hides the shape. WATER_ABS is that loss per metre for red, green and blue.
-export const WATER_ABS = 'vec3(0.038, 0.011, 0.0045)';
+export const WATER_ABS = 'vec3(0.026, 0.0065, 0.0025)';
 export const FOG_TINT_GLSL = `vec3 fogTintAt(float dy, float camY) { float w = 1.0 - smoothstep(-3.0, 0.0, camY), up = smoothstep(0.0, 0.85, dy), dn = smoothstep(0.0, 0.85, -dy);
-  return vec3(1.0) + w * (vec3(0.22, 0.5, 0.46) * up - vec3(0.42, 0.38, 0.3) * dn); }`;
+  return vec3(1.0) + w * (vec3(0.26, 0.52, 0.48) * up - vec3(0.24, 0.2, 0.15) * dn); }`;
 { const C = THREE.ShaderChunk, sub = (k, a, b) => { if (!C[k].includes(a)) throw new Error('fog chunk changed: ' + k); C[k] = C[k].replace(a, b); };
   sub('fog_pars_vertex', 'varying float vFogDepth;', 'varying float vFogDepth; varying vec3 vFogTint; varying vec3 vFogAbs;\n' + FOG_TINT_GLSL);
   sub('fog_vertex', 'vFogDepth = - mvPosition.z;', 'vFogDepth = - mvPosition.z; vFogTint = fogTintAt(dot(viewMatrix[1].xyz, mvPosition.xyz) / max(length(mvPosition.xyz), 0.0001), cameraPosition.y); vFogAbs = exp(-length(mvPosition.xyz) * (1.0 - smoothstep(-3.0, 0.0, cameraPosition.y)) * ' + WATER_ABS + ');');

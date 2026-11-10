@@ -21,7 +21,7 @@ const SURF_Y = 0.8; // highest the sub can rise: surfaced, with the cockpit just
 // =====================================================================
 const canvas = $('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05; renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.2; renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x0b4f78, 0.01); scene.background = new THREE.Color(0x0b4f78);
 const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.1, 3400);
 // device profile. Auto quality starts a tier lower on phones (touch-first, short side under 600 css px) and on devices reporting
@@ -891,8 +891,8 @@ function drawBigMap() { const cv = $('bigmap'), c = cv.getContext('2d'); drawMap
 // =====================================================================
 // ENVIRONMENT (fog / light by depth, time of day, cleanliness)
 // =====================================================================
-const FOG_CLEAN = [[0, '#1f86b8'], [60, '#11629a'], [200, '#0e4a72'], [400, '#0a3556'], [700, '#07263f'], [900, '#051b30']];
-const FOG_MURK = [[0, '#3c8676'], [60, '#2a6863'], [200, '#1a4a4e'], [400, '#12353a'], [700, '#0b2529'], [900, '#081b1e']];
+const FOG_CLEAN = [[0, '#2a96c8'], [60, '#1a74ae'], [200, '#165e90'], [400, '#124a76'], [700, '#0e395e'], [900, '#0b2d4e']];
+const FOG_MURK = [[0, '#4a9682'], [60, '#377b72'], [200, '#275f60'], [400, '#1d4a4d'], [700, '#15393c'], [900, '#102d30']];
 function palAt(pal, d) { if (d <= pal[0][0]) return pal[0][1]; for (let i = 1; i < pal.length; i++) if (d <= pal[i][0]) return mixHexSafe(pal[i - 1][1], pal[i][1], (d - pal[i - 1][0]) / (pal[i][0] - pal[i - 1][0])); return pal[pal.length - 1][1]; }
 function mixHexSafe(a, b, t) { const c1 = new THREE.Color(a), c2 = new THREE.Color(b); return '#' + c1.lerp(c2, clamp(t, 0, 1)).getHexString(); }
 const fogCol = new THREE.Color(), skyTop = new THREE.Color(), skyHor = new THREE.Color();
@@ -908,14 +908,14 @@ function updateEnv(dt) {
   if (cy > 0) { fogCol.copy(skyHor); scene.fog.density = 0.0009; sky.visible = true; hemi.intensity = 0.3 + 1.2 * day; sun.intensity = 2.4 * day * smooth(-0.05, 0.2, G.sunH); U.caust.value = 0; }
   else { fogCol.set(palAt(FOG_MURK, dep)).lerp(EC.tmp.set(palAt(FOG_CLEAN, dep)), cv).multiplyScalar(1 - G.night * 0.72 * (1 - smooth(0, 300, dep)));
     scene.fog.density = lerp(0.0078, 0.0105, smooth(0, 300, dep)) * lerp(1.3, 0.85, cv); sky.visible = false;
-    hemi.intensity = lerp(1.35, 0.22, smooth(0, 330, dep)) * (0.35 + 0.65 * day); sun.intensity = 2.2 * Math.exp(-dep / 55) * day * smooth(-0.05, 0.2, G.sunH); U.caust.value = day * smooth(-0.05, 0.25, G.sunH); }
+    hemi.intensity = lerp(1.5, 0.62, smooth(0, 330, dep)) * (0.35 + 0.65 * day); sun.intensity = 2.3 * Math.exp(-dep / 95) * day * smooth(-0.05, 0.2, G.sunH); U.caust.value = day * smooth(-0.05, 0.25, G.sunH); }
   hemi.color.set(cy > 0 ? '#bfe6ff' : '#8fd6ff'); hemi.groundColor.set(cy > 0 ? '#50606a' : '#1a2e38');
   // sunlight loses its red, then its green, on the way down: below a few tens of metres only the sub's own lamp shows true colours
-  sun.color.set('#fff2d8'); if (cy <= 0) { const kr = Math.exp(-dep * 0.022), kg = Math.exp(-dep * 0.005); sun.color.r *= kr; sun.color.g *= kg; hemi.color.r *= kr; hemi.color.g *= kg; }
+  sun.color.set('#fff2d8'); if (cy <= 0) { const kr = Math.exp(-dep * 0.012), kg = Math.exp(-dep * 0.0022), kb = 1 / Math.pow(0.3 * kr + 0.6 * kg + 0.1, 0.7); /* kb: keeps the light's strength as its colour shifts */ sun.intensity *= kb; hemi.intensity *= kb; sun.color.r *= kr; sun.color.g *= kg; hemi.color.r *= kr; hemi.color.g *= kg; }
   scene.fog.color.copy(fogCol); if (cy <= 0) scene.background = fogCol; else scene.background = skyHor;
   waterDome.visible = cy <= 0; waterDome.position.copy(camera.position);
   { const ek = (0.2 + 0.8 * day) * (cy > 0 ? 1 : lerp(1, 0.1, smooth(0, 330, dep))); for (const m of ENVMATS) m.envMapIntensity = m.userData.env * ek; }
-  amb.intensity = 0.05 + (1 - smooth(0, 400, dep)) * 0.05;
+  amb.intensity = 0.16 + (1 - smooth(0, 400, dep)) * 0.06;
   const wu = water.material.uniforms; wu.uCam.value.copy(camera.position); wu.uFogC.value.copy(fogCol); wu.uFogD.value = cy > 0 ? 0.0009 : scene.fog.density; wu.uNight.value = G.night; wu.uSky.value.copy(skyHor).lerp(skyTop, 0.3); wu.uDeep.value.set('#0b4f78').multiplyScalar(0.4 + 0.6 * day); wu.uSun.value.copy(sunDir);
   snow.visible = cy < 0.2; // marine snow only below the waterline
   // distance culling: reef growth only near the shelf reefs, glowing corals only in the deep
