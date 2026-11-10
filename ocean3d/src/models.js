@@ -67,7 +67,7 @@ const propGeo = (r, n = 5, w = 0.16) => M(...Array.from({ length: n }, (_, i) =>
   P(new THREE.CylinderGeometry(r * 0.22, r * 0.26, r * 0.4, 12), '#8a96a2', [0, 0, r * 0.2], [Math.PI / 2, 0, 0]));
 // A crewed research submersible of the kind that works wrecks and reefs: the pilot sits in a clear acrylic sphere
 // at the bow; behind it a block of buoyancy foam (yellow topsides, white below) rides on a tubular frame that
-// carries battery pods, thrusters in nozzles, lights, a manipulator arm and a sample basket. +z is the bow.
+// carries battery pods, thrusters in nozzles, lights and a sample basket. +z is the bow.
 export function buildSub() {
   const Y = '#f2c318', W = '#e4e7e8', D = '#1e2329', G = '#8d979f', K = '#2b3137', O = '#e2571c', N = '#1f3550';
   // the foam fairing in side view (z, y), extruded across the beam with rounded edges: a yellow upper block and a white lower one,
@@ -94,10 +94,7 @@ export function buildSub() {
   // cross members, the bar the lamps hang on and the handrails round the hatch
   const frame = [...[-1.05, -0.15, 0.6].map((z) => rod([-0.66, -1.0, z], [0.66, -1.0, z], 0.03, G)), rod([-0.72, -0.52, 1.22], [0.72, -0.52, 1.22], 0.035, G),
     ...[1, -1].flatMap((sx) => [rod([sx * 0.36, 1.12, -0.5], [sx * 0.36, 1.12, 0.3], 0.016, G, 5), ...[-0.5, -0.1, 0.3].map((z) => rod([sx * 0.36, 0.95, z], [sx * 0.36, 1.12, z], 0.014, G, 5))])];
-  // manipulator arm on the starboard bow: shoulder, elbow, wrist and a two-finger claw
-  const J = [[0.62, -0.5, 1.0], [0.74, -0.34, 1.42], [0.6, -0.66, 1.82], [0.52, -0.64, 2.02]];
-  const arm = [rod(J[0], J[1], 0.045, K, 8), rod(J[1], J[2], 0.038, K, 8), rod(J[2], J[3], 0.03, G, 8), ...J.slice(0, 3).map((p, i) => P(new THREE.SphereGeometry(0.062 - i * 0.008, 10, 8), G, p)),
-    rod(J[3], [0.47, -0.6, 2.14], 0.014, G, 5), rod(J[3], [0.55, -0.68, 2.14], 0.014, G, 5)];
+  // (the manipulator arm on the starboard bow is a separate, moving model: see ROBOT ARM in main.js)
   // sample basket on the port bow: a tray of bars
   const basket = [rod([-0.7, -0.92, 1.0], [-0.7, -0.92, 1.5], 0.016, G, 5), rod([-0.2, -0.92, 1.0], [-0.2, -0.92, 1.5], 0.016, G, 5), ...[1.0, 1.25, 1.5].map((z) => rod([-0.7, -0.92, z], [-0.2, -0.92, z], 0.016, G, 5)),
     ...[-0.7, -0.2].flatMap((x) => [rod([x, -0.92, 1.5], [x, -0.76, 1.5], 0.014, G, 5), rod([x, -0.92, 1.0], [x, -0.76, 1.0], 0.014, G, 5)]), rod([-0.7, -0.76, 1.5], [-0.2, -0.76, 1.5], 0.014, G, 5), rod([-0.7, -0.76, 1.0], [-0.7, -0.76, 1.5], 0.014, G, 5), rod([-0.2, -0.76, 1.0], [-0.2, -0.76, 1.5], 0.014, G, 5)];
@@ -122,7 +119,7 @@ export function buildSub() {
     P(new THREE.CylinderGeometry(0.11, 0.13, 0.36, 14), K, [0, 0.1, -2.02], [Math.PI / 2, 0, 0]),
     P(lathe([[0.4, -2.42], [0.45, -2.36], [0.47, -2.2], [0.46, -2.05], [0.42, -1.98], [0.4, -2.0], [0.4, -2.42]], 28), K, [0, 0.1, 0]),
     ...[0, 1, 2, 3].map((i) => rod([Math.cos(i * 1.571 + 0.785) * 0.12, 0.1 + Math.sin(i * 1.571 + 0.785) * 0.12, -2.05], [Math.cos(i * 1.571 + 0.785) * 0.43, 0.1 + Math.sin(i * 1.571 + 0.785) * 0.43, -2.12], 0.016, G, 5)),
-    ...fins, ...pods, ...side2, ...skids, ...frame, ...arm, ...basket,
+    ...fins, ...pods, ...side2, ...skids, ...frame, ...basket,
   );
   const g = new THREE.Group();
   const bodyMesh = new THREE.Mesh(body, envMat(addGrime(addCaustics(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.34, metalness: 0.22, emissive: 0x2a1a00, emissiveIntensity: 0.18 }), 0.5), { silt: 0.1, algae: 0.08, wear: 0.1, scale: 0.6 }), 0.9)); g.add(bodyMesh);

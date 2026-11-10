@@ -7,7 +7,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { TAU, clamp, lerp, smooth, rnd, fmt, $, esc, seed, rr, rpick, wpick, SR } from './util.js';
 import { TRASH, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS, STORY } from './data.js';
 import { AU, Music } from './audio.js';
-import { MAT, ENVMATS, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO, NET_MAT } from './models.js';
+import { MAT, ENVMATS, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO, NET_MAT, P as PM } from './models.js';
 import { drawCockpit, cockpitLayout, CockpitUI } from './cockpit.js';
 import { WORLD, heightAt, heightAt0, normalAt, reefPoint, reefFree, U, SEABED, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBleach, buildBaseShip, buildDockRing, gradTex } from './world.js';
 
@@ -52,6 +52,8 @@ const overlay = $('overlay'), octx = overlay.getContext('2d');
 const G = { vp: { x: 0, y: 0, w: innerWidth, h: innerHeight }, state: 'title', t: 0, dayT: 0.12, night: 0, sunH: 1, clean: 0, poll: 1, shake: 0, flash: 0, flashCol: '255,60,60', combo: 0, comboT: 0, sonar: null, sonarCd: 0, autosave: 0, tick: 0,
   alert: '', alertPri: 0, fullT: 0, creakT: 0, alarmT: 0, lowWarned: false, pendingWin: 0, quality: 2, qualityPref: 'auto', ctxLost: false, shakeOn: true, lastMTip: -99, sens: 1, fp: true, fpTier: -1, glowSrc: [], coralH: -1, bleachH: 0, bleachSet: -1, story: false, talk: false, VW: innerWidth, VH: innerHeight };
 let SV = null; const S = {};
+// the robot arm's state (see ROBOT ARM): ax, ay are the hand's bearing and elevation from the shoulder, tx, ty the piece's
+const ARM = { on: false, it: null, held: null, phase: 'idle', t: 0, k: 0, grip: 0.6, cd: 0, ax: 0, ay: 0, tx: 0, ty: 0, mdx: 0, mdy: 0, was: false, first: false, aimed: false, H: new THREE.Vector3(0.72, -0.62, 1.75) };
 const DOCK = new V3(2.6, -8, -19);
 const P = { pos: new V3(DOCK.x, DOCK.y - 3, DOCK.z - 15), vel: new V3(), yaw: Math.PI, pitch: -0.1, vyaw: Math.PI, vpitch: 0, roll: 0, bat: 100, hull: 100, kg: 0, cargo: [], beam: false, boost: false, thrust: 0, inv: 0, alive: true, deadT: 0, canDock: false, dmgT: 0, nose: new V3(), fwd: new V3(0, 0, -1) };
 const fwdOf = (yaw, pitch, out = new V3()) => out.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
@@ -310,7 +312,7 @@ function showItem(it, on) { if (on === it.shown) return; const r = IM[it.key], j
 const ITEMCULL = { x: NaN, z: NaN, r: 0 };
 function cullItems() { const R = Math.min(1200, fogReach() + 20), cx = camera.position.x, cz = camera.position.z, e = ITEMCULL;
   if ((cx - e.x) ** 2 + (cz - e.z) ** 2 < 100 && Math.abs(R - e.r) < e.r * 0.08) return; e.x = cx; e.z = cz; e.r = R;
-  for (const it of items) { const d = R + 12 + it.r * 4, dx = it.pos.x - cx, dz = it.pos.z - cz; showItem(it, !it.col && dx * dx + dz * dz < d * d); } }
+  for (const it of items) { const d = R + 12 + it.r * 4, dx = it.pos.x - cx, dz = it.pos.z - cz; showItem(it, !it.col && !it.locked && dx * dx + dz * dz < d * d); } }
 function writeItem(it, bob = 0) {
   const r = IM[it.key]; if (it.col || it.locked) { tm.makeScale(0, 0, 0); r.im.setMatrixAt(it.idx, tm); r.im.instanceMatrix.needsUpdate = true; return; }
   tv1.copy(it.pos); let q = it.q;
@@ -592,6 +594,91 @@ function pollGamepad(dt) { const pads = navigator.getGamepads ? navigator.getGam
   const edge = (i) => { const v = b(i), was = g.prev[i]; g.prev[i] = v; return v && !was; }; if (edge(2) || edge(3)) doSonar(); if (edge(9)) togglePause(); if (edge(8)) openMap(); }
 
 // =====================================================================
+// ROBOT ARM. In the story, litter is picked up by hand. Near a piece the sub holds station and the manipulator
+// unfolds; the player steers the hand over the piece (mouse, W-A-S-D, the stick or a drag) and closes the claw
+// (click, E, Space or the grab button). A hit carries the piece back to the hold; a miss opens the claw again.
+// Folded, the arm lies back along the hull. All of its geometry is in the sub's own space (+z is the bow).
+// =====================================================================
+const ARMG = (() => { const g = new THREE.Group(), K = '#2b3137', Gc = '#8d979f', mk = (geo, col) => { const m = new THREE.Mesh(PM(geo, col), MAT.metal); g.add(m); return m; };
+  const seg1 = mk(new THREE.CylinderGeometry(0.075, 0.085, 1, 12).translate(0, 0.5, 0), K), seg2 = mk(new THREE.CylinderGeometry(0.06, 0.07, 1, 12).translate(0, 0.5, 0), K);
+  const j0 = mk(new THREE.SphereGeometry(0.12, 12, 10), Gc), j1 = mk(new THREE.SphereGeometry(0.105, 12, 10), Gc), hand = new THREE.Group(); hand.scale.setScalar(1.5); g.add(hand);
+  hand.add(new THREE.Mesh(PM(new THREE.CylinderGeometry(0.07, 0.055, 0.16, 10).translate(0, 0.08, 0), Gc), MAT.metal));
+  const fingers = [0, 1, 2].map((i) => { const piv = new THREE.Group(); piv.position.set(Math.cos(i * 2.094) * 0.05, 0.16, Math.sin(i * 2.094) * 0.05); piv.rotation.y = -i * 2.094;
+    piv.add(new THREE.Mesh(PM(new THREE.BoxGeometry(0.035, 0.26, 0.05).translate(0, 0.13, 0), K), MAT.metal)); const tip = new THREE.Mesh(PM(new THREE.BoxGeometry(0.03, 0.16, 0.045).translate(0, 0.08, 0), Gc), MAT.metal); tip.position.y = 0.26; tip.rotation.z = 0.7; piv.add(tip); hand.add(piv); return piv; });
+  return { g, seg1, seg2, j0, j1, hand, fingers }; })();
+SUB.root.add(ARMG.g);
+const ARM_S = new V3(0.62, -0.5, 1.0), ARM_STOW = new V3(0.72, -0.62, 1.75), ARM_L = 2.5, ARM_REACH = 4.7;
+const _ah = new V3(), _ae = new V3(), _ad = new V3(), _ab = new V3(), _aq = new THREE.Quaternion();
+// two-bone reach from the shoulder to hand point H (sub space); k = 0 folded back along the hull, 1 elbow up and out; grip 0 open, 1 closed
+function armPose(H, k, grip) {
+  const A = ARMG, d = clamp(_ad.subVectors(H, ARM_S).length(), 0.35, ARM_L * 2 - 0.02); _ad.normalize();
+  _ab.set(lerp(0.25, 0.55, k), lerp(0.05, 0.85, k), lerp(-1, 0, k)); _ab.addScaledVector(_ad, -_ab.dot(_ad)).normalize(); // which way the elbow sticks out
+  _ae.copy(ARM_S).addScaledVector(_ad, d / 2).addScaledVector(_ab, Math.sqrt(Math.max(0, ARM_L * ARM_L - d * d / 4)));
+  _ah.copy(ARM_S).addScaledVector(_ad, d);
+  const lay = (m, a, b) => { m.position.copy(a); tv3.subVectors(b, a); const l = tv3.length(); m.quaternion.setFromUnitVectors(UPV, tv3.divideScalar(l || 1)); m.scale.set(1, l, 1); };
+  lay(A.seg1, ARM_S, _ae); lay(A.seg2, _ae, _ah); A.j0.position.copy(ARM_S); A.j1.position.copy(_ae);
+  A.hand.position.copy(_ah); A.hand.quaternion.copy(A.seg2.quaternion);
+  for (const f of A.fingers) f.rotation.z = lerp(-0.75, 0.05, grip);
+}
+armPose(ARM_STOW, 0, 0.6);
+// the point between the fingertips, in the world
+const armHandWorld = (out) => SUB.root.localToWorld(out.copy(ARMG.hand.position).addScaledVector(_ad.set(0, 1, 0).applyQuaternion(ARMG.hand.quaternion), 0.42));
+const armTargets = () => { const st = G.story && STORY.steps[SS.i]; return st && (st.goal === 'trash' || st.goal === 'coral') ? SS.targets[st.goal] : null; };
+function armStart(it) { ARM.on = true; ARM.it = it; ARM.phase = 'aim'; ARM.t = 0; ARM.k = 0; ARM.grip = 0; ARM.first = true; ARM.was = true; P.beam = false; applyView(); show('armBox'); armUI(true); AU.click(); }
+function armEnd(cd) { ARM.on = false; ARM.it = null; ARM.held = null; ARM.phase = 'idle'; ARM.cd = cd; applyView(); hide('armBox'); armUI(false); }
+// while the arm is out, the touch beam button is the claw's grab button
+function armUI(on) { const tb = $('tBeam'); tb.firstChild.textContent = on ? '잡기' : '빔'; tb.lastChild.textContent = on ? '로봇 팔' : '수거'; document.body.classList.toggle('arming', on); }
+function updateArm(dt) {
+  const A = ARM; A.cd = Math.max(0, A.cd - dt);
+  if (!A.on) { // fold away; unfold when a piece of the current goal comes within reach
+    A.k = Math.max(0, A.k - dt * 2.5); A.grip += (0.6 - A.grip) * Math.min(1, dt * 6); A.H.lerp(ARM_STOW, Math.min(1, dt * 6)); armPose(A.H, A.k, A.grip); ARMG.g.visible = !inCockpit();
+    const T = armTargets(); if (!T || A.cd > 0 || G.talk || G.cine) return;
+    for (const id of T) { const it = items[id]; if (!it.col && it.pos.distanceToSquared(P.pos) < 5.4 * 5.4) { armStart(it); break; } }
+    return; }
+  ARMG.g.visible = true; const it = A.it, inp = P.inp || {}, k = IN.keys;
+  if (it.col || G.talk || !armTargets()) { armEnd(1); return; }
+  // where the piece is, as seen from the shoulder: a bearing and an elevation in the sub's space, and how far
+  SUB.root.updateMatrixWorld(); const L = SUB.root.worldToLocal(tv1.copy(it.pos)).sub(ARM_S), dist = clamp(L.length(), 1.2, ARM_REACH);
+  A.tx = Math.atan2(L.x, L.z); A.ty = Math.atan2(L.y, Math.hypot(L.x, L.z));
+  A.t += dt;
+  if (A.first) { // until the sub has swung round to face the piece the hand waits out in front; then it starts a little off to one side
+    if (Math.abs(A.tx) < 0.45 || A.t > 1.6) { A.first = false; A.ax = clamp(A.tx + (it.id % 2 ? 0.4 : -0.4), -0.9, 0.9); A.ay = A.ty + 0.32; } else { A.ax = 0; A.ay = 0.15; A.mdx = A.mdy = 0; } }
+  if (!A.first && (A.phase === 'aim' || A.phase === 'miss')) { // steer the hand: the mouse or a drag moves it directly, keys and the stick at a steady rate
+    const rate = 0.95 * dt, jx = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0) + (IN.joy.on ? IN.joy.dx : 0) + IN.gp.mx, jy = (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0) - (IN.joy.on ? IN.joy.dy : 0) - IN.gp.my;
+    A.ax = clamp(A.ax - A.mdx * 0.0019 * G.sens - jx * rate, -0.95, 0.95); A.ay = clamp(A.ay - A.mdy * 0.0019 * G.sens + jy * rate, -1.1, 0.6); }
+  A.mdx = A.mdy = 0;
+  const ca = Math.cos(A.ay); tv2.set(Math.sin(A.ax) * ca, Math.sin(A.ay), Math.cos(A.ax) * ca).multiplyScalar(dist).add(ARM_S); // where the player wants the hand
+  const press = !!(inp.beam || k.Space), edge = press && !A.was && !A.first; A.was = press;
+  if (A.phase === 'aim') { A.k = Math.min(1, A.k + dt * 2.2); A.grip += (0 - A.grip) * Math.min(1, dt * 8); A.H.lerp(tv2, Math.min(1, dt * 9));
+    if (edge && A.k > 0.6) { A.phase = 'close'; A.t = 0; AU.tone(520, 0.06, 'square', 0.03); } }
+  else if (A.phase === 'close') { A.grip = Math.min(1, A.t / 0.2); A.H.lerp(tv2, Math.min(1, dt * 9));
+    if (A.t >= 0.2) { armPose(A.H, A.k, A.grip); const hit = armHandWorld(tv3).distanceTo(it.pos) < Math.max(0.5, it.r * 0.85);
+      if (hit) { A.phase = 'carry'; A.t = 0; A.held = it; it.state = 0; it.vel.set(0, 0, 0); buzz(18); AU.tone(880, 0.08, 'sine', 0.05); } else { A.phase = 'miss'; A.t = 0; AU.tone(180, 0.12, 'sine', 0.05); toast('빗나갔어요! 손을 쓰레기 위에 맞추고 다시 잡아요', 'tip'); } } }
+  else if (A.phase === 'miss') { A.grip = Math.max(0, 1 - A.t / 0.25); A.H.lerp(tv2, Math.min(1, dt * 9)); if (A.t >= 0.25) A.phase = 'aim'; }
+  else if (A.phase === 'carry') { A.k = Math.max(0, 1 - A.t / 0.8); A.H.lerp(ARM_STOW, Math.min(1, dt * 4)); }
+  armPose(A.H, A.k, A.grip);
+  if (A.phase === 'carry') { armHandWorld(it.pos); it.home.copy(it.pos); writeItem(it); if (A.t >= 0.8) { tryCollect(it); armEnd(0.6); return; } }
+  A.aimed = A.phase === 'aim' && armHandWorld(tv3).distanceTo(it.pos) < Math.max(0.5, it.r * 0.85);
+  if (k.KeyX || IN.rmb) { IN.rmb = false; armEnd(3); toast('로봇 팔을 접었어요', 'tip'); }
+}
+// while the arm is out the sub holds station in front of the piece, level, a little above it
+function armHoldStation(dt) { const it = ARM.it; tv1.subVectors(it.pos, P.pos); const yawT = Math.atan2(tv1.x, tv1.z); let dy = yawT - P.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  if (ARM.phase !== 'carry') { P.yaw += dy * Math.min(1, dt * 3); const h = Math.hypot(tv1.x, tv1.z) || 1, want = 3.3;
+    tv2.set(it.pos.x - (tv1.x / h) * want, Math.max(it.pos.y + 0.9, heightAt(P.pos.x, P.pos.z) + 1.5), it.pos.z - (tv1.z / h) * want); P.pos.lerp(tv2, Math.min(1, dt * 1.6)); }
+  P.pitch += (0 - P.pitch) * Math.min(1, dt * 3); P.vel.multiplyScalar(Math.pow(0.02, dt)); P.beam = false; P.boost = false; }
+// the arm's camera looks over the bow from the side away from the arm, at the piece and the hand
+const ARM_LOOK = new V3();
+function armCamera(dt) { SUB.root.updateMatrixWorld(); SUB.root.localToWorld(tv2.set(-1.35, 2.0, -0.35)); const fl = heightAt(tv2.x, tv2.z) + 0.8; if (tv2.y < fl) tv2.y = fl;
+  const e = 1 - Math.exp(-dt * 5); camera.position.lerp(tv2, e); armHandWorld(tv3); if (ARM.it && ARM.phase !== 'carry') tv3.lerp(ARM.it.pos, 0.65);
+  if (ARM.t < 0.05) ARM_LOOK.copy(tv3); ARM_LOOK.lerp(tv3, e); camera.lookAt(ARM_LOOK); }
+// on the overlay: a ring on the hand, a bracket on the piece; both turn gold when the claw would close on it
+function drawArm(c) { if (!ARM.on || !ARM.it || ARM.phase === 'carry') return; const h = project(armHandWorld(tv1), pv), hx = h.x, hy = h.y, t = project(ARM.it.pos, pv), ok = ARM.aimed, col = ok ? '#e3bd5f' : 'rgba(232,237,241,.85)';
+  c.lineWidth = 2; c.strokeStyle = col; c.beginPath(); c.arc(hx, hy, ok ? 20 : 15, 0, TAU); c.stroke();
+  const s = 26 + Math.sin(G.t * 5) * 3; c.strokeStyle = ok ? '#e3bd5f' : 'rgba(111,211,193,.9)'; c.beginPath();
+  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { c.moveTo(t.x + sx * s, t.y + sy * (s - 9)); c.lineTo(t.x + sx * s, t.y + sy * s); c.lineTo(t.x + sx * (s - 9), t.y + sy * s); } c.stroke();
+  if (!ok) { c.setLineDash([4, 6]); c.strokeStyle = 'rgba(232,237,241,.35)'; c.beginPath(); c.moveTo(hx, hy); c.lineTo(t.x, t.y); c.stroke(); c.setLineDash([]); } }
+
+// =====================================================================
 // PLAYER
 // =====================================================================
 function setAlert(msg, pri) { if (pri >= G.alertPri) { G.alert = msg; G.alertPri = pri; } }
@@ -599,8 +686,9 @@ function damage(v, cause, silent) { if (G.state !== 'play' || v <= 0 || G.story)
   P.hull -= v; if (!silent) { P.inv = 0.7; buzz(40); G.flash = Math.min(0.6, 0.2 + v / 40); G.flashCol = '255,60,60'; G.shake = Math.max(G.shake, 0.15 + v * 0.015); AU.hurt(); P.dmgT = 0.4; burst(P.pos, 14, 1, 0.8, 0.5, 5, 0.18); ftext(P.pos.clone().add(new V3(0, 2, 0)), `-${Math.round(v)}`, '#e5645e', 14); }
   if (P.hull <= 0) { P.hull = 0; fail(cause === '수압' ? 'pressure' : 'hull'); } }
 function updatePlayer(dt) {
+  if (ARM.on) { ARM.mdx += IN.mdx; ARM.mdy += IN.mdy; IN.mdx = IN.mdy = 0; } // the mouse moves the hand, not the sub
   const sens = 0.0022 * G.sens; P.yaw -= IN.mdx * sens; P.pitch = clamp(P.pitch - IN.mdy * sens, -1.3, 1.3); IN.mdx = IN.mdy = 0;
-  const inp = inputVec(); P.inp = inp;
+  const inp = inputVec(); P.inp = inp; if (ARM.on) { inp.f = inp.s = inp.u = 0; inp.boost = false; armHoldStation(dt); }
   // touch: a second after the look thumb lifts, cruising forward without the beam eases a steep pitch back to 26 degrees
   if (IN.touch && IN.look.id == null) { G.lookIdle = (G.lookIdle || 0) + dt; const lim = 0.45; if (G.lookIdle > 1.2 && inp.f > 0.3 && !inp.beam && Math.abs(P.pitch) > lim) P.pitch += (Math.sign(P.pitch) * lim - P.pitch) * Math.min(1, dt * 1.2); } else G.lookIdle = 0;
   const f = fwdOf(P.yaw, P.pitch, P.fwd), r = rightOf(P.yaw, tv2);
@@ -629,7 +717,7 @@ function updatePlayer(dt) {
   // the beam projector brightens while the beam is on; the mast beacon pulses softly every 1.6 s
   SUB.emitter.material.color.setRGB(0.5, 0.91, 1).multiplyScalar(P.beam ? 2.6 : 0.7); SUB.beacon.material.color.setRGB(1, 0.48, 0.18).multiplyScalar(0.35 + 1.4 * Math.max(0, Math.sin(G.t * 3.9)) ** 6);
   SUB.root.updateMatrixWorld(); P.nose.set(0, -0.6, 1.78).applyMatrix4(SUB.root.matrixWorld);
-  P.thrust = ml; P.beam = inp.beam && P.alive;
+  P.thrust = ml; P.beam = inp.beam && P.alive && !ARM.on;
   const drain = 0.2 + ml * 0.5 + (boosting ? 1.5 : 0) + (P.beam ? 1.3 : 0);
   if (G.story) P.bat = S.bat; // story mode: no running out of power
   if (P.alive) { P.bat = Math.max(0, P.bat - drain * dt); if (P.bat <= 0) { P.deadT = 0; toast('배터리 방전', 'bad', '비상 부상 장치가 작동했습니다.'); AU.fail(); } }
@@ -668,6 +756,7 @@ function updateCamera(dt) {
   if (CINE.on) { const u = CINE.hold ? 0.6 : CINE.t / CINE.dur, a = CINE.a0 + (CINE.hold ? CINE.t * 0.12 + 1.2 : u * 1.9), r = CINE.r * (1.15 - 0.3 * u), h = CINE.h * (1.3 - 0.5 * u);
     tv2.set(CINE.c.x + Math.sin(a) * r, Math.max(CINE.c.y + h, heightAt(CINE.c.x + Math.sin(a) * r, CINE.c.z + Math.cos(a) * r) + 3), CINE.c.z + Math.cos(a) * r);
     camera.position.lerp(tv2, CINE.t < 0.05 ? 1 : 1 - Math.exp(-dt * 4)); tv3.copy(CINE.c); tv3.y += 1; camera.lookAt(tv3); return; }
+  if (ARM.on) { armCamera(dt); return; }
   if (G.fp) { // cockpit view: eye just behind the front viewport
     SUB.root.updateMatrixWorld(); camera.position.set(0, 0.12, 1.0).applyMatrix4(SUB.root.matrixWorld);
     const sp = clamp(P.vel.length() / S.speed, 0, 1.6); camera.position.y += Math.sin(G.t * 1.1) * 0.05 + Math.sin(G.t * 7.5) * 0.03 * sp;
@@ -705,10 +794,10 @@ function updateItems(dt) {
       if (it.buoy === 0 && !pulled && it.vel.length() < 0.3) { it.state = 0; it.home.copy(it.pos); }
       if (it.pos.y > -0.8) it.pos.y = -0.8;
       writeItem(it);
-    } else if (it.buoy >= 0 && dc2 < 200 * 200) writeItem(it, 1);
+    } else if (it.buoy >= 0 && !G.story && dc2 < 200 * 200) writeItem(it, 1); // (story pieces keep still for the claw)
     if (it.leak) { if (dc2 < 90 * 90 && Math.random() < dt * 3) FXA.emit(PT.TOX, it.pos.x + rnd(-0.4, 0.4), it.pos.y + it.r, it.pos.z + rnd(-0.4, 0.4), rnd(-0.2, 0.2), rnd(0.5, 1.2), rnd(-0.2, 0.2), rnd(2, 3.5), rnd(0.15, 0.3), 0.4, 1, 0.3, 0.8);
       if (G.state === 'play' && it.pos.distanceToSquared(P.pos) < (it.r + 4.5) ** 2) { damage(5 * dt, '독성', true); setAlert('독성 물질 · 선체 부식 중', 2); tip('drum', '새는 드럼통 근처는 위험합니다. 멀리서 트랙터 빔으로 끌어오세요.'); } }
-    if (G.state === 'play') { const pr = 1.8 + it.r; if (it.pos.distanceToSquared(P.pos) < pr * pr || it.pos.distanceToSquared(P.nose) < (1.2 + it.r) ** 2) tryCollect(it); }
+    if (G.state === 'play' && !G.story) { const pr = 1.8 + it.r; if (it.pos.distanceToSquared(P.pos) < pr * pr || it.pos.distanceToSquared(P.nose) < (1.2 + it.r) ** 2) tryCollect(it); }
   }
 }
 // a collected item shrinks and flies into the sub's nose over a quarter second, then pops
@@ -744,7 +833,7 @@ function updateRescues(dt) {
 }
 function freeAnimal(r) {
   r.freed = true; scene.remove(r.netMesh); scene.remove(r.model.root);
-  const net = items[r.net]; net.locked = false; net.state = 2; net.vel.set(rnd(-1, 1), 0.5, rnd(-1, 1)); net.known = true; net.rev = G.t + 30; writeItem(net);
+  const net = items[r.net]; net.locked = !!G.story; net.state = 2; net.vel.set(rnd(-1, 1), 0.5, rnd(-1, 1)); net.known = true; net.rev = G.t + 30; writeItem(net);
   const z = r.sp === 'turtle' ? Z(r.pos.x, r.pos.z, 150, -60, -3) : r.sp === 'dolphin' ? Z(r.pos.x, r.pos.z, 200, -25, -2) : Z(r.pos.x, r.pos.z, 150, r.pos.y - 60, Math.min(-3, r.pos.y + 40));
   const c = addC(r.sp, z, { at: r.pos.clone(), extra: { freed: true, cd: 30 } }); c.a = 1; c.vel.subVectors(r.pos, P.pos).setY(0).normalize().multiplyScalar(c.spd * 1.5); c.vel.y = 1; c.tgt.copy(r.pos).addScaledVector(c.vel, 8); c.tgt.y = Math.min(-3, r.pos.y + 10); c.timer = 6;
   for (let i = 0; i < 30; i++) FXA.emit(PT.SPARK, r.pos.x + rnd(-1, 1), r.pos.y + rnd(-1, 1), r.pos.z + rnd(-1, 1), rnd(-2, 2), rnd(0.5, 3), rnd(-2, 2), rnd(1.2, 2.2), rnd(0.25, 0.45), 1, 0.45, 0.65, 1);
@@ -957,6 +1046,7 @@ function drawOverlay() {
   c.save(); drawOverlayIn(c, W, H); c.restore();
 }
 function drawOverlayIn(c, W, H) {
+  drawArm(c);
   const ck = inCockpit() && G.ck; if (ck) { const g = ck.glass; c.beginPath(); c.rect(g.x0, g.y0, g.x1 - g.x0, g.y1 - g.y0); c.clip(); }
   c.textAlign = 'center';
   // revealed items
@@ -997,7 +1087,7 @@ function drawOverlayIn(c, W, H) {
 // =====================================================================
 // VIEW MODE (first / third person) + COCKPIT
 // =====================================================================
-const inCockpit = () => G.fp && G.state !== 'title' && !G.cine;
+const inCockpit = () => G.fp && G.state !== 'title' && !G.cine && !ARM.on;
 const CK = new CockpitUI($('ckdyn'));
 function redrawCockpit() { if (!inCockpit() || !G.ck) return; drawCockpit($('cockpit'), G.ck, Math.min(devicePixelRatio || 1, 2), G.fpTier < 0 ? 0 : G.fpTier); }
 // HUD lives inside the visible viewport: the canopy glass above the instrument row in first person, the screen in third person
@@ -1016,6 +1106,7 @@ function layoutHUD() {
 function applyView() {
   const on = inCockpit();
   for (const ch of SUB.root.children) if (ch.isMesh && ch !== lightCone) ch.visible = !on;
+  ARMG.g.visible = !on;
   document.body.classList.toggle('fp', on); $('cockpit').classList.toggle('hidden', !on); $('ckdyn').classList.toggle('hidden', !on);
   G.fpTier = -1; resize();
 }
@@ -1139,7 +1230,7 @@ function updateHUD() {
 // the guide talks between short goals (pick up trash, free a turtle, heal the bleached reef), then an
 // ending card with the results, everyday actions and a three-question OX quiz.
 // =====================================================================
-const SS = { i: -1, line: 0, base: 0, coralBase: 0, coralDone: false, turtle: null, wait: 0, unloaded: 0 };
+const SS = { i: -1, line: 0, base: 0, coralBase: 0, coralDone: false, turtle: null, wait: 0, unloaded: 0, targets: { trash: [], coral: [] } };
 const storyCoral = () => SITE.bleach.ids.reduce((n, id) => n + (items[id].col ? 1 : 0), 0) - SS.coralBase;
 function storyProg(st) {
   if (st.goal === 'trash') return [Math.min(st.n, ST().collected - SS.base), st.n];
@@ -1151,11 +1242,11 @@ function storyProg(st) {
   return [0, 1];
 }
 function storyGuide(st) {
-  if (st.goal === 'trash') { const it = nearestItem(() => true); return it && { p: it.pos, label: '가까운 쓰레기' }; }
+  if (st.goal === 'trash') { const it = nearestItem((i) => SS.targets.trash.includes(i.id)); return it && { p: it.pos, label: '쓰레기' }; }
   if (st.goal === 'turtle') return { p: SS.turtle.pos, label: '그물에 걸린 바다거북' };
   if (st.goal === 'reach') return { p: SITE.bleach.c, label: '하얀 산호 지대' };
   if (st.goal === 'valve') return { p: bleach.valve.pos, label: '빨간 밸브' };
-  if (st.goal === 'coral') { const it = nearestItem((i) => i.site === 'bleach'); return it && { p: it.pos, label: '산호 위 쓰레기' }; }
+  if (st.goal === 'coral') { const it = nearestItem((i) => SS.targets.coral.includes(i.id)); return it && { p: it.pos, label: '산호 위 쓰레기' }; }
   if (st.goal === 'dock') return { p: DOCK, label: '배 · 초록색 고리' };
   return null;
 }
@@ -1243,6 +1334,15 @@ function startStory() {
   Object.assign(SV.up, { engine: 2, beam: 2, cargo: 3, light: 1 }); calcStats(); P.bat = S.bat; P.hull = S.hull;
   for (const k of ['site_bleach', 'valve', 'net', 'depth', 'drum']) SV.tips[k] = 1; // the guide explains these instead
   SS.turtle = rescues.filter((r) => r.sp === 'turtle').sort((a, b) => a.pos.distanceToSquared(DOCK) - b.pos.distanceToSquared(DOCK))[0];
+  // the story's sea holds only the ten pieces its two clean-up goals ask for: five hand-sized ones near the start, five on the
+  // bleached reef. Everything else is put away (locked), so nothing but the piece the arrow points at is there to pick up.
+  { const HAND = ['bottle', 'can', 'bag', 'cup', 'mask', 'glass', 'styro'], near = (a, b) => a.pos.distanceToSquared(P.pos) - b.pos.distanceToSquared(P.pos), bl = SITE.bleach;
+    SS.targets.trash = items.filter((i) => !i.locked && i.site !== 'bleach' && HAND.includes(i.type) && i.pos.y < -3 && i.pos.y > -45).sort(near).slice(0, STORY.steps.find((s) => s.goal === 'trash').n).map((i) => i.id);
+    SS.targets.coral = bl.ids.map((id) => items[id]).filter((i) => !i.locked).sort((a, b) => Math.hypot(a.pos.x - bl.c.x, a.pos.z - bl.c.z) - Math.hypot(b.pos.x - bl.c.x, b.pos.z - bl.c.z)).slice(0, STORY.steps.find((s) => s.goal === 'coral').n).map((i) => i.id);
+    // the first five are laid out on the seabed a short swim apart, fanning out from the start toward the turtle
+    { const base = Math.atan2(SS.turtle.pos.x - P.pos.x, SS.turtle.pos.z - P.pos.z); SS.targets.trash.forEach((id, k) => { const it = items[id], a = base + [-0.5, 0.35, -0.15, 0.55, 0][k % 5], d = 16 + k * 7, x = P.pos.x + Math.sin(a) * d, z = P.pos.z + Math.cos(a) * d;
+        it.pos.set(x, heightAt(x, z) + it.r * 0.5 + 0.1, z); it.home.copy(it.pos); it.state = 0; it.vel.set(0, 0, 0); }); }
+    const keep = new Set([...SS.targets.trash, ...SS.targets.coral]); for (const it of items) { if (!keep.has(it.id)) it.locked = true; writeItem(it); } ITEMCULL.x = NaN; armEnd(0); }
   document.querySelectorAll('#toasts .toast').forEach((t) => t.remove());
   buddyShow(); buddyPortrait();
   cineStart(P.pos, 15, 8, 7.5, '부캉이와 바다 구하기', '돌고래 부캉이의 안내로 바다를 되살리는 5분 모험', () => storyStep(0));
@@ -1381,7 +1481,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sav
 // browsers only let audio restart from a user gesture, and iOS reports 'interrupted' after a tab or app switch: retry on every gesture
 for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) addEventListener(ev, () => AU.init(), { capture: true, passive: true });
 addEventListener('pageshow', () => AU.resume()); addEventListener('focus', () => AU.resume());
-canvas.addEventListener('mousedown', (e) => { AU.init(); if (IN.touch || G.state !== 'play') return; if (!IN.locked) { requestLock(); IN.drag = true; IN.lx = e.clientX; IN.ly = e.clientY; if (e.button === 0 && e.shiftKey) IN.lmb = true; return; } if (e.button === 0) IN.lmb = true; else if (e.button === 2) doSonar(); });
+canvas.addEventListener('mousedown', (e) => { AU.init(); if (IN.touch || G.state !== 'play') return; if (!IN.locked) { requestLock(); IN.drag = true; IN.lx = e.clientX; IN.ly = e.clientY; if (e.button === 0 && e.shiftKey) IN.lmb = true; return; } if (e.button === 0) IN.lmb = true; else if (e.button === 2) { if (ARM.on) IN.rmb = true; else doSonar(); } });
 // Chromium can report the cursor's whole jump to the lock point as one locked move; no hand moves 400 px in one event, so drop those
 addEventListener('mousemove', (e) => { if (IN.locked) { if (Math.abs(e.movementX) > 400 || Math.abs(e.movementY) > 400) return; IN.mdx += e.movementX; IN.mdy += e.movementY; } else if (IN.drag) { IN.mdx += e.clientX - IN.lx; IN.mdy += e.clientY - IN.ly; IN.lx = e.clientX; IN.ly = e.clientY; } });
 addEventListener('mouseup', (e) => { if (e.button === 0) IN.lmb = false; IN.drag = false; });
@@ -1397,6 +1497,7 @@ lz.addEventListener('touchstart', (e) => { e.preventDefault(); const t = e.chang
 lz.addEventListener('touchmove', (e) => { e.preventDefault(); for (const t of e.changedTouches) { if (t.identifier !== IN.look.id) continue; IN.mdx += (t.clientX - IN.look.x) * 1.6; IN.mdy += (t.clientY - IN.look.y) * 1.6; IN.look.x = t.clientX; IN.look.y = t.clientY; } }, { passive: false });
 const lookEnd = (e) => { for (const t of e.changedTouches) if (t.identifier === IN.look.id) IN.look.id = null; }; lz.addEventListener('touchend', lookEnd); lz.addEventListener('touchcancel', lookEnd);
 const holdBtn = (el, key) => { el.addEventListener('touchstart', (e) => { e.preventDefault(); IN[key] = true; el.classList.add('on'); }, { passive: false }); const up = (e) => { e.preventDefault(); IN[key] = false; el.classList.remove('on'); }; el.addEventListener('touchend', up); el.addEventListener('touchcancel', up); };
+$('armX').addEventListener('click', () => { IN.rmb = true; });
 holdBtn($('tBeam'), 'tBeam'); holdBtn($('tBoost'), 'tBoost'); holdBtn($('tUp'), 'tUp'); holdBtn($('tDown'), 'tDown');
 $('tSonar').addEventListener('touchstart', (e) => { e.preventDefault(); doSonar(); }, { passive: false });
 document.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) b.blur(); });
@@ -1440,7 +1541,7 @@ function updateTouchHints(dt) {
 }
 function update(dt) {
   G.dayT = (G.dayT + dt / 600) % 1; G.alert = ''; G.alertPri = 0; ST().time += dt;
-  updatePlayer(dt); updateItems(dt); updateSuck(dt); updateTouchHints(dt); updateSites(dt); updateValve(dt); if (G.story) { cineUpdate(dt); typeUpdate(dt); storyUpdate(dt); updateBuddy(dt); } updateBleach(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
+  updatePlayer(dt); updateItems(dt); if (G.story) updateArm(dt); updateSuck(dt); updateTouchHints(dt); updateSites(dt); updateValve(dt); if (G.story) { cineUpdate(dt); typeUpdate(dt); storyUpdate(dt); updateBuddy(dt); } updateBleach(dt); updateVents(dt); updateRescues(dt); updateSonar(dt); updateHazards(dt);
   for (const c of creatures) updateCreature(c, dt); for (const s of schools) updateSchool(s, dt);
   updateCamera(dt);
   G.shake *= Math.pow(0.02, dt); if (G.shake < 0.01) G.shake = 0; G.flash = Math.max(0, G.flash - dt * 1.4);
@@ -1456,7 +1557,7 @@ function updateAttract(dt) {
   const p = attractPath(G.t), q = attractPath(G.t + 3); camera.position.lerp(p, 1 - Math.exp(-dt * 2)); tv1.copy(q); tv1.y -= 6; camera.lookAt(tv1);
   P.pos.copy(camera.position); P.nose.copy(camera.position); fwdOf(0, 0, P.fwd);
   for (const c of creatures) updateCreature(c, dt); for (const s of schools) updateSchool(s, dt);
-  for (const it of items) if (it.buoy >= 0 && it.pos.distanceToSquared(camera.position) < 150 * 150) writeItem(it, 1);
+  for (const it of items) if (it.buoy >= 0 && !G.story && it.pos.distanceToSquared(camera.position) < 150 * 150) writeItem(it, 1);
 }
 let last = performance.now(), hudAcc = 0, mmAcc = 0;
 // Auto quality: start on 높음 and watch real frame times while playing. Two slow windows in a row
@@ -1503,6 +1604,6 @@ genItems(); genRescues(); genSiteItems(); buildItemMeshes(); genCreatures(); bui
 G.poll = items.length;
 loadSettings(); resize(); showTitle();
 function simulate(sec) { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) { const dt = 1 / 30; G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); FXA.update(dt); FXN.update(dt); } writeFish(); }
-window.__game = { AU, IN, SUB, BUDDY, composer, SITES, storyStep, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
+window.__game = { ARM, SS, AU, IN, SUB, BUDDY, composer, SITES, storyStep, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
 $('loading').classList.add('hidden');
 requestAnimationFrame((t) => { last = t; frame(t); });

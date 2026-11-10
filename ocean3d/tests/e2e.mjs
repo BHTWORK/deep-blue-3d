@@ -88,7 +88,7 @@ const SUITES = {
     check('every bleached-reef item is reachable', r.miss === 0, r.miss); check('reef recovers colour and fish', r.done && r.h > 0.95 && r.fish, r);
     check('sites: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close();
   },
-  // story mode played start to finish by a bot holding W and E, then the quiz; the main save must be untouched
+  // story mode played start to finish by a bot holding W and E (and working the robot arm), then the quiz; the main save must be untouched
   async story(browser) {
     const save = { v: 1, mv: 3, money: 4321, mission: 9, stats: { collected: 77 }, up: {} };
     const { ctx, page, errors, E } = await open(browser, { query: '?story', save });
@@ -102,7 +102,7 @@ const SUITES = {
       if (st.talk) { if (await E(() => !document.getElementById('quizOX').classList.contains('hidden'))) { await page.click('#quizOX .qo'); await page.waitForTimeout(60); } else { await page.keyboard.press('Enter'); await page.waitForTimeout(30); } continue; }
       await page.keyboard.down('KeyW'); await page.keyboard.down('KeyE');
       for (let chunk = 0; chunk < 40; chunk++) {
-        const r = await E(() => { const g = window.__game; for (let n = 0; n < 150 && !g.G.talk && g.G.state === 'play'; n++) { const gd = g.G.guide; if (gd) { const dx = gd.p.x - g.P.pos.x, dy = gd.p.y - g.P.pos.y, dz = gd.p.z - g.P.pos.z; g.P.yaw = g.P.vyaw = Math.atan2(dx, dz); g.P.pitch = Math.max(-1.2, Math.min(1.2, Math.atan2(dy, Math.hypot(dx, dz)))); if (Math.hypot(dx, dy, dz) < 3) g.P.vel.multiplyScalar(0.7); } g.simulate(1 / 30); } return g.G.talk || g.G.state !== 'play'; });
+        const r = await E(() => { const g = window.__game; for (let n = 0; n < 150 && !g.G.talk && g.G.state === 'play'; n++) { const gd = g.G.guide, A = g.ARM; if (A.on) { if (A.phase === 'aim' && !A.first) { A.ax = A.tx; A.ay = A.ty; } g.IN.keys.KeyE = n % 6 < 3; } else { g.IN.keys.KeyE = true; if (gd) { const dx = gd.p.x - g.P.pos.x, dy = gd.p.y - g.P.pos.y, dz = gd.p.z - g.P.pos.z; g.P.yaw = g.P.vyaw = Math.atan2(dx, dz); g.P.pitch = Math.max(-1.2, Math.min(1.2, Math.atan2(dy, Math.hypot(dx, dz)))); if (Math.hypot(dx, dy, dz) < 3) g.P.vel.multiplyScalar(0.7); } } g.simulate(1 / 30); } return g.G.talk || g.G.state !== 'play'; });
         if (r) break;
       }
       await page.keyboard.up('KeyW'); await page.keyboard.up('KeyE'); goals++;
@@ -116,6 +116,18 @@ const SUITES = {
     await page.click('#seHome'); await page.waitForTimeout(300);
     check('back at the title', await E(() => window.__game.G.state === 'title'));
     check('main save untouched', await E((k) => { const d = JSON.parse(localStorage.getItem(k)); return d.money === 4321 && d.mission === 9 && d.stats.collected === 77; }, SAVE_KEY));
+    // the story's sea holds only the designated pieces, and they are picked up with the robot arm
+    await page.click('#bStory'); await page.waitForTimeout(300);
+    for (let i = 0; i < 40; i++) { const st = await E(() => ({ talk: window.__game.G.talk, i: window.__game.SS.i })); if (!st.talk && st.i >= 1) break; await page.keyboard.press('Enter'); await page.waitForTimeout(30); }
+    const sea = await E(() => { const g = window.__game, T = g.SS.targets, open = g.items.filter((i) => !i.locked && !i.col).map((i) => i.id).sort(); return { open: open.length, same: JSON.stringify(open) === JSON.stringify([...T.trash, ...T.coral].sort()), far: Math.round(Math.max(...T.trash.map((id) => g.items[id].pos.distanceTo(g.P.pos)))) }; });
+    check('story: only the ten designated pieces are in the sea, the first five close by', sea.open === 10 && sea.same && sea.far < 70, sea);
+    const arm = await E(() => { const g = window.__game, A = g.ARM, it = g.items[g.SS.targets.trash[0]], out = {}, run = (sec, key) => { g.IN.keys.KeyE = !!key; g.simulate(sec); };
+      g.P.pos.set(it.pos.x - 3, it.pos.y + 1.2, it.pos.z - 1.5); g.P.vel.set(0, 0, 0); run(0.2); out.near = A.on; // within reach: the arm unfolds on its own
+      run(2.5); out.ready = A.on && A.phase === 'aim' && !A.first; out.off = !A.aimed;
+      run(0.1, 1); run(0.7); out.miss = !it.col && A.on && A.phase === 'aim'; // a grab beside the piece misses and the claw reopens
+      A.ax = A.tx; A.ay = A.ty; run(0.6); out.aimed = A.aimed; out.fp = !document.getElementById('armBox').classList.contains('hidden');
+      run(0.1, 1); run(0.5); out.carry = A.phase === 'carry'; run(1.2); out.got = it.col && !A.on && g.P.cargo.includes(it.id); return out; });
+    check('story: the robot arm unfolds near a piece, misses off target, grabs on target', arm.near && arm.ready && arm.off && arm.miss && arm.aimed && arm.fp && arm.carry && arm.got, arm);
     check('story: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close();
   },
   // graphics quality: auto by default and adapting to real frame times, a 최고 tier at full pixel density,
