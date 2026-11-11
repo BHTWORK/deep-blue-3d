@@ -31,8 +31,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:#071017;color:var(--
 button{font-family:var(--font)}
 .hidden{display:none!important}
 canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
-canvas#overlay,canvas#cockpit,canvas#cockpit2{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
-canvas#cockpit,canvas#cockpit2{z-index:3}
+canvas#overlay,canvas#cockpit{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+canvas#cockpit{z-index:3}
+canvas#cockpit2,canvas#cockpit2n{position:fixed;pointer-events:none;z-index:3;will-change:transform}#ckdyn2{will-change:transform}
 #ckdyn,#ckdyn2{position:fixed;inset:0;z-index:3;pointer-events:none;overflow:hidden}
 #ckdyn canvas,#ckdyn2 canvas{position:absolute;left:0;top:0;transform-origin:0 0}
 /* the story's round-window cockpit shows depth, battery and sonar itself: the mission card moves under the compass, the minimap goes */
@@ -395,6 +396,7 @@ body.arming #hint{visibility:hidden}
 <canvas id="cockpit" class="hidden"></canvas>
 <div id="ckdyn" class="hidden"></div>
 <canvas id="cockpit2" class="hidden"></canvas>
+<canvas id="cockpit2n" class="hidden"></canvas>
 <div id="ckdyn2" class="hidden"></div>
 <canvas id="overlay"></canvas>
 <div id="vign"></div><div id="dmgVig"></div><div id="flash"></div>

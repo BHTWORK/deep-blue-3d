@@ -1122,7 +1122,7 @@ function applyView() {
   const on = inCockpit(), sph = inSphere();
   for (const ch of SUB.root.children) if (ch.isMesh && ch !== lightCone) ch.visible = !on && !sph; // from inside, only the arm is seen through the window
   ARMG.g.visible = !on;
-  document.body.classList.toggle('fp', on || sph); document.body.classList.toggle('sphere', sph); $('cockpit').classList.toggle('hidden', !on); $('ckdyn').classList.toggle('hidden', !on); $('cockpit2').classList.toggle('hidden', !sph); $('ckdyn2').classList.toggle('hidden', !sph);
+  document.body.classList.toggle('fp', on || sph); document.body.classList.toggle('sphere', sph); $('cockpit').classList.toggle('hidden', !on); $('ckdyn').classList.toggle('hidden', !on); $('cockpit2').classList.toggle('hidden', !sph); $('cockpit2n').classList.toggle('hidden', !sph); $('ckdyn2').classList.toggle('hidden', !sph);
   G.fpTier = -1; resize();
 }
 function toggleView() { if (G.state !== 'play') return; G.fp = !G.fp; applyView(); saveSettings(); $('sView').value = G.fp ? '1' : '0'; AU.click(); updateCamera(1); toast(G.fp ? '1인칭 조종석 시점' : '3인칭 추적 시점', '', 'V 키로 전환합니다.'); }
@@ -1150,6 +1150,14 @@ function renderFeed() {
   const pr = renderer.getPixelRatio(); (G.ck2 ? CK2 : CK).feed(canvas, Math.round(FEED.w * pr), Math.round(FEED.h * pr));
 }
 const CKS = { stickL: [0, 0], stickR: [0, 0], inp: { f: 0, s: 0, u: 0 } };
+// Depth in the round-window cockpit: as the view turns, the near layer (displays, console, controllers) slides further than the far
+// one (wall and window ring), and both against the sea, the way things at different distances do when a head moves. A slow sway idles.
+const PAR = { x: 0, y: 0, yaw: 0, pit: 0 };
+function sphereParallax(dt) { const L = G.ck2, pit = ARM.on ? ARM.cp : P.pitch, k = 1 / Math.max(dt, 1e-3);
+  const tx = clamp(angDelta(P.yaw, PAR.yaw) * k * 0.5, -1, 1) + Math.sin(G.t * 0.55) * 0.1, ty = clamp((pit - PAR.pit) * k * 0.6, -1, 1) + Math.sin(G.t * 0.8 + 1) * 0.08; PAR.yaw = P.yaw; PAR.pit = pit;
+  const e = Math.min(1, dt * 5); PAR.x += (tx - PAR.x) * e; PAR.y += (ty - PAR.y) * e;
+  const f = L.bleed * 0.42, n = L.bleed * 0.95, tf = `translate3d(${(PAR.x * f).toFixed(1)}px,${(PAR.y * f).toFixed(1)}px,0)`, tn = `translate3d(${(PAR.x * n).toFixed(1)}px,${(PAR.y * n).toFixed(1)}px,0)`;
+  $('cockpit2').style.transform = tf; $('cockpit2n').style.transform = tn; $('ckdyn2').style.transform = tn; }
 // what the round-window cockpit's screens show: the same state, plus the water temperature (cooler with depth), the arm and the goal's count
 function sphereState() { const s = cockpitState(), st = STORY.steps[SS.i]; s.temp = Math.max(2, 24 - s.depth * 0.16); s.arm = ARM; s.heading = headingLabel(P.yaw); s.bank = clamp(-(P.yr || 0) * 0.25, -0.5, 0.5);
   s.prog = st && st.goal ? storyProg(st) : null; return s; }
@@ -1544,7 +1552,7 @@ function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; 
   // labels and markers are 2D text: drawn at the screen's own density (to 2x) whatever the 3D resolution
   G.opr = Math.min(devicePixelRatio || 1, 2); overlay.width = Math.round(G.VW * G.opr); overlay.height = Math.round(G.VH * G.opr);
   FXA.mat.uniforms.uScale.value = f * pr; FXN.mat.uniforms.uScale.value = f * pr;
-  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); if (L) CK.setLayout(L, Math.min(devicePixelRatio || 1, 2)); if (L2) { const dp = Math.min(devicePixelRatio || 1, 2); drawSphereCockpit($('cockpit2'), L2, dp); CK2.setLayout(L2, dp); } feedLayout(); layoutHUD(); swipeCheck(); }
+  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); if (L) CK.setLayout(L, Math.min(devicePixelRatio || 1, 2)); if (L2) { const dp = Math.min(devicePixelRatio || 1, 2); drawSphereCockpit($('cockpit2'), $('cockpit2n'), L2, dp); CK2.setLayout(L2, dp); } feedLayout(); layoutHUD(); swipeCheck(); }
 // iOS fires resize while the page scrolls; reallocating every buffer for an unchanged size only costs a frame
 addEventListener('resize', () => { if (innerWidth !== G.VW || innerHeight !== G.VH) resize(); });
 // first touch play: ghost hints over the two drag zones until each has been used for a moment, and a pulsing beam button
@@ -1610,7 +1618,7 @@ function frame(now) {
     // own tone mapping, so a direct render shows half-fogged distance as lighter shapes against the background, and the
     // fog-distance culling above would show as straight edges; through the composer fog mixes first and the end pass tone-maps all
     if ((live || G.needRender) && !G.ctxLost && !GL.isContextLost()) { updateEnv(dt); if (inCockpit() || G.ck2) renderFeed(); composer.render(); drawOverlay(); G.needRender = false; }
-    if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit() && G.ck) CK.update(cockpitState(), dt); else if (G.ck2 && inSphere()) CK2.update(sphereState(), dt); }
+    if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit() && G.ck) CK.update(cockpitState(), dt); else if (G.ck2 && inSphere()) { CK2.update(sphereState(), dt); sphereParallax(dt); } }
     if (G.state === 'menu' && !$('mapm').classList.contains('hidden')) { mmAcc += dt; if (mmAcc > 0.3) { mmAcc = 0; drawBigMap(); } }
     AU.update(G.state === 'title' ? 20 : depthOf(P.pos.y), P.vel.length() * 12, G.state === 'play' ? P.thrust : 0, G.state === 'play' && P.beam, G.state === 'play');
   } catch (err) { console.error(err); }

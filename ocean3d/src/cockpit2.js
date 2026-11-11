@@ -1,8 +1,9 @@
-// The story's first-person view: the pilot looks out through one big round window. A dark ring with strips of cold
-// light frames the sea; a sonar display stands on the left, the arm camera's monitor on the right, a console with
+// The story's first-person view: the pilot looks out through one pane of glass the full width of the cabin, framed
+// only by a header rail with strips of cold light, a slender pillar at each edge and the sill; a sonar display stands on the left, the arm camera's monitor on the right, a console with
 // its own screen and two hand controllers below; depth, temperature, battery and hull read out in the top corners
-// and a compass tape runs along the top. The frame is painted once per size; the screens are small canvases
-// laid over it (the same mechanism as the main game's cockpit, cockpit.js).
+// and a compass tape runs along the top. The frame is painted once per size, on a far and a near layer that
+// main.js slides against each other as the view turns; the screens are small canvases laid over the near one
+// (the same mechanism as the main game's cockpit, cockpit.js).
 import { CockpitUI, headingDeg } from './cockpit.js';
 
 const SANS = '"Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -12,75 +13,84 @@ const txt = (c, s, x, y, size, col, align = 'left', weight = 500) => { c.font = 
 function rrect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 
 export function sphereLayout(W, H, touch) {
-  const cx = W / 2, cy = H * 0.4, rx = W * 0.315, ry = H * 0.375, L = { W, H, touch, win: { cx, cy, rx, ry }, q: {}, gauges: [] };
-  const y0 = Math.max(0, Math.floor(cy - ry)), y1 = Math.min(H, Math.ceil(cy + ry));
-  L.view = { x: Math.floor(cx - rx), y: y0, w: Math.ceil(rx * 2), h: y1 - y0 }; // the 3D picture is only drawn where the window is
-  L.q.scrL = Q([W * 0.008, H * 0.3], [W * 0.214, H * 0.036], [W * 0.004, H * 0.28]);
-  L.q.scrR = Q([W * 0.79, H * 0.34], [W * 0.205, -H * 0.03], [-W * 0.003, H * 0.245]);
-  L.q.scrC = Q([W * 0.358, H * 0.787], [W * 0.284, 0], [0, H * 0.168]);
-  L.q.hudL = Q([W * 0.07, H * 0.035], [W * 0.135, H * 0.014], [0, H * 0.17]);
-  L.q.hudR = Q([W * 0.85, Math.max(H * 0.085, 50)], [W * 0.135, -H * 0.014], [0, H * 0.17]);
+  const L = { W, H, touch, q: {}, gauges: [] };
+  // the frame is painted on two layers larger than the screen by `bleed` all round, so that they can slide a little against each
+  // other and against the sea as the pilot's head moves
+  L.bleed = Math.round(Math.max(18, W * 0.02));
+  L.view = { x: 0, y: 0, w: W, h: H }; // one pane of glass, the full width and height of the cabin
+  L.q.scrL = Q([W * 0.004, H * 0.335], [W * 0.176, H * 0.03], [W * 0.003, H * 0.245]);
+  L.q.scrR = Q([W * 0.822, H * 0.366], [W * 0.174, -H * 0.026], [-W * 0.003, H * 0.222]);
+  L.q.scrC = Q([W * 0.358, H * 0.8], [W * 0.284, 0], [0, H * 0.16]);
+  L.q.hudL = Q([W * 0.045, H * 0.035], [W * 0.135, H * 0.014], [0, H * 0.17]);
+  L.q.hudR = Q([W * 0.862, Math.max(H * 0.085, 50)], [W * 0.13, -H * 0.014], [0, H * 0.17]);
   L.q.comp = Q([W * 0.37, Math.max(4, H * 0.012)], [W * 0.26, 0], [0, Math.max(34, H * 0.072)]);
-  if (!touch) L.q.manip = Q([W * 0.872, H * 0.722], [W * 0.118, H * 0.012], [0, H * 0.118]); // on touch the grab button stands there
-  L.ppY = y0 + (y1 - y0) / 2; L.hudTop = L.q.comp.o[1] + L.q.comp.h + 4;
+  if (!touch) L.q.manip = Q([W * 0.874, H * 0.735], [W * 0.116, H * 0.012], [0, H * 0.112]); // on touch the grab button stands there
+  L.ppY = H * 0.44; L.hudTop = L.q.comp.o[1] + L.q.comp.h + 4;
   return L;
 }
 
-// ---------------------------------------------------------------- the painted frame
-export function drawSphereCockpit(cv, L, pr) {
-  const { W, H } = L, { cx, cy, rx, ry } = L.win, u = W / 1672;
-  cv.width = Math.round(W * pr); cv.height = Math.round(H * pr); const c = cv.getContext('2d'); c.setTransform(pr, 0, 0, pr, 0, 0); c.clearRect(0, 0, W, H);
-  const lin = (x0, y0, x1, y1, st) => { const g = c.createLinearGradient(x0, y0, x1, y1); st.forEach(([t, col]) => g.addColorStop(t, col)); return g; };
-  const ell = (k) => { c.beginPath(); c.ellipse(cx, cy, rx + k * u, ry + k * u, 0, 0, TAU); };
-  // walls: dark padded panels, a little lighter toward the window
-  let g = c.createRadialGradient(cx, cy, rx * 0.9, cx, cy, W * 0.62); g.addColorStop(0, '#1c2530'); g.addColorStop(0.45, '#0e141b'); g.addColorStop(1, '#05080c'); c.fillStyle = g; c.fillRect(0, 0, W, H);
-  c.strokeStyle = 'rgba(120,150,175,.07)'; c.lineWidth = 1.2 * u;
-  for (const sx of [-1, 1]) { for (let i = 0; i < 4; i++) { const x = cx + sx * (rx + (95 + i * 105) * u); c.beginPath(); c.moveTo(x, 0); c.lineTo(x + sx * 30 * u, H); c.stroke(); }
-    for (const y of [0.2, 0.66, 0.9]) { c.beginPath(); c.moveTo(cx + sx * (rx + 60 * u), H * y); c.lineTo(cx + sx * W * 0.5, H * (y + 0.03)); c.stroke(); } }
-  // the window ring: a broad band of dark metal with a machined inner lip
-  ell(86); c.fillStyle = lin(0, cy - ry, 0, cy + ry + 86 * u, [[0, '#1b232d'], [0.5, '#232d38'], [1, '#0c1016']]); c.fill();
-  ell(86); c.strokeStyle = 'rgba(0,0,0,.6)'; c.lineWidth = 3 * u; c.stroke();
-  ell(58); c.strokeStyle = 'rgba(150,180,205,.10)'; c.lineWidth = 1.5 * u; c.stroke();
-  ell(30); c.fillStyle = lin(0, cy - ry, 0, cy + ry, [[0, '#2a3440'], [0.5, '#161d25'], [1, '#2b3743']]); c.fill();
-  for (let i = 0; i < 28; i++) { const a = (i / 28) * TAU + 0.11, x = cx + Math.cos(a) * (rx + 71 * u), y = cy + Math.sin(a) * (ry + 71 * u); c.fillStyle = 'rgba(0,0,0,.55)'; c.beginPath(); c.arc(x, y, 4.2 * u, 0, TAU); c.fill(); c.fillStyle = 'rgba(160,185,205,.22)'; c.beginPath(); c.arc(x - u, y - u, 2.2 * u, 0, TAU); c.fill(); }
-  // strips of cold light set into the lip: upper left and right, lower left and right
-  c.save(); c.lineCap = 'round'; c.shadowColor = '#9fdcff'; c.shadowBlur = 22 * u;
-  for (const [a0, a1, w, al] of [[-2.36, -1.95, 9, 1], [-1.19, -0.78, 9, 1], [2.38, 2.66, 7, 0.9], [0.48, 0.76, 7, 0.9], [-3.02, -2.62, 3, 0.55], [-0.52, -0.12, 3, 0.55]]) {
-    c.strokeStyle = `rgba(214,240,255,${al})`; c.lineWidth = w * u; c.beginPath(); c.ellipse(cx, cy, rx + 14 * u, ry + 14 * u, 0, a0, a1); c.stroke(); }
+// ---------------------------------------------------------------- the painted frame, in two layers
+// far: the cabin wall and the window's deep ring. near: the displays, the console and the hand controllers.
+export function drawSphereCockpit(far, near, L, pr) {
+  const { W, H } = L, B = L.bleed, cx = W / 2, u = W / 1672;
+  const open = (cv) => { cv.width = Math.round((W + B * 2) * pr); cv.height = Math.round((H + B * 2) * pr); Object.assign(cv.style, { left: -B + 'px', top: -B + 'px', width: W + B * 2 + 'px', height: H + B * 2 + 'px' });
+    const c = cv.getContext('2d'); c.setTransform(pr, 0, 0, pr, B * pr, B * pr); c.clearRect(-B, -B, W + B * 2, H + B * 2); return c; };
+  let c = open(far), g;
+  const lin = (x0, y0, x1, y1, st) => { const gg = c.createLinearGradient(x0, y0, x1, y1); st.forEach(([t, col]) => gg.addColorStop(t, col)); return gg; };
+  // the pane: thick glass, a little darker toward its edges, with two faint reflections of the cabin lights
+  g = c.createRadialGradient(cx, H * 0.45, H * 0.42, cx, H * 0.45, W * 0.64); g.addColorStop(0, 'rgba(2,10,18,0)'); g.addColorStop(1, 'rgba(2,10,18,.5)'); c.fillStyle = g; c.fillRect(-B, -B, W + B * 2, H + B * 2);
+  for (const [fx, fy, len, al] of [[0.2, 0.2, 0.34, 0.06], [0.74, 0.3, 0.22, 0.04]]) { c.save(); c.translate(W * fx, H * fy); c.rotate(-0.5); g = c.createLinearGradient(0, -70 * u, 0, 70 * u); g.addColorStop(0, 'rgba(200,230,255,0)'); g.addColorStop(0.5, `rgba(200,230,255,${al})`); g.addColorStop(1, 'rgba(200,230,255,0)'); c.fillStyle = g; c.fillRect(-W * len / 2, -70 * u, W * len, 140 * u); c.restore(); }
+  // what frames it: a header rail arching over the top, deeper at the corners, with strips of cold light let into its lower edge
+  const rail = (dy) => { c.beginPath(); c.moveTo(-B, -B); c.lineTo(W + B, -B); c.lineTo(W + B, H * 0.15 + dy); c.quadraticCurveTo(cx, -H * 0.085 + dy, -B, H * 0.15 + dy); c.closePath(); };
+  c.save(); c.shadowColor = 'rgba(0,0,0,.7)'; c.shadowBlur = 30 * u; c.shadowOffsetY = 10 * u; rail(0); c.fillStyle = lin(0, -B, 0, H * 0.15, [[0, '#0a0e13'], [0.6, '#18212a'], [1, '#2c3844']]); c.fill(); c.restore();
+  rail(-9 * u); c.fillStyle = lin(0, -B, 0, H * 0.14, [[0, '#06090c'], [1, '#141b23']]); c.fill(); // the rail's underside, set back
+  c.strokeStyle = 'rgba(195,222,245,.35)'; c.lineWidth = 1.6 * u; c.beginPath(); c.moveTo(-B, H * 0.15); c.quadraticCurveTo(cx, -H * 0.085, W + B, H * 0.15); c.stroke();
+  c.save(); c.lineCap = 'round'; c.shadowColor = '#9fdcff'; c.shadowBlur = 24 * u; c.strokeStyle = 'rgba(222,244,255,.95)'; c.lineWidth = 8 * u;
+  for (const [t0, t1] of [[0.14, 0.3], [0.7, 0.86]]) { c.beginPath(); for (let i = 0; i <= 12; i++) { const t = t0 + ((t1 - t0) * i) / 12, x = (1 - t) * (1 - t) * -B + 2 * t * (1 - t) * cx + t * t * (W + B), y = ((1 - t) * (1 - t) + t * t) * H * 0.15 + 2 * t * (1 - t) * -H * 0.085 - 6 * u; i ? c.lineTo(x, y) : c.moveTo(x, y); } c.stroke(); }
   c.restore();
-  // the glass itself
-  c.save(); c.globalCompositeOperation = 'destination-out'; c.fillStyle = '#000'; ell(0); c.fill(); c.restore();
-  // the pane is thick: it darkens toward its rim and carries a faint reflection of the cabin lights
-  c.save(); ell(0); c.clip(); g = c.createRadialGradient(cx, cy, Math.min(rx, ry) * 0.72, cx, cy, Math.max(rx, ry)); g.addColorStop(0, 'rgba(2,10,18,0)'); g.addColorStop(1, 'rgba(2,10,18,.5)'); c.fillStyle = g; c.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
-  c.translate(cx - rx * 0.42, cy - ry * 0.45); c.rotate(-0.5); g = c.createLinearGradient(0, -60 * u, 0, 60 * u); g.addColorStop(0, 'rgba(200,230,255,0)'); g.addColorStop(0.5, 'rgba(200,230,255,.07)'); g.addColorStop(1, 'rgba(200,230,255,0)'); c.fillStyle = g; c.fillRect(-rx * 0.5, -60 * u, rx, 120 * u); c.restore();
-  ell(1.5); c.strokeStyle = 'rgba(190,225,250,.35)'; c.lineWidth = 2 * u; c.stroke(); ell(6); c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 6 * u; c.stroke();
-  // the two displays: a thick bezel round each screen, on a short bracket
-  const bezel = (q, pad, side) => { const [ox, oy] = q.o, U = q.U, V = q.V, nU = [U[0] / q.w, U[1] / q.w], nV = [V[0] / q.h, V[1] / q.h], P = (a, b) => [ox + nU[0] * a + nV[0] * b, oy + nU[1] * a + nV[1] * b];
-    const poly = (p) => { c.beginPath(); const pts = [P(-p, -p), P(q.w + p, -p), P(q.w + p, q.h + p), P(-p, q.h + p)]; c.moveTo((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2); for (let i = 1; i <= 4; i++) c.arcTo(pts[i % 4][0], pts[i % 4][1], pts[(i + 1) % 4][0], pts[(i + 1) % 4][1], 14 * u); c.closePath(); };
-    c.save(); c.shadowColor = 'rgba(0,0,0,.7)'; c.shadowBlur = 26 * u; c.shadowOffsetY = 8 * u; poly(pad); c.fillStyle = '#0a0d11'; c.fill(); c.restore();
-    poly(pad); c.strokeStyle = 'rgba(150,180,205,.28)'; c.lineWidth = 1.6 * u; c.stroke(); poly(pad * 0.35); c.fillStyle = '#02050a'; c.fill();
-    const m = P(side < 0 ? q.w * 0.3 : q.w * 0.7, q.h + pad); c.fillStyle = '#0c1015'; c.fillRect(m[0] - 22 * u, m[1], 44 * u, 60 * u); };
-  bezel(L.q.scrL, 20 * u, -1); bezel(L.q.scrR, 20 * u, 1);
-  { const [x, y] = L.q.scrR.o; c.fillStyle = '#ff4b3a'; c.shadowColor = '#ff4b3a'; c.shadowBlur = 10 * u; c.beginPath(); c.arc(x + L.q.scrR.w - 6 * u, y - 46 * u, 6 * u, 0, TAU); c.fill(); c.shadowBlur = 0; }
-  // the console: a wedge rising toward the window, with the screen set in it
-  const top = H * 0.735, cw0 = W * 0.165, cw1 = W * 0.2;
-  c.save(); c.shadowColor = 'rgba(0,0,0,.75)'; c.shadowBlur = 30 * u; c.beginPath(); c.moveTo(cx - cw1, H + 4); c.lineTo(cx - cw0, top + 18 * u); c.quadraticCurveTo(cx - cw0 + 6 * u, top, cx - cw0 + 30 * u, top); c.lineTo(cx + cw0 - 30 * u, top); c.quadraticCurveTo(cx + cw0 - 6 * u, top, cx + cw0, top + 18 * u); c.lineTo(cx + cw1, H + 4); c.closePath();
-  c.fillStyle = lin(0, top, 0, H, [[0, '#2a333d'], [0.12, '#171d24'], [1, '#090c10']]); c.fill(); c.restore();
-  c.strokeStyle = 'rgba(160,190,215,.3)'; c.lineWidth = 1.5 * u; c.beginPath(); c.moveTo(cx - cw0 + 30 * u, top + 1); c.lineTo(cx + cw0 - 30 * u, top + 1); c.stroke();
-  { const q = L.q.scrC, p = 12 * u; rrect(c, q.o[0] - p, q.o[1] - p, q.w + p * 2, q.h + p * 2, 16 * u); c.fillStyle = '#05080c'; c.fill(); c.strokeStyle = 'rgba(150,180,205,.25)'; c.lineWidth = 1.4 * u; c.stroke(); }
-  for (const sx of [-1, 1]) for (const [dy, r] of [[40, 9], [150, 7]]) { const x = cx + sx * (cw0 - 4 * u + dy * 0.12 * u), y = top + dy * u; c.fillStyle = '#05070a'; c.beginPath(); c.arc(x, y, (r + 4) * u, 0, TAU); c.fill(); c.fillStyle = sx * dy > 100 ? '#3fbfe6' : '#27313b'; c.beginPath(); c.arc(x, y, r * 0.6 * u, 0, TAU); c.fill(); }
-  // armrests with the two hand controllers, each with a ring of light at its thumb
-  for (const sx of [-1, 1]) { const x = cx + sx * W * 0.315, y = H * 0.8;
-    c.beginPath(); c.moveTo(cx + sx * cw1, H + 4); c.lineTo(cx + sx * (cw0 + 20 * u), H * 0.83); c.lineTo(cx + sx * W * 0.5, H * 0.79); c.lineTo(cx + sx * W * 0.5, H + 4); c.closePath(); c.fillStyle = lin(0, H * 0.79, 0, H, [[0, '#1d252d'], [0.2, '#10151b'], [1, '#07090d']]); c.fill();
-    c.strokeStyle = 'rgba(140,170,195,.18)'; c.lineWidth = 1.2 * u; c.beginPath(); c.moveTo(cx + sx * (cw0 + 20 * u), H * 0.83); c.lineTo(cx + sx * W * 0.5, H * 0.79); c.stroke();
-    c.save(); c.shadowColor = 'rgba(0,0,0,.8)'; c.shadowBlur = 20 * u; c.translate(x, y); c.rotate(-sx * 0.1);
-    rrect(c, -62 * u, 6 * u, 124 * u, 260 * u, 40 * u); c.fillStyle = lin(-62 * u, 0, 62 * u, 0, [[0, '#090c10'], [0.4, '#2a323b'], [0.7, '#161b21'], [1, '#07090c']]); c.fill();
-    rrect(c, -70 * u, -52 * u, 140 * u, 112 * u, 38 * u); c.fillStyle = lin(0, -52 * u, 0, 60 * u, [[0, '#3a434d'], [0.5, '#1b2128'], [1, '#0d1014']]); c.fill();
-    c.strokeStyle = 'rgba(170,200,225,.22)'; c.lineWidth = 1.5 * u; c.stroke(); c.restore();
-    c.save(); c.translate(x, y); c.rotate(-sx * 0.1); c.shadowColor = CY; c.shadowBlur = 16 * u; c.strokeStyle = '#bfeaff'; c.lineWidth = 4.5 * u; c.beginPath(); c.arc(0, 2 * u, 20 * u, 0, TAU); c.stroke(); c.shadowBlur = 0; c.fillStyle = '#0c1116'; c.beginPath(); c.arc(0, 2 * u, 14 * u, 0, TAU); c.fill(); c.restore();
-    c.save(); c.shadowColor = '#9fdcff'; c.shadowBlur = 14 * u; c.strokeStyle = 'rgba(200,236,255,.75)'; c.lineWidth = 3 * u; c.lineCap = 'round'; c.beginPath(); c.moveTo(cx + sx * (cw0 + 44 * u), H * 0.862); c.lineTo(cx + sx * (cw0 + 96 * u), H * 0.842); c.stroke(); c.restore(); }
+  // a slender pillar at each edge, and the sill along the bottom behind the console
+  for (const sx of [-1, 1]) { const x = cx + sx * (W * 0.5 + B), w = B + W * 0.016; c.fillStyle = lin(x, 0, x - sx * w, 0, [[0, '#06090c'], [0.7, '#161d25'], [1, '#2a3540']]); c.beginPath(); c.moveTo(x, -B); c.lineTo(x - sx * w, -B); c.lineTo(x - sx * (w + 10 * u), H + B); c.lineTo(x, H + B); c.closePath(); c.fill();
+    c.strokeStyle = 'rgba(190,220,245,.3)'; c.lineWidth = 1.4 * u; c.beginPath(); c.moveTo(x - sx * w, -B); c.lineTo(x - sx * (w + 10 * u), H + B); c.stroke(); }
+  c.save(); c.shadowColor = 'rgba(0,0,0,.7)'; c.shadowBlur = 24 * u; c.shadowOffsetY = -8 * u; c.fillStyle = lin(0, H * 0.9, 0, H + B, [[0, '#2b3642'], [0.08, '#151b22'], [1, '#05070a']]); c.fillRect(-B, H * 0.9, W + B * 2, H * 0.1 + B); c.restore();
+  c.fillStyle = 'rgba(195,222,245,.3)'; c.fillRect(-B, H * 0.9, W + B * 2, 1.5 * u);
+
+  // ---- near layer
+  c = open(near);
+  // a display: a slab with a visible edge, standing off the wall on a bracket and throwing a shadow behind it
+  const slab = (q, pad, side) => { const [ox, oy] = q.o, nU = [q.U[0] / q.w, q.U[1] / q.w], nV = [q.V[0] / q.h, q.V[1] / q.h], P = (a, b) => [ox + nU[0] * a + nV[0] * b, oy + nU[1] * a + nV[1] * b], dx = -side * 16 * u, dy = 12 * u;
+    const poly = (p, sx = 0, sy = 0) => { c.beginPath(); const pts = [P(-p, -p), P(q.w + p, -p), P(q.w + p, q.h + p), P(-p, q.h + p)].map(([x, y]) => [x + sx, y + sy]); c.moveTo((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2); for (let i = 1; i <= 4; i++) c.arcTo(pts[i % 4][0], pts[i % 4][1], pts[(i + 1) % 4][0], pts[(i + 1) % 4][1], 14 * u); c.closePath(); };
+    const m = P(side < 0 ? q.w * 0.3 : q.w * 0.7, q.h + pad); c.fillStyle = lin(m[0] - 26 * u, 0, m[0] + 26 * u, 0, [[0, '#07090c'], [0.5, '#1c232b'], [1, '#07090c']]); c.fillRect(m[0] - 26 * u, m[1] - 10 * u, 52 * u, 120 * u);
+    c.save(); c.shadowColor = 'rgba(0,0,0,.8)'; c.shadowBlur = 40 * u; c.shadowOffsetX = dx * 2; c.shadowOffsetY = dy * 2.2; poly(pad, dx, dy); c.fillStyle = '#06080b'; c.fill(); c.restore();
+    poly(pad, dx, dy); c.fillStyle = '#0a0d11'; c.fill(); poly(pad, dx * 0.5, dy * 0.5); c.fillStyle = '#10151a'; c.fill(); // the slab's edge
+    poly(pad); c.fillStyle = lin(ox, oy - pad, ox, oy + q.h + pad, [[0, '#2b343e'], [0.08, '#161b21'], [1, '#0b0e12']]); c.fill(); c.strokeStyle = 'rgba(175,205,230,.35)'; c.lineWidth = 1.6 * u; c.stroke();
+    poly(pad * 0.3); c.fillStyle = '#02050a'; c.fill(); };
+  slab(L.q.scrL, 20 * u, -1); slab(L.q.scrR, 20 * u, 1);
+  { const [x, y] = L.q.scrR.o; c.fillStyle = '#ff4b3a'; c.shadowColor = '#ff4b3a'; c.shadowBlur = 10 * u; c.beginPath(); c.arc(x + L.q.scrR.w - 6 * u, y - 44 * u, 6 * u, 0, TAU); c.fill(); c.shadowBlur = 0; }
+  // armrests either side, running out of the bottom corners toward the console
+  const top = H * 0.75, cw0 = W * 0.165, cw1 = W * 0.205, FL = H + B + 4;
+  for (const sx of [-1, 1]) { const xo = cx + sx * (W * 0.5 + B);
+    c.save(); c.shadowColor = 'rgba(0,0,0,.8)'; c.shadowBlur = 34 * u; c.shadowOffsetY = -6 * u; c.beginPath(); c.moveTo(cx + sx * cw1, FL); c.lineTo(cx + sx * (cw0 + 26 * u), H * 0.845); c.lineTo(xo, H * 0.795); c.lineTo(xo, FL); c.closePath(); c.fillStyle = lin(0, H * 0.795, 0, H, [[0, '#28323c'], [0.1, '#151b22'], [1, '#06080b']]); c.fill(); c.restore();
+    c.beginPath(); c.moveTo(cx + sx * (cw0 + 26 * u), H * 0.845); c.lineTo(xo, H * 0.795); c.lineTo(xo, H * 0.815); c.lineTo(cx + sx * (cw0 + 30 * u), H * 0.868); c.closePath(); c.fillStyle = 'rgba(160,195,225,.16)'; c.fill(); // the armrest's lit top edge
+    c.save(); c.shadowColor = '#9fdcff'; c.shadowBlur = 14 * u; c.strokeStyle = 'rgba(205,238,255,.8)'; c.lineWidth = 3 * u; c.lineCap = 'round'; c.beginPath(); c.moveTo(cx + sx * (cw0 + 50 * u), H * 0.882); c.lineTo(cx + sx * (cw0 + 104 * u), H * 0.862); c.stroke(); c.restore(); }
+  // the console: a wedge with a lit top face and a darker front, the screen sunk into it
+  c.save(); c.shadowColor = 'rgba(0,0,0,.85)'; c.shadowBlur = 40 * u; c.shadowOffsetY = -8 * u; c.beginPath(); c.moveTo(cx - cw1, FL); c.lineTo(cx - cw0, top + 20 * u); c.quadraticCurveTo(cx - cw0 + 6 * u, top, cx - cw0 + 32 * u, top); c.lineTo(cx + cw0 - 32 * u, top); c.quadraticCurveTo(cx + cw0 - 6 * u, top, cx + cw0, top + 20 * u); c.lineTo(cx + cw1, FL); c.closePath();
+  c.fillStyle = lin(0, top, 0, H, [[0, '#3a4653'], [0.07, '#2a333d'], [0.075, '#161c23'], [1, '#07090c']]); c.fill(); c.restore();
+  c.strokeStyle = 'rgba(190,220,245,.45)'; c.lineWidth = 1.6 * u; c.beginPath(); c.moveTo(cx - cw0 + 32 * u, top + 1); c.lineTo(cx + cw0 - 32 * u, top + 1); c.stroke();
+  for (const sx of [-1, 1]) { c.beginPath(); c.moveTo(cx + sx * cw0, top + 20 * u); c.lineTo(cx + sx * cw1, FL); c.lineTo(cx + sx * (cw1 - 14 * u), FL); c.lineTo(cx + sx * (cw0 - 12 * u), top + 26 * u); c.closePath(); c.fillStyle = sx < 0 ? 'rgba(170,200,230,.12)' : 'rgba(0,0,0,.35)'; c.fill(); }
+  { const q = L.q.scrC, p = 13 * u; c.save(); c.shadowColor = 'rgba(0,0,0,.9)'; c.shadowBlur = 12 * u; rrect(c, q.o[0] - p, q.o[1] - p, q.w + p * 2, q.h + p * 2, 16 * u); c.fillStyle = '#04070a'; c.fill(); c.restore(); c.strokeStyle = 'rgba(160,190,215,.3)'; c.lineWidth = 1.4 * u; c.stroke(); }
+  for (const sx of [-1, 1]) for (const [dy, r] of [[46, 9], [150, 7]]) { const x = cx + sx * (cw0 - 2 * u + dy * 0.14 * u), y = top + dy * u; c.fillStyle = '#030507'; c.beginPath(); c.arc(x, y + 2 * u, (r + 5) * u, 0, TAU); c.fill(); g = c.createRadialGradient(x - 2 * u, y - 2 * u, 0, x, y, r * u); g.addColorStop(0, sx * dy > 100 ? '#9fe6ff' : '#55626e'); g.addColorStop(1, sx * dy > 100 ? '#1d7fa6' : '#1a2027'); c.fillStyle = g; c.beginPath(); c.arc(x, y, r * 0.8 * u, 0, TAU); c.fill(); }
+  // the hand controllers: round grips shaded like cylinders, a ring of light at the thumb
+  for (const sx of [-1, 1]) { const x = cx + sx * W * 0.318, y = H * 0.81;
+    c.save(); c.translate(x, y); c.rotate(-sx * 0.1);
+    c.fillStyle = 'rgba(0,0,0,.55)'; c.beginPath(); c.ellipse(sx * 10 * u, 250 * u, 96 * u, 30 * u, 0, 0, TAU); c.fill(); // its shadow on the armrest
+    c.shadowColor = 'rgba(0,0,0,.8)'; c.shadowBlur = 22 * u; c.shadowOffsetX = -sx * 8 * u;
+    rrect(c, -62 * u, 6 * u, 124 * u, 300 * u, 40 * u); c.fillStyle = lin(-62 * u, 0, 62 * u, 0, [[0, '#050709'], [0.28, '#232a32'], [0.42, '#3b4651'], [0.6, '#1a2027'], [1, '#040506']]); c.fill();
+    rrect(c, -70 * u, -54 * u, 140 * u, 116 * u, 40 * u); c.fillStyle = lin(-70 * u, -54 * u, 70 * u, 62 * u, [[0, '#4a5663'], [0.45, '#222a32'], [1, '#0a0d10']]); c.fill(); c.shadowColor = 'transparent';
+    c.strokeStyle = 'rgba(190,220,245,.3)'; c.lineWidth = 1.5 * u; c.stroke();
+    c.fillStyle = 'rgba(255,255,255,.07)'; rrect(c, -22 * u, 70 * u, 14 * u, 200 * u, 7 * u); c.fill(); // highlight down the grip
+    c.shadowColor = CY; c.shadowBlur = 18 * u; c.strokeStyle = '#c8eeff'; c.lineWidth = 4.5 * u; c.beginPath(); c.arc(0, 2 * u, 20 * u, 0, TAU); c.stroke(); c.shadowBlur = 0; c.fillStyle = '#0c1116'; c.beginPath(); c.arc(0, 2 * u, 14 * u, 0, TAU); c.fill(); c.restore(); }
   // frame of the manipulator's status box
-  if (L.q.manip) { const q = L.q.manip, p = 9 * u; c.save(); c.transform(q.U[0] / q.w, q.U[1] / q.w, q.V[0] / q.h, q.V[1] / q.h, q.o[0], q.o[1]); rrect(c, -p, -p, q.w + p * 2, q.h + p * 2, 10 * u); c.fillStyle = 'rgba(6,10,15,.7)'; c.fill(); c.strokeStyle = 'rgba(200,225,245,.55)'; c.lineWidth = 1.4 * u; c.stroke(); c.restore(); }
+  if (L.q.manip) { const q = L.q.manip, p = 9 * u; c.save(); c.transform(q.U[0] / q.w, q.U[1] / q.w, q.V[0] / q.h, q.V[1] / q.h, q.o[0], q.o[1]); c.shadowColor = 'rgba(0,0,0,.7)'; c.shadowBlur = 16 * u; c.shadowOffsetY = 6 * u; rrect(c, -p, -p, q.w + p * 2, q.h + p * 2, 10 * u); c.fillStyle = 'rgba(8,13,19,.86)'; c.fill(); c.shadowColor = 'transparent'; c.strokeStyle = 'rgba(205,230,250,.6)'; c.lineWidth = 1.4 * u; c.stroke(); c.restore(); }
 }
 
 // ---------------------------------------------------------------- the live screens
