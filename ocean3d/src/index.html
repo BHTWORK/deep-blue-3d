@@ -31,10 +31,17 @@ html,body{width:100%;height:100%;overflow:hidden;background:#071017;color:var(--
 button{font-family:var(--font)}
 .hidden{display:none!important}
 canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
-canvas#overlay,canvas#cockpit{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
-canvas#cockpit{z-index:3}
-#ckdyn{position:fixed;inset:0;z-index:3;pointer-events:none;overflow:hidden}
-#ckdyn canvas{position:absolute;left:0;top:0;transform-origin:0 0}
+canvas#overlay,canvas#cockpit,canvas#cockpit2{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+canvas#cockpit,canvas#cockpit2{z-index:3}
+#ckdyn,#ckdyn2{position:fixed;inset:0;z-index:3;pointer-events:none;overflow:hidden}
+#ckdyn canvas,#ckdyn2 canvas{position:absolute;left:0;top:0;transform-origin:0 0}
+/* the story's round-window cockpit shows depth, battery and sonar itself: the mission card moves under the compass, the minimap goes */
+body.sphere #hudRight .mapbox{display:none}
+body.sphere #hudLeft{left:50%;top:var(--sph-top,48px);transform:translateX(-50%);width:min(300px,34vw)}
+body.sphere #hudMission{background:rgba(6,14,22,.5)}body.sphere #hudMission .md{display:none}
+body.sphere #armBox{top:auto;bottom:calc(27% + 6px)}
+body.sphere #toasts{top:calc(var(--sph-top,48px) + 64px);width:min(360px,36vw)}body.sphere #hint{display:none}
+@media (max-height:520px){body.sphere.arming #hudLeft{display:none}body.sphere #armBox{bottom:auto;top:var(--sph-top,48px);font-size:12px;padding:5px 10px;gap:8px}body.sphere #toasts{top:calc(var(--sph-top,48px) + 46px);width:min(300px,34vw)}body.sphere.arming #toasts{display:none}}
 canvas#overlay{z-index:4}
 #vign{position:fixed;inset:0;pointer-events:none;z-index:3;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 60%,rgba(0,5,10,.45) 100%)}
 #dmgVig{position:fixed;inset:0;pointer-events:none;z-index:3;opacity:0;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 50%,rgba(229,100,94,.45) 100%)}
@@ -387,6 +394,8 @@ body.arming #hint{visibility:hidden}
 <canvas id="game"></canvas>
 <canvas id="cockpit" class="hidden"></canvas>
 <div id="ckdyn" class="hidden"></div>
+<canvas id="cockpit2" class="hidden"></canvas>
+<div id="ckdyn2" class="hidden"></div>
 <canvas id="overlay"></canvas>
 <div id="vign"></div><div id="dmgVig"></div><div id="flash"></div>
 <div id="ctxLost" class="hidden" role="status"><div class="glass">화면을 다시 준비하는 중이에요… 잠시만 기다려 주세요.</div></div>
@@ -564,7 +573,7 @@ body.arming #hint{visibility:hidden}
   <button class="btn primary" id="bRespawn">기지선에서 재출항</button>
 </div></div>
 
-<div id="armBox" class="hidden"><b>로봇 팔</b><span class="kb">마우스·W A S D로 손을 옮기고, 클릭·E로 잡기 · X로 접기</span><span class="tc">왼쪽 스틱이나 화면을 끌어 손을 옮기고 「잡기」</span><button id="armX" class="btn quiet">접기</button></div>
+<div id="armBox" class="hidden"><b>로봇 팔</b><span class="kb">마우스·W A S D로 손을 옮기고, 클릭·E로 잡기 · X로 접기</span><span class="tc">손을 쓰레기 위로 옮기고 「잡기」</span><button id="armX" class="btn quiet">접기</button></div>
 <div id="storyBox" class="hidden" role="dialog" aria-live="polite"><div class="sbox">
   <div class="who"><span class="face" id="stFace">🐬</span><b id="stName">돌고래 부캉이</b></div>
   <p id="stText"></p>

@@ -126,8 +126,14 @@ const SUITES = {
       run(2.5); out.ready = A.on && A.phase === 'aim' && !A.first; out.off = !A.aimed;
       run(0.1, 1); run(0.7); out.miss = !it.col && A.on && A.phase === 'aim'; // a grab beside the piece misses and the claw reopens
       A.ax = A.tx; A.ay = A.ty; run(0.6); out.aimed = A.aimed; out.fp = !document.getElementById('armBox').classList.contains('hidden');
-      run(0.1, 1); run(0.5); out.carry = A.phase === 'carry'; run(1.2); out.got = it.col && !A.on && g.P.cargo.includes(it.id); return out; });
+      // the arm is worked from the round-window cockpit, whichever view was on: the 3D picture shrinks to the window, the main game's cockpit stays away
+      out.ck = document.body.classList.contains('sphere') && !document.getElementById('cockpit2').classList.contains('hidden') && document.getElementById('cockpit').classList.contains('hidden') && g.G.vp.w < innerWidth * 0.7 && document.querySelectorAll('#ckdyn2 canvas').length >= 6;
+      run(0.1, 1); run(0.5); out.carry = A.phase === 'carry'; run(1.2); out.got = it.col && !A.on && g.P.cargo.includes(it.id);
+      // the beam no longer draws litter in: held on the next piece from a few metres off, it leaves it where it lies
+      const nx = g.items[g.SS.targets.trash[1]], at = nx.pos.clone(); g.P.pos.set(nx.pos.x - 7, nx.pos.y + 1, nx.pos.z); g.P.vel.set(0, 0, 0); g.P.yaw = g.P.vyaw = Math.PI / 2; g.P.pitch = -0.14; g.IN.keys.KeyE = true; g.simulate(1); g.IN.keys.KeyE = false;
+      out.noPull = nx.state === 0 && nx.pos.distanceTo(at) < 0.01 && !nx.col; return out; });
     check('story: the robot arm unfolds near a piece, misses off target, grabs on target', arm.near && arm.ready && arm.off && arm.miss && arm.aimed && arm.fp && arm.carry && arm.got, arm);
+    check('story: the arm is worked from the round-window cockpit; the beam does not pull litter', arm.ck && arm.noPull, { ck: arm.ck, noPull: arm.noPull });
     check('story: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close();
   },
   // graphics quality: auto by default and adapting to real frame times, a 최고 tier at full pixel density,

@@ -8,7 +8,9 @@ import { TAU, clamp, lerp, smooth, rnd, fmt, $, esc, seed, rr, rpick, wpick, SR 
 import { TRASH, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS, STORY } from './data.js';
 import { AU, Music } from './audio.js';
 import { MAT, ENVMATS, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO, NET_MAT, P as PM } from './models.js';
-import { drawCockpit, cockpitLayout, CockpitUI } from './cockpit.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { drawCockpit, cockpitLayout, CockpitUI, headingLabel } from './cockpit.js';
+import { sphereLayout, drawSphereCockpit, SphereUI } from './cockpit2.js';
 import { WORLD, heightAt, heightAt0, normalAt, reefPoint, reefFree, U, SEABED, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBleach, buildBaseShip, buildDockRing, gradTex } from './world.js';
 
 const V3 = THREE.Vector3, UPV = new V3(0, 1, 0), ZERO = new V3();
@@ -53,7 +55,7 @@ const G = { vp: { x: 0, y: 0, w: innerWidth, h: innerHeight }, state: 'title', t
   alert: '', alertPri: 0, fullT: 0, creakT: 0, alarmT: 0, lowWarned: false, pendingWin: 0, quality: 2, qualityPref: 'auto', ctxLost: false, shakeOn: true, lastMTip: -99, sens: 1, fp: true, fpTier: -1, glowSrc: [], coralH: -1, bleachH: 0, bleachSet: -1, story: false, talk: false, VW: innerWidth, VH: innerHeight };
 let SV = null; const S = {};
 // the robot arm's state (see ROBOT ARM): ax, ay are the hand's bearing and elevation from the shoulder, tx, ty the piece's
-const ARM = { on: false, it: null, held: null, phase: 'idle', t: 0, k: 0, grip: 0.6, cd: 0, ax: 0, ay: 0, tx: 0, ty: 0, mdx: 0, mdy: 0, was: false, first: false, aimed: false, H: new THREE.Vector3(0.72, -0.62, 1.75) };
+const ARM = { on: false, it: null, held: null, phase: 'idle', t: 0, k: 0, grip: 0.6, cd: 0, ax: 0, ay: 0, tx: 0, ty: 0, mdx: 0, mdy: 0, cp: 0, was: false, first: false, aimed: false, H: new THREE.Vector3(-0.8, -0.56, 1.85) };
 const DOCK = new V3(2.6, -8, -19);
 const P = { pos: new V3(DOCK.x, DOCK.y - 3, DOCK.z - 15), vel: new V3(), yaw: Math.PI, pitch: -0.1, vyaw: Math.PI, vpitch: 0, roll: 0, bat: 100, hull: 100, kg: 0, cargo: [], beam: false, boost: false, thrust: 0, inv: 0, alive: true, deadT: 0, canDock: false, dmgT: 0, nose: new V3(), fwd: new V3(0, 0, -1) };
 const fwdOf = (yaw, pitch, out = new V3()) => out.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
@@ -599,30 +601,40 @@ function pollGamepad(dt) { const pads = navigator.getGamepads ? navigator.getGam
 // (click, E, Space or the grab button). A hit carries the piece back to the hold; a miss opens the claw again.
 // Folded, the arm lies back along the hull. All of its geometry is in the sub's own space (+z is the bow).
 // =====================================================================
-const ARMG = (() => { const g = new THREE.Group(), K = '#2b3137', Gc = '#8d979f', mk = (geo, col) => { const m = new THREE.Mesh(PM(geo, col), MAT.metal); g.add(m); return m; };
-  const seg1 = mk(new THREE.CylinderGeometry(0.075, 0.085, 1, 12).translate(0, 0.5, 0), K), seg2 = mk(new THREE.CylinderGeometry(0.06, 0.07, 1, 12).translate(0, 0.5, 0), K);
-  const j0 = mk(new THREE.SphereGeometry(0.12, 12, 10), Gc), j1 = mk(new THREE.SphereGeometry(0.105, 12, 10), Gc), hand = new THREE.Group(); hand.scale.setScalar(1.5); g.add(hand);
-  hand.add(new THREE.Mesh(PM(new THREE.CylinderGeometry(0.07, 0.055, 0.16, 10).translate(0, 0.08, 0), Gc), MAT.metal));
-  const fingers = [0, 1, 2].map((i) => { const piv = new THREE.Group(); piv.position.set(Math.cos(i * 2.094) * 0.05, 0.16, Math.sin(i * 2.094) * 0.05); piv.rotation.y = -i * 2.094;
-    piv.add(new THREE.Mesh(PM(new THREE.BoxGeometry(0.035, 0.26, 0.05).translate(0, 0.13, 0), K), MAT.metal)); const tip = new THREE.Mesh(PM(new THREE.BoxGeometry(0.03, 0.16, 0.045).translate(0, 0.08, 0), Gc), MAT.metal); tip.position.y = 0.26; tip.rotation.z = 0.7; piv.add(tip); hand.add(piv); return piv; });
-  return { g, seg1, seg2, j0, j1, hand, fingers }; })();
+const ARM_L = 1.3, ARM_REACH = 2.9, ARM_S = new V3(-0.66, -0.3, 1.15), ARM_STOW = new V3(-0.8, -0.56, 1.85); // the shoulder is at -x: the pilot's right
+const ARMG = (() => { const g = new THREE.Group(), Wt = '#d6dbdf', Wd = '#b4bcc2', Dk = '#3b4249', Dd = '#22272c', glow = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false }); glow.color.setScalar(1.6);
+  const box = (w, h, d, col, x = 0, y = 0, z = 0) => PM(new THREE.BoxGeometry(w, h, d), col, [x, y, z]), drum = (r, l, col, y) => PM(new THREE.CylinderGeometry(r, r, l, 18).rotateZ(Math.PI / 2), col, [0, y, 0]);
+  const part = (geos, strips) => { const o = new THREE.Group(); o.add(new THREE.Mesh(mergeGeometries(geos), MAT.metal)); if (strips) o.add(new THREE.Mesh(mergeGeometries(strips), glow)); g.add(o); return o; };
+  // each limb is modelled one unit long (it is stretched to the arm's length): shells of white plate over a dark core, a drum at each joint
+  const seg1 = part([box(0.2, 0.8, 0.24, Wt, 0, 0.5), box(0.215, 0.52, 0.15, Wd, 0, 0.5), box(0.09, 0.66, 0.27, Dk, 0, 0.5), box(0.17, 0.1, 0.26, Dk, 0, 0.14), box(0.17, 0.1, 0.26, Dk, 0, 0.86), drum(0.15, 0.27, Dk, 0), drum(0.17, 0.2, Wt, 0), drum(0.135, 0.25, Dk, 1), drum(0.15, 0.18, Wt, 1)],
+    [box(0.012, 0.26, 0.03, '#fff', 0.108, 0.5), box(0.012, 0.26, 0.03, '#fff', -0.108, 0.5)]);
+  const seg2 = part([box(0.15, 0.74, 0.17, Wt, 0, 0.5), box(0.165, 0.42, 0.1, Wd, 0, 0.52), box(0.07, 0.6, 0.2, Dk, 0, 0.5), PM(new THREE.CylinderGeometry(0.022, 0.022, 0.6, 8), '#9aa4ac', [0, 0.45, 0.12]), PM(new THREE.CylinderGeometry(0.035, 0.035, 0.3, 8), Dk, [0, 0.25, 0.12]), PM(new THREE.CylinderGeometry(0.09, 0.1, 0.12, 16), Dk, [0, 0.94, 0])],
+    [box(0.012, 0.2, 0.026, '#fff', 0.084, 0.52), box(0.012, 0.2, 0.026, '#fff', -0.084, 0.52)]);
+  const hand = new THREE.Group(); hand.scale.setScalar(1.4); g.add(hand);
+  hand.add(new THREE.Mesh(mergeGeometries([PM(new THREE.CylinderGeometry(0.105, 0.09, 0.13, 16), Dk, [0, 0.065, 0]), PM(new THREE.CylinderGeometry(0.075, 0.105, 0.05, 16), Wd, [0, 0.15, 0])]), MAT.metal));
+  const fingers = [0, 1, 2].map((i) => { const piv = new THREE.Group(), a = i * 2.094 + 0.5; piv.position.set(Math.cos(a) * 0.075, 0.16, Math.sin(a) * 0.075); piv.rotation.y = -a;
+    const tip = new THREE.Mesh(mergeGeometries([box(0.05, 0.19, 0.075, Dk, 0, 0.095), box(0.02, 0.15, 0.06, Dd, -0.03, 0.1)]), MAT.metal); tip.position.y = 0.24; tip.rotation.z = 0.85;
+    piv.add(new THREE.Mesh(mergeGeometries([box(0.06, 0.25, 0.085, Dk, 0, 0.125), PM(new THREE.CylinderGeometry(0.04, 0.04, 0.1, 10).rotateX(Math.PI / 2), '#8a949c', [0, 0.24, 0]), PM(new THREE.CylinderGeometry(0.045, 0.045, 0.1, 10).rotateX(Math.PI / 2), '#8a949c', [0, 0, 0])]), MAT.metal), tip); hand.add(piv); return piv; });
+  return { g, seg1, seg2, hand, fingers }; })();
 SUB.root.add(ARMG.g);
-const ARM_S = new V3(0.62, -0.5, 1.0), ARM_STOW = new V3(0.72, -0.62, 1.75), ARM_L = 2.5, ARM_REACH = 4.7;
 const _ah = new V3(), _ae = new V3(), _ad = new V3(), _ab = new V3(), _aq = new THREE.Quaternion();
-// two-bone reach from the shoulder to hand point H (sub space); k = 0 folded back along the hull, 1 elbow up and out; grip 0 open, 1 closed
+// two-bone reach from the shoulder so that the point between the fingertips lands on H (sub space): the forearm and the hand in line
+// with it count as one bone. k = 0 folded back along the hull, 1 elbow up and out; grip 0 open, 1 closed
+const ARM_HAND = 0.5;
 function armPose(H, k, grip) {
-  const A = ARMG, d = clamp(_ad.subVectors(H, ARM_S).length(), 0.35, ARM_L * 2 - 0.02); _ad.normalize();
-  _ab.set(lerp(0.25, 0.55, k), lerp(0.05, 0.85, k), lerp(-1, 0, k)); _ab.addScaledVector(_ad, -_ab.dot(_ad)).normalize(); // which way the elbow sticks out
-  _ae.copy(ARM_S).addScaledVector(_ad, d / 2).addScaledVector(_ab, Math.sqrt(Math.max(0, ARM_L * ARM_L - d * d / 4)));
-  _ah.copy(ARM_S).addScaledVector(_ad, d);
-  const lay = (m, a, b) => { m.position.copy(a); tv3.subVectors(b, a); const l = tv3.length(); m.quaternion.setFromUnitVectors(UPV, tv3.divideScalar(l || 1)); m.scale.set(1, l, 1); };
-  lay(A.seg1, ARM_S, _ae); lay(A.seg2, _ae, _ah); A.j0.position.copy(ARM_S); A.j1.position.copy(_ae);
+  const A = ARMG, L2 = ARM_L + ARM_HAND, d = clamp(_ad.subVectors(H, ARM_S).length(), L2 - ARM_L + 0.06, ARM_L + L2 - 0.02); _ad.normalize();
+  _ab.set(lerp(-0.25, -0.9, k), lerp(0.05, 0.42, k), lerp(-1, -0.15, k)); _ab.addScaledVector(_ad, -_ab.dot(_ad)).normalize(); // which way the elbow sticks out
+  const along = (ARM_L * ARM_L - L2 * L2 + d * d) / (2 * d);
+  _ae.copy(ARM_S).addScaledVector(_ad, along).addScaledVector(_ab, Math.sqrt(Math.max(0, ARM_L * ARM_L - along * along)));
+  _ah.copy(ARM_S).addScaledVector(_ad, d).sub(_ae).normalize().multiplyScalar(ARM_L).add(_ae); // the wrist, a forearm's length from the elbow toward H
+  const lay = (m, a, b) => { m.position.copy(a); tv3.subVectors(b, a); const l = tv3.length(); m.quaternion.setFromUnitVectors(UPV, tv3.divideScalar(l || 1)); m.scale.set(1.45, l, 1.45); };
+  lay(A.seg1, ARM_S, _ae); lay(A.seg2, _ae, _ah);
   A.hand.position.copy(_ah); A.hand.quaternion.copy(A.seg2.quaternion);
-  for (const f of A.fingers) f.rotation.z = lerp(-0.75, 0.05, grip);
+  for (const f of A.fingers) f.rotation.z = lerp(-0.62, 0.12, grip);
 }
 armPose(ARM_STOW, 0, 0.6);
 // the point between the fingertips, in the world
-const armHandWorld = (out) => SUB.root.localToWorld(out.copy(ARMG.hand.position).addScaledVector(_ad.set(0, 1, 0).applyQuaternion(ARMG.hand.quaternion), 0.42));
+const armHandWorld = (out) => SUB.root.localToWorld(out.copy(ARMG.hand.position).addScaledVector(_ad.set(0, 1, 0).applyQuaternion(ARMG.hand.quaternion), ARM_HAND));
 const armTargets = () => { const st = G.story && STORY.steps[SS.i]; return st && (st.goal === 'trash' || st.goal === 'coral') ? SS.targets[st.goal] : null; };
 function armStart(it) { ARM.on = true; ARM.it = it; ARM.phase = 'aim'; ARM.t = 0; ARM.k = 0; ARM.grip = 0; ARM.first = true; ARM.was = true; P.beam = false; applyView(); show('armBox'); armUI(true); AU.click(); }
 function armEnd(cd) { ARM.on = false; ARM.it = null; ARM.held = null; ARM.phase = 'idle'; ARM.cd = cd; applyView(); hide('armBox'); armUI(false); }
@@ -638,39 +650,35 @@ function updateArm(dt) {
   ARMG.g.visible = true; const it = A.it, inp = P.inp || {}, k = IN.keys;
   if (it.col || G.talk || !armTargets()) { armEnd(1); return; }
   // where the piece is, as seen from the shoulder: a bearing and an elevation in the sub's space, and how far
-  SUB.root.updateMatrixWorld(); const L = SUB.root.worldToLocal(tv1.copy(it.pos)).sub(ARM_S), dist = clamp(L.length(), 1.2, ARM_REACH);
+  SUB.root.updateMatrixWorld(); const L = SUB.root.worldToLocal(tv1.copy(it.pos)).sub(ARM_S), dist = clamp(L.length(), 0.7, ARM_REACH);
   A.tx = Math.atan2(L.x, L.z); A.ty = Math.atan2(L.y, Math.hypot(L.x, L.z));
   A.t += dt;
   if (A.first) { // until the sub has swung round to face the piece the hand waits out in front; then it starts a little off to one side
-    if (Math.abs(A.tx) < 0.45 || A.t > 1.6) { A.first = false; A.ax = clamp(A.tx + (it.id % 2 ? 0.4 : -0.4), -0.9, 0.9); A.ay = A.ty + 0.32; } else { A.ax = 0; A.ay = 0.15; A.mdx = A.mdy = 0; } }
+    if (Math.abs(A.tx) < 0.45 || A.t > 1.6) { A.first = false; A.ax = clamp(A.tx + (it.id % 2 ? 0.38 : -0.38), -0.7, 1.3); A.ay = A.ty + 0.3; } else { A.ax = 0; A.ay = 0.15; A.mdx = A.mdy = 0; } }
   if (!A.first && (A.phase === 'aim' || A.phase === 'miss')) { // steer the hand: the mouse or a drag moves it directly, keys and the stick at a steady rate
     const rate = 0.95 * dt, jx = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0) + (IN.joy.on ? IN.joy.dx : 0) + IN.gp.mx, jy = (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0) - (IN.joy.on ? IN.joy.dy : 0) - IN.gp.my;
-    A.ax = clamp(A.ax - A.mdx * 0.0019 * G.sens - jx * rate, -0.95, 0.95); A.ay = clamp(A.ay - A.mdy * 0.0019 * G.sens + jy * rate, -1.1, 0.6); }
+    A.ax = clamp(A.ax - A.mdx * 0.0019 * G.sens - jx * rate, -0.7, 1.3); A.ay = clamp(A.ay - A.mdy * 0.0019 * G.sens + jy * rate, -1.25, 0.5); }
   A.mdx = A.mdy = 0;
   const ca = Math.cos(A.ay); tv2.set(Math.sin(A.ax) * ca, Math.sin(A.ay), Math.cos(A.ax) * ca).multiplyScalar(dist).add(ARM_S); // where the player wants the hand
   const press = !!(inp.beam || k.Space), edge = press && !A.was && !A.first; A.was = press;
   if (A.phase === 'aim') { A.k = Math.min(1, A.k + dt * 2.2); A.grip += (0 - A.grip) * Math.min(1, dt * 8); A.H.lerp(tv2, Math.min(1, dt * 9));
     if (edge && A.k > 0.6) { A.phase = 'close'; A.t = 0; AU.tone(520, 0.06, 'square', 0.03); } }
   else if (A.phase === 'close') { A.grip = Math.min(1, A.t / 0.2); A.H.lerp(tv2, Math.min(1, dt * 9));
-    if (A.t >= 0.2) { armPose(A.H, A.k, A.grip); const hit = armHandWorld(tv3).distanceTo(it.pos) < Math.max(0.5, it.r * 0.85);
+    if (A.t >= 0.2) { armPose(A.H, A.k, A.grip); const hit = armHandWorld(tv3).distanceTo(it.pos) < Math.max(0.42, it.r * 0.8);
       if (hit) { A.phase = 'carry'; A.t = 0; A.held = it; it.state = 0; it.vel.set(0, 0, 0); buzz(18); AU.tone(880, 0.08, 'sine', 0.05); } else { A.phase = 'miss'; A.t = 0; AU.tone(180, 0.12, 'sine', 0.05); toast('빗나갔어요! 손을 쓰레기 위에 맞추고 다시 잡아요', 'tip'); } } }
   else if (A.phase === 'miss') { A.grip = Math.max(0, 1 - A.t / 0.25); A.H.lerp(tv2, Math.min(1, dt * 9)); if (A.t >= 0.25) A.phase = 'aim'; }
   else if (A.phase === 'carry') { A.k = Math.max(0, 1 - A.t / 0.8); A.H.lerp(ARM_STOW, Math.min(1, dt * 4)); }
   armPose(A.H, A.k, A.grip);
   if (A.phase === 'carry') { armHandWorld(it.pos); it.home.copy(it.pos); writeItem(it); if (A.t >= 0.8) { tryCollect(it); armEnd(0.6); return; } }
-  A.aimed = A.phase === 'aim' && armHandWorld(tv3).distanceTo(it.pos) < Math.max(0.5, it.r * 0.85);
+  A.aimed = A.phase === 'aim' && armHandWorld(tv3).distanceTo(it.pos) < Math.max(0.42, it.r * 0.8);
   if (k.KeyX || IN.rmb) { IN.rmb = false; armEnd(3); toast('로봇 팔을 접었어요', 'tip'); }
 }
 // while the arm is out the sub holds station in front of the piece, level, a little above it
 function armHoldStation(dt) { const it = ARM.it; tv1.subVectors(it.pos, P.pos); const yawT = Math.atan2(tv1.x, tv1.z); let dy = yawT - P.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-  if (ARM.phase !== 'carry') { P.yaw += dy * Math.min(1, dt * 3); const h = Math.hypot(tv1.x, tv1.z) || 1, want = 3.3;
-    tv2.set(it.pos.x - (tv1.x / h) * want, Math.max(it.pos.y + 0.9, heightAt(P.pos.x, P.pos.z) + 1.5), it.pos.z - (tv1.z / h) * want); P.pos.lerp(tv2, Math.min(1, dt * 1.6)); }
+  if (ARM.phase !== 'carry') { P.yaw += dy * Math.min(1, dt * 3); const h = Math.hypot(tv1.x, tv1.z) || 1, want = 2.9;
+    tv2.set(it.pos.x - (tv1.x / h) * want, Math.min(-2.2, Math.max(it.pos.y + 0.95, heightAt(P.pos.x, P.pos.z) + 1.35)), it.pos.z - (tv1.z / h) * want); P.pos.lerp(tv2, Math.min(1, dt * 1.6)); }
   P.pitch += (0 - P.pitch) * Math.min(1, dt * 3); P.vel.multiplyScalar(Math.pow(0.02, dt)); P.beam = false; P.boost = false; }
-// the arm's camera looks over the bow from the side away from the arm, at the piece and the hand
-const ARM_LOOK = new V3();
-function armCamera(dt) { SUB.root.updateMatrixWorld(); SUB.root.localToWorld(tv2.set(-1.35, 2.0, -0.35)); const fl = heightAt(tv2.x, tv2.z) + 0.8; if (tv2.y < fl) tv2.y = fl;
-  const e = 1 - Math.exp(-dt * 5); camera.position.lerp(tv2, e); armHandWorld(tv3); if (ARM.it && ARM.phase !== 'carry') tv3.lerp(ARM.it.pos, 0.65);
-  if (ARM.t < 0.05) ARM_LOOK.copy(tv3); ARM_LOOK.lerp(tv3, e); camera.lookAt(ARM_LOOK); }
+const ARM_LOOK = new V3(); // where the pilot is looking while working the arm (see updateCamera)
 // on the overlay: a ring on the hand, a bracket on the piece; both turn gold when the claw would close on it
 function drawArm(c) { if (!ARM.on || !ARM.it || ARM.phase === 'carry') return; const h = project(armHandWorld(tv1), pv), hx = h.x, hy = h.y, t = project(ARM.it.pos, pv), ok = ARM.aimed, col = ok ? '#e3bd5f' : 'rgba(232,237,241,.85)';
   c.lineWidth = 2; c.strokeStyle = col; c.beginPath(); c.arc(hx, hy, ok ? 20 : 15, 0, TAU); c.stroke();
@@ -709,7 +717,7 @@ function updatePlayer(dt) {
   // visual orientation
   const turn = ((((P.yaw - P.vyaw + Math.PI) % TAU) + TAU) % TAU) - Math.PI; P.vyaw += turn * Math.min(1, dt * 5);
   P.vpitch += (P.pitch * 0.75 - P.vpitch) * Math.min(1, dt * 4); P.roll += (clamp(-turn * 1.5, -0.5, 0.5) - P.roll) * Math.min(1, dt * 4);
-  if (G.fp) { const yr = angDelta(P.yaw, P.lyaw ?? P.yaw) / Math.max(dt, 1e-3); P.lyaw = P.yaw; P.yr = (P.yr || 0) + (yr - (P.yr || 0)) * Math.min(1, dt * 10); P.vyaw = P.yaw; P.vpitch = P.pitch; P.roll += (clamp(-yr * 0.035, -0.12, 0.12) - P.roll) * Math.min(1, dt * 3);
+  if (G.fp || ARM.on) { const yr = angDelta(P.yaw, P.lyaw ?? P.yaw) / Math.max(dt, 1e-3); P.lyaw = P.yaw; P.yr = (P.yr || 0) + (yr - (P.yr || 0)) * Math.min(1, dt * 10); P.vyaw = P.yaw; P.vpitch = P.pitch; P.roll += (clamp(-yr * 0.035, -0.12, 0.12) - P.roll) * Math.min(1, dt * 3);
     if (ml > 0.3 && Math.random() < dt * (10 + (boosting ? 25 : 0))) { const cp = camera.position, fw = P.fwd; bubble(cp.x + fw.x * 5 + rnd(-2.5, 2.5), cp.y + fw.y * 5 + rnd(-1.8, 1.8), cp.z + fw.z * 5 + rnd(-2.5, 2.5), 0, rnd(0.3, 1), 0, rnd(0.03, 0.08)); } }
   SUB.root.position.copy(P.pos); if (P.pos.y > -1.6) SUB.root.position.y += Math.sin(G.t * 2) * 0.15;
   SUB.root.rotation.set(-P.vpitch, P.vyaw, P.roll, 'YXZ');
@@ -756,7 +764,11 @@ function updateCamera(dt) {
   if (CINE.on) { const u = CINE.hold ? 0.6 : CINE.t / CINE.dur, a = CINE.a0 + (CINE.hold ? CINE.t * 0.12 + 1.2 : u * 1.9), r = CINE.r * (1.15 - 0.3 * u), h = CINE.h * (1.3 - 0.5 * u);
     tv2.set(CINE.c.x + Math.sin(a) * r, Math.max(CINE.c.y + h, heightAt(CINE.c.x + Math.sin(a) * r, CINE.c.z + Math.cos(a) * r) + 3), CINE.c.z + Math.cos(a) * r);
     camera.position.lerp(tv2, CINE.t < 0.05 ? 1 : 1 - Math.exp(-dt * 4)); tv3.copy(CINE.c); tv3.y += 1; camera.lookAt(tv3); return; }
-  if (ARM.on) { armCamera(dt); return; }
+  if (inSphere()) { // the pilot's eye inside the sphere; with the arm out, the pilot looks down at the work
+    SUB.root.updateMatrixWorld(); camera.position.set(0, 0.12, 1.3).applyMatrix4(SUB.root.matrixWorld);
+    if (ARM.on) { armHandWorld(tv3); if (ARM.it && ARM.phase !== 'carry') tv3.lerp(ARM.it.pos, 0.7); if (ARM.t < 0.05) ARM_LOOK.copy(tv3); ARM_LOOK.lerp(tv3, 1 - Math.exp(-dt * 4)); tv2.subVectors(ARM_LOOK, camera.position).normalize();
+      ARM.cp += (clamp(Math.asin(tv2.y) + 0.06, -0.8, 0.2) - ARM.cp) * Math.min(1, dt * 4); camera.rotation.set(ARM.cp, P.yaw + Math.PI, 0, 'YXZ'); return; }
+    ARM.cp = P.pitch; camera.rotation.set(P.pitch + Math.sin(G.t * 0.9) * 0.004, P.yaw + Math.PI, P.roll, 'YXZ'); return; }
   if (G.fp) { // cockpit view: eye just behind the front viewport
     SUB.root.updateMatrixWorld(); camera.position.set(0, 0.12, 1.0).applyMatrix4(SUB.root.matrixWorld);
     const sp = clamp(P.vel.length() / S.speed, 0, 1.6); camera.position.y += Math.sin(G.t * 1.1) * 0.05 + Math.sin(G.t * 7.5) * 0.03 * sp;
@@ -780,7 +792,7 @@ function updateItems(dt) {
     if (it.col || it.locked) continue;
     const dc2 = it.pos.distanceToSquared(camera.position); if (dc2 > 260 * 260 && it.state === 0) continue;
     let pulled = false;
-    if (beamOn) { tv1.subVectors(it.pos, P.nose); const ed = tv1.length() || 1; if (ed < S.beam + it.r) { const cosA = tv1.dot(f) / ed; if (cosA > Math.cos(0.36 + aim + Math.min(0.5, it.r / ed))) {
+    if (beamOn && !G.story) { tv1.subVectors(it.pos, P.nose); const ed = tv1.length() || 1; if (ed < S.beam + it.r) { const cosA = tv1.dot(f) / ed; if (cosA > Math.cos(0.36 + aim + Math.min(0.5, it.r / ed))) {
       const pw = S.beamPow / (1 + it.kg * 0.085); tv1.multiplyScalar(-pw / ed).sub(it.vel).multiplyScalar(Math.min(1, 5 * dt)); it.vel.add(tv1); it.state = 1; pulled = true; it.spin += dt * 3;
       if (Math.random() < dt * 12) FXA.emit(PT.SPARK, it.pos.x + rnd(-it.r, it.r), it.pos.y + rnd(-it.r, it.r), it.pos.z + rnd(-it.r, it.r), -tv1.x, -tv1.y, -tv1.z, 0.4, 0.15, 0.4, 1, 0.9, 1); } } }
     // first touch play: trash right in front makes the beam button pulse until the beam has collected something
@@ -1087,8 +1099,11 @@ function drawOverlayIn(c, W, H) {
 // =====================================================================
 // VIEW MODE (first / third person) + COCKPIT
 // =====================================================================
-const inCockpit = () => G.fp && G.state !== 'title' && !G.cine && !ARM.on;
-const CK = new CockpitUI($('ckdyn'));
+// two first-person views: the main game's drawn cockpit, and in the story the real one: the pilot's eye inside the sub's clear sphere,
+// looking out past the actual hull, lamps and arm. The arm is always worked from there, whichever view was on.
+const inCockpit = () => G.fp && !G.story && G.state !== 'title' && !G.cine;
+const inSphere = () => G.story && (G.fp || ARM.on) && G.state !== 'title' && !G.cine;
+const CK = new CockpitUI($('ckdyn')), CK2 = new SphereUI($('ckdyn2'));
 function redrawCockpit() { if (!inCockpit() || !G.ck) return; drawCockpit($('cockpit'), G.ck, Math.min(devicePixelRatio || 1, 2), G.fpTier < 0 ? 0 : G.fpTier); }
 // HUD lives inside the visible viewport: the canopy glass above the instrument row in first person, the screen in third person
 function layoutHUD() {
@@ -1098,16 +1113,16 @@ function layoutHUD() {
   const sa = getComputedStyle($('safe')), sl = parseFloat(sa.paddingLeft) || 0, sr = parseFloat(sa.paddingRight) || 0, stp = parseFloat(sa.paddingTop) || 0, sb = parseFloat(sa.paddingBottom) || 0;
   x0 = Math.max(x0, sl); x1 = Math.min(x1, W - sr); y0 = Math.max(y0, stp); y1 = Math.min(y1, H - sb);
   st.setProperty('--hx', `${x0 + ins}px`); st.setProperty('--hy', `${y0 + ins}px`); st.setProperty('--hr', `${W - x1 + ins}px`); st.setProperty('--hb', `${H - y1 + ins}px`);
-  st.setProperty('--ppy', inCockpit() && G.ck ? `${G.ck.ppY}px` : '50%');
+  st.setProperty('--ppy', inCockpit() && G.ck ? `${G.ck.ppY}px` : G.ck2 ? `${G.ck2.ppY}px` : '50%'); if (G.ck2) st.setProperty('--sph-top', `${G.ck2.hudTop}px`);
   // touch buttons sit in the bottom-right corner (beside the right stick on tablets), inside the screen edge otherwise
   st.setProperty('--tr', inCockpit() && G.ck ? `${Math.max(G.ck.touchR, sr + ins)}px` : `${W - x1 + ins}px`); st.setProperty('--tb', inCockpit() ? `${12 + sb}px` : `${H - y1 + ins}px`);
   G.win = { x: x0 + ins, y: y0 + ins, w: x1 - x0 - ins * 2, h: y1 - y0 - ins * 2 };
 }
 function applyView() {
-  const on = inCockpit();
-  for (const ch of SUB.root.children) if (ch.isMesh && ch !== lightCone) ch.visible = !on;
+  const on = inCockpit(), sph = inSphere();
+  for (const ch of SUB.root.children) if (ch.isMesh && ch !== lightCone) ch.visible = !on && !sph; // from inside, only the arm is seen through the window
   ARMG.g.visible = !on;
-  document.body.classList.toggle('fp', on); $('cockpit').classList.toggle('hidden', !on); $('ckdyn').classList.toggle('hidden', !on);
+  document.body.classList.toggle('fp', on || sph); document.body.classList.toggle('sphere', sph); $('cockpit').classList.toggle('hidden', !on); $('ckdyn').classList.toggle('hidden', !on); $('cockpit2').classList.toggle('hidden', !sph); $('ckdyn2').classList.toggle('hidden', !sph);
   G.fpTier = -1; resize();
 }
 function toggleView() { if (G.state !== 'play') return; G.fp = !G.fp; applyView(); saveSettings(); $('sView').value = G.fp ? '1' : '0'; AU.click(); updateCamera(1); toast(G.fp ? '1인칭 조종석 시점' : '3인칭 추적 시점', '', 'V 키로 전환합니다.'); }
@@ -1116,7 +1131,7 @@ function cycleCam() { if (!inCockpit() || !G.ck || !G.ck.q.scrR) return; FEED.mo
 // just before the main pass overwrites it, and copies that corner onto the monitor's 2D canvas.
 const FEED = { mode: 0, ok: false, n: 0, q: null, w: 0, h: 0, cam: new THREE.PerspectiveCamera(64, 1.45, 0.3, 480) };
 function feedLayout() {
-  const q = FEED.q = inCockpit() && G.ck ? G.ck.q.scrR || null : null; if (!q) return;
+  const q = FEED.q = inCockpit() && G.ck ? G.ck.q.scrR || null : inSphere() && G.ck2 ? G.ck2.q.scrR : null; if (!q) return;
   FEED.cam.aspect = q.w / q.h; FEED.cam.updateProjectionMatrix();
   const s = Math.min(1, (G.vp.w - 2) / q.w, (G.vp.h - 2) / q.h, 360 / q.w); FEED.w = Math.max(16, Math.floor(q.w * s)); FEED.h = Math.max(9, Math.floor(q.h * s));
 }
@@ -1132,9 +1147,12 @@ function renderFeed() {
   renderer.render(scene, cam);
   renderer.setScissorTest(false); renderer.setViewport(0, 0, G.vp.w, G.vp.h);
   lightCone.visible = lc; beamCone.visible = bc;
-  const pr = renderer.getPixelRatio(); CK.feed(canvas, Math.round(FEED.w * pr), Math.round(FEED.h * pr));
+  const pr = renderer.getPixelRatio(); (G.ck2 ? CK2 : CK).feed(canvas, Math.round(FEED.w * pr), Math.round(FEED.h * pr));
 }
 const CKS = { stickL: [0, 0], stickR: [0, 0], inp: { f: 0, s: 0, u: 0 } };
+// what the round-window cockpit's screens show: the same state, plus the water temperature (cooler with depth), the arm and the goal's count
+function sphereState() { const s = cockpitState(), st = STORY.steps[SS.i]; s.temp = Math.max(2, 24 - s.depth * 0.16); s.arm = ARM; s.heading = headingLabel(P.yaw); s.bank = clamp(-(P.yr || 0) * 0.25, -0.5, 0.5);
+  s.prog = st && st.goal ? storyProg(st) : null; return s; }
 function cockpitState() {
   const s = CKS, dm = depthOf(P.pos.y), inp = P.inp || s.inp;
   s.t = G.t; s.clock = ST().time; s.depth = dm; s.limit = S.depth; s.speed = P.vel.length(); s.vmax = S.speed * 1.55; s.yaw = P.yaw; s.pos = P.pos;
@@ -1513,7 +1531,7 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 const MSAA_OK = !matchMedia('(pointer: coarse)').matches && (renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float'));
 const msaaFor = (mp) => (!MSAA_OK ? 0 : mp <= 1.6 ? 4 : mp <= 3.2 ? 2 : 0);
 function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; const pr = Math.min(devicePixelRatio || 1, PR_TIERS[q]);
-  const L = G.ck = inCockpit() ? cockpitLayout(G.VW, G.VH, IN.touch) : null, vp = G.vp = L ? L.view : { x: 0, y: 0, w: G.VW, h: G.VH };
+  const L = G.ck = inCockpit() ? cockpitLayout(G.VW, G.VH, IN.touch) : null, L2 = G.ck2 = !L && inSphere() ? sphereLayout(G.VW, G.VH, IN.touch) : null, vp = G.vp = L ? L.view : L2 ? L2.view : { x: 0, y: 0, w: G.VW, h: G.VH };
   renderer.setPixelRatio(pr); renderer.setSize(vp.w, vp.h, false); Object.assign(canvas.style, { left: vp.x + 'px', top: vp.y + 'px', width: vp.w + 'px', height: vp.h + 'px' });
   { const n = msaaFor((vp.w * vp.h * pr * pr) / 1e6); for (const rt of [composer.renderTarget1, composer.renderTarget2]) if (rt.samples !== n) { rt.samples = n; rt.dispose(); } }
   composer.setPixelRatio(pr); composer.setSize(vp.w, vp.h); bloom.enabled = q > 0; bloom.strength = q >= 2 ? 0.55 : 0.45; SEABED.value = q > 0 ? 1 : 0;
@@ -1526,7 +1544,7 @@ function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; 
   // labels and markers are 2D text: drawn at the screen's own density (to 2x) whatever the 3D resolution
   G.opr = Math.min(devicePixelRatio || 1, 2); overlay.width = Math.round(G.VW * G.opr); overlay.height = Math.round(G.VH * G.opr);
   FXA.mat.uniforms.uScale.value = f * pr; FXN.mat.uniforms.uScale.value = f * pr;
-  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); if (L) CK.setLayout(L, Math.min(devicePixelRatio || 1, 2)); feedLayout(); layoutHUD(); swipeCheck(); }
+  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); if (L) CK.setLayout(L, Math.min(devicePixelRatio || 1, 2)); if (L2) { const dp = Math.min(devicePixelRatio || 1, 2); drawSphereCockpit($('cockpit2'), L2, dp); CK2.setLayout(L2, dp); } feedLayout(); layoutHUD(); swipeCheck(); }
 // iOS fires resize while the page scrolls; reallocating every buffer for an unchanged size only costs a frame
 addEventListener('resize', () => { if (innerWidth !== G.VW || innerHeight !== G.VH) resize(); });
 // first touch play: ghost hints over the two drag zones until each has been used for a moment, and a pulsing beam button
@@ -1591,8 +1609,8 @@ function frame(now) {
     // always through the composer, bloom or not (quality 0 just skips the bloom pass): three.js mixes fog in after a material's
     // own tone mapping, so a direct render shows half-fogged distance as lighter shapes against the background, and the
     // fog-distance culling above would show as straight edges; through the composer fog mixes first and the end pass tone-maps all
-    if ((live || G.needRender) && !G.ctxLost && !GL.isContextLost()) { updateEnv(dt); if (inCockpit()) renderFeed(); composer.render(); drawOverlay(); G.needRender = false; }
-    if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit() && G.ck) CK.update(cockpitState(), dt); }
+    if ((live || G.needRender) && !G.ctxLost && !GL.isContextLost()) { updateEnv(dt); if (inCockpit() || G.ck2) renderFeed(); composer.render(); drawOverlay(); G.needRender = false; }
+    if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit() && G.ck) CK.update(cockpitState(), dt); else if (G.ck2 && inSphere()) CK2.update(sphereState(), dt); }
     if (G.state === 'menu' && !$('mapm').classList.contains('hidden')) { mmAcc += dt; if (mmAcc > 0.3) { mmAcc = 0; drawBigMap(); } }
     AU.update(G.state === 'title' ? 20 : depthOf(P.pos.y), P.vel.length() * 12, G.state === 'play' ? P.thrust : 0, G.state === 'play' && P.beam, G.state === 'play');
   } catch (err) { console.error(err); }
