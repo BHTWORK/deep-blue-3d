@@ -55,7 +55,7 @@ const G = { vp: { x: 0, y: 0, w: innerWidth, h: innerHeight }, state: 'title', t
   alert: '', alertPri: 0, fullT: 0, creakT: 0, alarmT: 0, lowWarned: false, pendingWin: 0, quality: 2, qualityPref: 'auto', ctxLost: false, shakeOn: true, lastMTip: -99, sens: 1, fp: true, fpTier: -1, glowSrc: [], coralH: -1, bleachH: 0, bleachSet: -1, story: false, talk: false, VW: innerWidth, VH: innerHeight };
 let SV = null; const S = {};
 // the robot arm's state (see ROBOT ARM): ax, ay are the hand's bearing and elevation from the shoulder, tx, ty the piece's
-const ARM = { on: false, it: null, held: null, phase: 'idle', t: 0, k: 0, grip: 0.6, cd: 0, ax: 0, ay: 0, tx: 0, ty: 0, mdx: 0, mdy: 0, cp: 0, was: false, first: false, aimed: false, H: new THREE.Vector3(-0.8, -0.56, 1.85) };
+const ARM = { on: false, it: null, held: null, phase: 'idle', t: 0, k: 0, grip: 0.6, cd: 0, ax: 0, ay: 0, tx: 0, ty: 0, mdx: 0, mdy: 0, cp: 0, was: false, req: false, first: false, aimed: false, H: new THREE.Vector3(-0.8, -0.56, 1.85) };
 const DOCK = new V3(2.6, -8, -19);
 const P = { pos: new V3(DOCK.x, DOCK.y - 3, DOCK.z - 15), vel: new V3(), yaw: Math.PI, pitch: -0.1, vyaw: Math.PI, vpitch: 0, roll: 0, bat: 100, hull: 100, kg: 0, cargo: [], beam: false, boost: false, thrust: 0, inv: 0, alive: true, deadT: 0, canDock: false, dmgT: 0, nose: new V3(), fwd: new V3(0, 0, -1) };
 const fwdOf = (yaw, pitch, out = new V3()) => out.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
@@ -636,7 +636,7 @@ armPose(ARM_STOW, 0, 0.6);
 // the point between the fingertips, in the world
 const armHandWorld = (out) => SUB.root.localToWorld(out.copy(ARMG.hand.position).addScaledVector(_ad.set(0, 1, 0).applyQuaternion(ARMG.hand.quaternion), ARM_HAND));
 const armTargets = () => { const st = G.story && STORY.steps[SS.i]; return st && (st.goal === 'trash' || st.goal === 'coral') ? SS.targets[st.goal] : null; };
-function armStart(it) { ARM.on = true; ARM.it = it; ARM.phase = 'aim'; ARM.t = 0; ARM.k = 0; ARM.grip = 0; ARM.first = true; ARM.was = true; P.beam = false; applyView(); show('armBox'); armUI(true); AU.click(); }
+function armStart(it) { ARM.on = true; ARM.it = it; ARM.phase = 'aim'; ARM.t = 0; ARM.k = 0; ARM.grip = 0; ARM.first = true; ARM.was = true; ARM.req = false; P.beam = false; applyView(); show('armBox'); armUI(true); AU.click(); }
 function armEnd(cd) { ARM.on = false; ARM.it = null; ARM.held = null; ARM.phase = 'idle'; ARM.cd = cd; applyView(); hide('armBox'); armUI(false); }
 // while the arm is out, the touch beam button is the claw's grab button
 function armUI(on) { const tb = $('tBeam'); tb.firstChild.textContent = on ? '잡기' : '빔'; tb.lastChild.textContent = on ? '로봇 팔' : '수거'; document.body.classList.toggle('arming', on); }
@@ -644,8 +644,12 @@ function updateArm(dt) {
   const A = ARM; A.cd = Math.max(0, A.cd - dt);
   if (!A.on) { // fold away; unfold when a piece of the current goal comes within reach
     A.k = Math.max(0, A.k - dt * 2.5); A.grip += (0.6 - A.grip) * Math.min(1, dt * 6); A.H.lerp(ARM_STOW, Math.min(1, dt * 6)); armPose(A.H, A.k, A.grip); ARMG.g.visible = !inCockpit();
+    const ask = A.req || !!(P.inp && P.inp.beam) || !!IN.keys.Space; A.req = false; // (a press is only good for the frame it is made in)
     const T = armTargets(); if (!T || A.cd > 0 || G.talk || G.cine) return;
-    for (const id of T) { const it = items[id]; if (!it.col && it.pos.distanceToSquared(P.pos) < 5.4 * 5.4) { armStart(it); break; } }
+    // within 9 m the arm unfolds by itself (the sub closes the rest of the way); pressing grab brings it out from as far as 18 m
+    let best = null, bd = (ask ? 18 : 9) ** 2;
+    for (const id of T) { const it = items[id]; if (it.col) continue; const d = it.pos.distanceToSquared(P.pos); if (d < bd) { bd = d; best = it; } }
+    if (best) armStart(best);
     return; }
   ARMG.g.visible = true; const it = A.it, inp = P.inp || {}, k = IN.keys;
   if (it.col || G.talk || !armTargets()) { armEnd(1); return; }
@@ -654,29 +658,30 @@ function updateArm(dt) {
   A.tx = Math.atan2(L.x, L.z); A.ty = Math.atan2(L.y, Math.hypot(L.x, L.z));
   A.t += dt;
   if (A.first) { // until the sub has swung round to face the piece the hand waits out in front; then it starts a little off to one side
-    if (Math.abs(A.tx) < 0.45 || A.t > 1.6) { A.first = false; A.ax = clamp(A.tx + (it.id % 2 ? 0.38 : -0.38), -0.7, 1.3); A.ay = A.ty + 0.3; } else { A.ax = 0; A.ay = 0.15; A.mdx = A.mdy = 0; } }
+    if ((Math.abs(A.tx) < 0.45 && (A.gap || 0) < 0.9) || A.t > 4) { A.first = false; A.ax = clamp(A.tx + (it.id % 2 ? 0.38 : -0.38), -0.7, 1.3); A.ay = A.ty + 0.3; } else { A.ax = 0; A.ay = 0.15; A.mdx = A.mdy = 0; } }
   if (!A.first && (A.phase === 'aim' || A.phase === 'miss')) { // steer the hand: the mouse or a drag moves it directly, keys and the stick at a steady rate
     const rate = 0.95 * dt, jx = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0) + (IN.joy.on ? IN.joy.dx : 0) + IN.gp.mx, jy = (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0) - (IN.joy.on ? IN.joy.dy : 0) - IN.gp.my;
-    A.ax = clamp(A.ax - A.mdx * 0.0019 * G.sens - jx * rate, -0.7, 1.3); A.ay = clamp(A.ay - A.mdy * 0.0019 * G.sens + jy * rate, -1.25, 0.5); }
+    A.ax = clamp(A.ax - clamp(A.mdx, -120, 120) * 0.0019 * G.sens - jx * rate, -0.7, 1.3); A.ay = clamp(A.ay - clamp(A.mdy, -120, 120) * 0.0019 * G.sens + jy * rate, -1.25, 0.5);
+    const ex = A.tx - A.ax, ey = A.ty - A.ay, er = Math.hypot(ex, ey); if (er < 0.3) { const m = Math.min(1, dt * 1.6); A.ax += ex * m; A.ay += ey * m; } } // close to the piece, the hand settles onto it
   A.mdx = A.mdy = 0;
   const ca = Math.cos(A.ay); tv2.set(Math.sin(A.ax) * ca, Math.sin(A.ay), Math.cos(A.ax) * ca).multiplyScalar(dist).add(ARM_S); // where the player wants the hand
-  const press = !!(inp.beam || k.Space), edge = press && !A.was && !A.first; A.was = press;
+  const press = !!(inp.beam || k.Space), edge = (A.req || (press && !A.was)) && !A.first; A.was = press; A.req = false;
   if (A.phase === 'aim') { A.k = Math.min(1, A.k + dt * 2.2); A.grip += (0 - A.grip) * Math.min(1, dt * 8); A.H.lerp(tv2, Math.min(1, dt * 9));
     if (edge && A.k > 0.6) { A.phase = 'close'; A.t = 0; AU.tone(520, 0.06, 'square', 0.03); } }
   else if (A.phase === 'close') { A.grip = Math.min(1, A.t / 0.2); A.H.lerp(tv2, Math.min(1, dt * 9));
-    if (A.t >= 0.2) { armPose(A.H, A.k, A.grip); const hit = armHandWorld(tv3).distanceTo(it.pos) < Math.max(0.42, it.r * 0.8);
+    if (A.t >= 0.2) { armPose(A.H, A.k, A.grip); const hit = armHandWorld(tv3).distanceTo(it.pos) < Math.max(0.55, it.r * 0.9);
       if (hit) { A.phase = 'carry'; A.t = 0; A.held = it; it.state = 0; it.vel.set(0, 0, 0); buzz(18); AU.tone(880, 0.08, 'sine', 0.05); } else { A.phase = 'miss'; A.t = 0; AU.tone(180, 0.12, 'sine', 0.05); toast('빗나갔어요! 손을 쓰레기 위에 맞추고 다시 잡아요', 'tip'); } } }
   else if (A.phase === 'miss') { A.grip = Math.max(0, 1 - A.t / 0.25); A.H.lerp(tv2, Math.min(1, dt * 9)); if (A.t >= 0.25) A.phase = 'aim'; }
   else if (A.phase === 'carry') { A.k = Math.max(0, 1 - A.t / 0.8); A.H.lerp(ARM_STOW, Math.min(1, dt * 4)); }
   armPose(A.H, A.k, A.grip);
   if (A.phase === 'carry') { armHandWorld(it.pos); it.home.copy(it.pos); writeItem(it); if (A.t >= 0.8) { tryCollect(it); armEnd(0.6); return; } }
-  A.aimed = A.phase === 'aim' && armHandWorld(tv3).distanceTo(it.pos) < Math.max(0.42, it.r * 0.8);
+  A.aimed = A.phase === 'aim' && armHandWorld(tv3).distanceTo(it.pos) < Math.max(0.55, it.r * 0.9);
   if (k.KeyX || IN.rmb) { IN.rmb = false; armEnd(3); toast('로봇 팔을 접었어요', 'tip'); }
 }
 // while the arm is out the sub holds station in front of the piece, level, a little above it
 function armHoldStation(dt) { const it = ARM.it; tv1.subVectors(it.pos, P.pos); const yawT = Math.atan2(tv1.x, tv1.z); let dy = yawT - P.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
   if (ARM.phase !== 'carry') { P.yaw += dy * Math.min(1, dt * 3); const h = Math.hypot(tv1.x, tv1.z) || 1, want = 2.9;
-    tv2.set(it.pos.x - (tv1.x / h) * want, Math.min(-2.2, Math.max(it.pos.y + 0.95, heightAt(P.pos.x, P.pos.z) + 1.35)), it.pos.z - (tv1.z / h) * want); P.pos.lerp(tv2, Math.min(1, dt * 1.6)); }
+    tv2.set(it.pos.x - (tv1.x / h) * want, Math.min(-2.2, Math.max(it.pos.y + 0.95, heightAt(P.pos.x, P.pos.z) + 1.35)), it.pos.z - (tv1.z / h) * want); { const gap = tv2.sub(P.pos), len = gap.length(); ARM.gap = len; if (len > 1e-3) P.pos.addScaledVector(gap, Math.min(1, (Math.min(len * 1.8, 6.5) * dt) / len)); } }
   P.pitch += (0 - P.pitch) * Math.min(1, dt * 3); P.vel.multiplyScalar(Math.pow(0.02, dt)); P.beam = false; P.boost = false; }
 const ARM_LOOK = new V3(); // where the pilot is looking while working the arm (see updateCamera)
 // on the overlay: a ring on the hand, a bracket on the piece; both turn gold when the claw would close on it
@@ -1524,6 +1529,10 @@ lz.addEventListener('touchmove', (e) => { e.preventDefault(); for (const t of e.
 const lookEnd = (e) => { for (const t of e.changedTouches) if (t.identifier === IN.look.id) IN.look.id = null; }; lz.addEventListener('touchend', lookEnd); lz.addEventListener('touchcancel', lookEnd);
 const holdBtn = (el, key) => { el.addEventListener('touchstart', (e) => { e.preventDefault(); IN[key] = true; el.classList.add('on'); }, { passive: false }); const up = (e) => { e.preventDefault(); IN[key] = false; el.classList.remove('on'); }; el.addEventListener('touchend', up); el.addEventListener('touchcancel', up); };
 $('armX').addEventListener('click', () => { IN.rmb = true; });
+// a grab is one short press: it is noted when it happens, so a tap that begins and ends between two frames is not lost
+for (const ev of ['touchstart', 'mousedown']) $('tBeam').addEventListener(ev, () => { ARM.req = true; }, { passive: true });
+canvas.addEventListener('mousedown', (e) => { if (e.button === 0 && G.story && IN.locked) ARM.req = true; });
+addEventListener('keydown', (e) => { if (G.story && !e.repeat && (e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Space')) ARM.req = true; });
 holdBtn($('tBeam'), 'tBeam'); holdBtn($('tBoost'), 'tBoost'); holdBtn($('tUp'), 'tUp'); holdBtn($('tDown'), 'tDown');
 $('tSonar').addEventListener('touchstart', (e) => { e.preventDefault(); doSonar(); }, { passive: false });
 document.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) b.blur(); });

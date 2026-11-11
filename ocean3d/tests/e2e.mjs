@@ -129,11 +129,15 @@ const SUITES = {
       // the arm is worked from the story's cockpit, whichever view was on: one full pane of glass (the 3D picture fills the screen) behind its two painted layers
       // and live screens; the main game's cockpit stays away
       out.ck = document.body.classList.contains('sphere') && !document.getElementById('cockpit2').classList.contains('hidden') && !document.getElementById('cockpit2n').classList.contains('hidden') && document.getElementById('cockpit').classList.contains('hidden') && g.G.vp.w === innerWidth && g.G.vp.h === innerHeight && document.querySelectorAll('#ckdyn2 canvas').length >= 6;
-      run(0.1, 1); run(0.5); out.carry = A.phase === 'carry'; run(1.2); out.got = it.col && !A.on && g.P.cargo.includes(it.id);
+      // the grab is a real key tap that begins and ends between two frames: it must still count
+      dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', bubbles: true })); dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyE', bubbles: true })); run(0.6); out.carry = A.phase === 'carry'; run(1.2); out.got = it.col && !A.on && g.P.cargo.includes(it.id);
+      // from 8 m off the arm comes out by itself and the sub closes in to working distance
+      { const far = g.items[g.SS.targets.trash[2]]; g.P.pos.set(far.pos.x - 8, far.pos.y + 1.5, far.pos.z); g.P.vel.set(0, 0, 0); A.cd = 0; run(0.2); out.far = A.on && A.it === far; run(3.5); out.closed = Math.hypot(g.P.pos.x - far.pos.x, g.P.pos.z - far.pos.z) < 3.4 && !A.first; g.IN.rmb = true; run(0.1); out.folded = !A.on; }
       // the beam no longer draws litter in: held on the next piece from a few metres off, it leaves it where it lies
       const nx = g.items[g.SS.targets.trash[1]], at = nx.pos.clone(); g.P.pos.set(nx.pos.x - 7, nx.pos.y + 1, nx.pos.z); g.P.vel.set(0, 0, 0); g.P.yaw = g.P.vyaw = Math.PI / 2; g.P.pitch = -0.14; g.IN.keys.KeyE = true; g.simulate(1); g.IN.keys.KeyE = false;
       out.noPull = nx.state === 0 && nx.pos.distanceTo(at) < 0.01 && !nx.col; return out; });
     check('story: the robot arm unfolds near a piece, misses off target, grabs on target', arm.near && arm.ready && arm.off && arm.miss && arm.aimed && arm.fp && arm.carry && arm.got, arm);
+    check('story: the arm comes out from 8 m, the sub closes in, and it folds on request', arm.far && arm.closed && arm.folded, { far: arm.far, closed: arm.closed, folded: arm.folded });
     check('story: the arm is worked from the story cockpit; the beam does not pull litter', arm.ck && arm.noPull, { ck: arm.ck, noPull: arm.noPull });
     check('story: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close();
   },
