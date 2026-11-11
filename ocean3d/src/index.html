@@ -325,7 +325,7 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
 .btn.story.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 /* story mode: big, friendly dialogue and an ending card with a short OX quiz */
 body.arming #hint{visibility:hidden}
-#armBox{position:fixed;left:50%;top:calc(14px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:14;display:flex;align-items:center;gap:12px;padding:8px 14px;border:1px solid var(--accent);border-radius:8px;background:rgba(6,16,24,.82);color:#e8edf1;font-size:14px;white-space:nowrap}#armBox b{color:var(--accent)}#armBox .tc,#armX{display:none}body.touch #armBox .kb{display:none}body.touch #armBox .tc{display:inline}body.touch #armX{display:inline-block;padding:4px 10px;font-size:13px}@media (max-width:640px){#armBox{font-size:12px;gap:8px;padding:6px 10px}}
+#armBox{position:fixed;left:50%;top:calc(14px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:14;display:flex;align-items:center;gap:12px;padding:8px 14px;border:1px solid var(--accent);border-radius:8px;background:rgba(6,16,24,.82);color:#e8edf1;font-size:14px;white-space:nowrap}#armBox b{color:var(--accent)}#armBox .tc,#armBox .au,#armX{display:none}body.armauto #armBox .kb,body.armauto #armBox .tc,body.armauto #armX{display:none!important}body.armauto #armBox .au{display:inline}body.touch #armBox .kb{display:none}body.touch #armBox .tc{display:inline}body.touch #armX{display:inline-block;padding:4px 10px;font-size:13px}@media (max-width:640px){#armBox{font-size:12px;gap:8px;padding:6px 10px}}
 #storyBox{position:fixed;left:50%;bottom:max(22vh,150px);transform:translateX(-50%);width:min(640px,calc(100vw - 32px));z-index:15}
 #storyBox .sbox{cursor:pointer;background:rgba(7,14,20,.9);border:1px solid rgba(111,211,193,.4);border-radius:10px;padding:16px 18px 14px;box-shadow:0 12px 32px rgba(0,0,0,.35);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 #storyBox .who{display:flex;align-items:center;gap:10px;margin-bottom:8px}
@@ -575,7 +575,7 @@ body.arming #hint{visibility:hidden}
   <button class="btn primary" id="bRespawn">기지선에서 재출항</button>
 </div></div>
 
-<div id="armBox" class="hidden"><b>로봇 팔</b><span class="kb">마우스·W A S D로 손을 옮기고, 클릭·E로 잡기 · X로 접기</span><span class="tc">손을 쓰레기 위로 옮기고 「잡기」</span><button id="armX" class="btn quiet">접기</button></div>
+<div id="armBox" class="hidden"><b>로봇 팔</b><span class="kb">마우스·W A S D로 손을 옮기고, 클릭·E로 잡기 · X로 접기</span><span class="tc">손을 쓰레기 위로 옮기고 「잡기」</span><span class="au">누르고 있으면 로봇 팔이 알아서 잡아요</span><button id="armX" class="btn quiet">접기</button></div>
 <div id="storyBox" class="hidden" role="dialog" aria-live="polite"><div class="sbox">
   <div class="who"><span class="face" id="stFace">🐬</span><b id="stName">돌고래 부캉이</b></div>
   <p id="stText"></p>

@@ -135,9 +135,14 @@ const SUITES = {
       { const far = g.items[g.SS.targets.trash[2]]; g.P.pos.set(far.pos.x - 8, far.pos.y + 1.5, far.pos.z); g.P.vel.set(0, 0, 0); A.cd = 0; run(0.2); out.far = A.on && A.it === far; run(3.5); out.closed = Math.hypot(g.P.pos.x - far.pos.x, g.P.pos.z - far.pos.z) < 3.4 && !A.first; g.IN.rmb = true; run(0.1); out.folded = !A.on; }
       // the beam no longer draws litter in: held on the next piece from a few metres off, it leaves it where it lies
       const nx = g.items[g.SS.targets.trash[1]], at = nx.pos.clone(); g.P.pos.set(nx.pos.x - 7, nx.pos.y + 1, nx.pos.z); g.P.vel.set(0, 0, 0); g.P.yaw = g.P.vyaw = Math.PI / 2; g.P.pitch = -0.14; g.IN.keys.KeyE = true; g.simulate(1); g.IN.keys.KeyE = false;
-      out.noPull = nx.state === 0 && nx.pos.distanceTo(at) < 0.01 && !nx.col; return out; });
+      out.noPull = nx.state === 0 && nx.pos.distanceTo(at) < 0.01 && !nx.col;
+      // third person: nothing happens by itself; holding the grab control makes the arm do the whole job without leaving the view; letting go early folds it
+      if (A.on) { g.IN.rmb = true; run(0.2); } g.toggleView(); const t3 = g.items[g.SS.targets.trash[3]], had = g.P.cargo.length; g.P.pos.set(t3.pos.x - 8, t3.pos.y + 1.6, t3.pos.z); g.P.vel.set(0, 0, 0); A.cd = 0;
+      run(0.6); out.idle3 = !A.on; run(0.3, 1); out.auto3 = A.on && A.auto && !document.body.classList.contains('sphere') && document.body.classList.contains('armauto');
+      run(0.3); out.fold3 = !A.on && g.P.cargo.length === had; run(6, 1); out.got3 = g.P.cargo.length > had; g.IN.keys.KeyE = false; run(0.3); g.toggleView(); return out; });
     check('story: the robot arm unfolds near a piece, misses off target, grabs on target', arm.near && arm.ready && arm.off && arm.miss && arm.aimed && arm.fp && arm.carry && arm.got, arm);
     check('story: the arm comes out from 8 m, the sub closes in, and it folds on request', arm.far && arm.closed && arm.folded, { far: arm.far, closed: arm.closed, folded: arm.folded });
+    check('story, third person: holding grab makes the arm collect by itself; letting go early folds it', arm.idle3 && arm.auto3 && arm.fold3 && arm.got3, { idle: arm.idle3, auto: arm.auto3, fold: arm.fold3, got: arm.got3 });
     check('story: the arm is worked from the story cockpit; the beam does not pull litter', arm.ck && arm.noPull, { ck: arm.ck, noPull: arm.noPull });
     check('story: no page errors', errors.length === 0, errors.slice(0, 3)); await ctx.close();
   },
