@@ -1064,6 +1064,7 @@ function updateEnv(dt) {
 // =====================================================================
 function project(p, out) { out.copy(p).project(camera); const behind = tv3.subVectors(p, camera.position).dot(camera.getWorldDirection(tv2)) < 0; return { x: G.vp.x + (out.x * 0.5 + 0.5) * G.vp.w, y: G.vp.y + (-out.y * 0.5 + 0.5) * G.vp.h, behind }; }
 const pv = new V3();
+const BUB = { txt: '', at: 0 }, UIFONT = '"Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif';
 function drawOverlay() {
   const c = octx, W = G.VW, H = G.VH; c.setTransform(G.opr, 0, 0, G.opr, 0, 0); c.clearRect(0, 0, W, H);
   if (G.state === 'title') return;
@@ -1102,10 +1103,14 @@ function drawOverlayIn(c, W, H) {
     if (t.big) { const lx = ax - Math.cos(ang) * 36, ly = ay - Math.sin(ang) * 26; c.font = '600 12px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,10,20,.85)'; const txt = `${t.label} ${dm}m`; c.strokeText(txt, lx, ly + 4); c.fillStyle = t.col; c.fillText(txt, lx, ly + 4); } }
   // 부캉이's speech bubble above its head while the child plays
   if (G.story && !G.talk && BUDDY.model && BUDDY.model.root.visible) { const txt = buddySay(); if (txt) { const s = project(BV[5].copy(BUDDY.pos).add(tv1.set(0, 1.5, 0)), pv);
-    if (!s.behind && s.x > 0 && s.x < W && s.y > 0 && s.y < H) { c.font = '700 15px sans-serif'; const w = c.measureText(txt).width + 24, h = 32, x = clamp(s.x - w / 2, 8, W - w - 8), y = s.y - h - 10;
-      c.fillStyle = 'rgba(255,255,255,.94)'; c.strokeStyle = '#3fbfa8'; c.lineWidth = 2; c.beginPath(); if (c.roundRect) c.roundRect(x, y, w, h, 14); else c.rect(x, y, w, h); c.fill(); c.stroke(); // roundRect is missing on older iPads
-      c.beginPath(); c.moveTo(s.x - 7, y + h - 1); c.lineTo(s.x, y + h + 9); c.lineTo(s.x + 7, y + h - 1); c.closePath(); c.fill();
-      c.fillStyle = '#0b2a33'; c.textAlign = 'center'; c.fillText(txt, x + w / 2, y + 21); } } }
+    // a small glass tag over the guide: dark, a hairline of the guide's colour, its tail part of the same outline; it eases in when the line changes
+    if (BUB.txt !== txt) { BUB.txt = txt; BUB.at = G.t; } const k = Math.min(1, (G.t - BUB.at) / 0.22), e = 1 - (1 - k) * (1 - k);
+    if (!s.behind && s.x > 0 && s.x < W && s.y > 0 && s.y < H) { c.save(); c.font = `600 14px ${UIFONT}`; const tw = c.measureText(txt).width, w = tw + 44, h = 34, r = 11, x = clamp(s.x - w / 2, 8, W - w - 8), y = s.y - h - 14 + (1 - e) * 6, tx = clamp(s.x, x + r + 8, x + w - r - 8);
+      c.globalAlpha = e; c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.lineTo(tx + 7, y + h); c.lineTo(tx, y + h + 8); c.lineTo(tx - 7, y + h); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+      c.shadowColor = 'rgba(0,0,0,.45)'; c.shadowBlur = 14; c.shadowOffsetY = 4; const g = c.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(20,33,42,.92)'); g.addColorStop(1, 'rgba(8,15,21,.94)'); c.fillStyle = g; c.fill();
+      c.shadowColor = 'transparent'; c.strokeStyle = 'rgba(111,211,193,.55)'; c.lineWidth = 1; c.stroke();
+      c.fillStyle = '#6fd3c1'; c.beginPath(); c.arc(x + 16, y + h / 2, 3, 0, TAU); c.fill(); c.fillStyle = 'rgba(111,211,193,.22)'; c.beginPath(); c.arc(x + 16, y + h / 2, 6, 0, TAU); c.fill();
+      c.fillStyle = '#f1f6f9'; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(txt, x + 28, y + h / 2 + 0.5); c.restore(); } } }
 }
 
 // =====================================================================
@@ -1356,7 +1361,7 @@ function storyLine() {
   const lines = SS.lines, t = lines[SS.line];
   TW.full = t === '@controls' ? (IN.touch ? STORY.controls.touch : STORY.controls.keys) : t; TW.n = 0; TW.acc = 0; TW.on = true; $('stText').textContent = '';
   $('stDots').querySelectorAll('i').forEach((d, k) => d.classList.toggle('on', k === SS.line));
-  $('stNext').textContent = SS.line < lines.length - 1 ? '다음 ▶' : SS.onDone ? '좋아! ▶' : STORY.steps[SS.i + 1] ? '좋아! ▶' : '끝내기 ▶'; $('stNext').classList.toggle('hidden', !!SS.noNext); AU.chirp(); SS.lineAt = performance.now();
+  $('stNext').textContent = SS.line < lines.length - 1 ? '다음' : SS.onDone ? '좋아!' : STORY.steps[SS.i + 1] ? '좋아!' : '끝내기'; $('stNext').classList.toggle('hidden', !!SS.noNext); AU.chirp(); SS.lineAt = performance.now();
 }
 function storyNext() {
   if (!G.talk || (CINE.on && !CINE.hold) || SS.noNext) return; if (typeDone()) return; const lines = SS.lines;

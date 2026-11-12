@@ -327,13 +327,20 @@ body #title .a2hs{align-self:flex-start;margin-top:10px;padding:6px 12px;border-
 body.arming #hint{visibility:hidden}
 #armBox{position:fixed;left:50%;top:calc(14px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:14;display:flex;align-items:center;gap:12px;padding:8px 14px;border:1px solid var(--accent);border-radius:8px;background:rgba(6,16,24,.82);color:#e8edf1;font-size:14px;white-space:nowrap}#armBox b{color:var(--accent)}#armBox .tc,#armBox .au,#armX{display:none}body.armauto #armBox .kb,body.armauto #armBox .tc,body.armauto #armX{display:none!important}body.armauto #armBox .au{display:inline}body.touch #armBox .kb{display:none}body.touch #armBox .tc{display:inline}body.touch #armX{display:inline-block;padding:4px 10px;font-size:13px}@media (max-width:640px){#armBox{font-size:12px;gap:8px;padding:6px 10px}}
 #storyBox{position:fixed;left:50%;bottom:max(22vh,150px);transform:translateX(-50%);width:min(640px,calc(100vw - 32px));z-index:15}
-#storyBox .sbox{cursor:pointer;background:rgba(7,14,20,.9);border:1px solid rgba(111,211,193,.4);border-radius:10px;padding:16px 18px 14px;box-shadow:0 12px 32px rgba(0,0,0,.35);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
-#storyBox .who{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-#storyBox .face{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:28px;background:#123a44 center/cover no-repeat;border:1px solid rgba(111,211,193,.6)}
-#storyBox .who b{font-size:12px;letter-spacing:.08em;color:var(--teal);font-weight:700}
-#storyBox p{font-size:clamp(16px,2.2vw,20px);line-height:1.6;color:#f2f7fa;min-height:3.2em}
-#storyBox .sfoot{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
-#storyBox .dots{display:flex;gap:6px}#storyBox .dots i{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.25)}#storyBox .dots i.on{background:#6fd3c1}
+/* the guide's dialogue: a glass card with the portrait in a lit ring, the name over the line, the line set large, thin progress ticks and a quiet next button */
+#storyBox .sbox{position:relative;cursor:pointer;display:grid;grid-template-columns:auto 1fr;column-gap:18px;row-gap:6px;align-items:start;padding:18px 20px 16px;border-radius:16px;
+  background:linear-gradient(180deg,rgba(18,30,39,.9),rgba(8,14,20,.94));border:1px solid rgba(255,255,255,.09);box-shadow:0 18px 48px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08);backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);animation:sboxIn .28s cubic-bezier(.2,.8,.2,1)}
+#storyBox .sbox::before{content:'';position:absolute;left:20px;right:20px;top:0;height:1px;background:linear-gradient(90deg,rgba(111,211,193,0),rgba(111,211,193,.75) 18%,rgba(111,211,193,0) 62%)}
+@keyframes sboxIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+#storyBox .who{grid-row:1/4;display:flex;flex-direction:column;align-items:center;gap:8px;min-width:68px}
+#storyBox .face{width:60px;height:60px;border-radius:50%;display:grid;place-items:center;font-size:30px;background:#0f2f38 center/cover no-repeat;border:1px solid rgba(111,211,193,.55);box-shadow:0 0 0 4px rgba(111,211,193,.1),0 6px 16px rgba(0,0,0,.4)}
+#storyBox .who b{font-size:11px;letter-spacing:.04em;color:var(--teal);font-weight:600;white-space:nowrap}
+#storyBox p{grid-column:2;font-size:clamp(16px,2.1vw,19px);line-height:1.68;font-weight:500;letter-spacing:-.005em;color:#f3f7fa;min-height:3.36em;padding-top:2px}
+#storyBox .sfoot{grid-column:2;display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+#storyBox .dots{display:flex;gap:5px}#storyBox .dots i{width:18px;height:3px;border-radius:2px;background:rgba(255,255,255,.16);transition:background .2s}#storyBox .dots i.on{background:var(--teal)}
+#storyBox #stNext{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 16px 0 18px;border-radius:999px;font-size:14px;font-weight:600;letter-spacing:.01em;color:var(--accent);background:rgba(227,189,95,.1);border:1px solid rgba(227,189,95,.5);box-shadow:none;transition:background .15s,border-color .15s}
+#storyBox #stNext:hover{background:rgba(227,189,95,.2);border-color:rgba(227,189,95,.85)}
+#storyBox #stNext::after{content:'';width:6px;height:6px;border-right:1.6px solid currentColor;border-top:1.6px solid currentColor;transform:rotate(45deg);margin-left:-1px}
 #storyBox .btn{height:44px;font-size:16px;padding:0 22px}
 /* story cinematic: letterbox bars slide in, the title fades up, everything fades out at the end */
 #cine{position:fixed;inset:0;z-index:16;cursor:pointer}
@@ -366,7 +373,7 @@ body.arming #hint{visibility:hidden}
 #storyEnd .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 #storyEnd .row .btn{height:44px;font-size:15px}
 /* phones in landscape: one compact row, icon | line + dots | button, so the scene stays visible above it */
-@media (max-height:520px){#storyBox{bottom:calc(6px + env(safe-area-inset-bottom,0px));width:min(760px,calc(100vw - 24px))}#storyBox .sbox{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:'face text next' 'face dots next';column-gap:12px;row-gap:4px;align-items:center;padding:8px 10px 8px 12px;border-radius:14px;background:rgba(6,18,26,.95)}#storyBox .who,#storyBox .sfoot{display:contents}#storyBox .face{grid-area:face;width:34px;height:34px;font-size:21px}#storyBox .who b{display:none}#storyBox p{grid-area:text;font-size:15px;line-height:1.4;min-height:0}#storyBox .dots{grid-area:dots}#storyBox .dots i{width:6px;height:6px}#storyBox .btn{grid-area:next;height:44px;font-size:15px;padding:0 16px}#storyEnd .box{padding:12px 16px}#storyEnd h2{font-size:19px;margin-bottom:2px}#storyEnd .lead{font-size:13px;margin-bottom:6px}#storyEnd .sstats{grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 8px}#storyEnd .sstats div{padding:6px 4px}#storyEnd .sstats b{font-size:16px}#storyEnd .sstats span{font-size:11px}#storyEnd h3{font-size:14px}#storyEnd ul{font-size:13px;line-height:1.45;margin:4px auto 8px}#storyEnd .q{font-size:16px;margin:6px 0 10px}#storyEnd .ox button{width:90px;height:64px;font-size:34px}#storyEnd .fb{font-size:14px;margin:4px 0 8px}#storyEnd .row .btn{height:38px}}
+@media (max-height:520px){#storyBox{bottom:calc(6px + env(safe-area-inset-bottom,0px));width:min(760px,calc(100vw - 24px))}#storyBox .sbox{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:'face text next' 'face dots next';column-gap:12px;row-gap:4px;align-items:center;padding:8px 10px 8px 12px;border-radius:14px;background:rgba(6,18,26,.95)}#storyBox .who,#storyBox .sfoot{display:contents}#storyBox .sbox::before{left:14px;right:14px}#storyBox .face{width:44px;height:44px;box-shadow:0 0 0 3px rgba(111,211,193,.1)}#storyBox .dots i{width:12px!important;height:3px!important}#storyBox #stNext{height:40px;padding:0 14px 0 16px}#storyBox .face{grid-area:face;width:34px;height:34px;font-size:21px}#storyBox .who b{display:none}#storyBox p{grid-area:text;font-size:15px;line-height:1.4;min-height:0}#storyBox .dots{grid-area:dots}#storyBox .dots i{width:6px;height:6px}#storyBox .btn{grid-area:next;height:44px;font-size:15px;padding:0 16px}#storyEnd .box{padding:12px 16px}#storyEnd h2{font-size:19px;margin-bottom:2px}#storyEnd .lead{font-size:13px;margin-bottom:6px}#storyEnd .sstats{grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 8px}#storyEnd .sstats div{padding:6px 4px}#storyEnd .sstats b{font-size:16px}#storyEnd .sstats span{font-size:11px}#storyEnd h3{font-size:14px}#storyEnd ul{font-size:13px;line-height:1.45;margin:4px auto 8px}#storyEnd .q{font-size:16px;margin:6px 0 10px}#storyEnd .ox button{width:90px;height:64px;font-size:34px}#storyEnd .fb{font-size:14px;margin:4px 0 8px}#storyEnd .row .btn{height:38px}}
 
 @media (max-width:760px),(max-height:520px){
   #hudLeft{width:200px;gap:5px}
@@ -579,7 +586,7 @@ body.arming #hint{visibility:hidden}
 <div id="storyBox" class="hidden" role="dialog" aria-live="polite"><div class="sbox">
   <div class="who"><span class="face" id="stFace">🐬</span><b id="stName">돌고래 부캉이</b></div>
   <p id="stText"></p>
-  <div class="sfoot"><span class="dots" id="stDots"></span><button class="btn primary" id="stNext">다음 ▶</button></div>
+  <div class="sfoot"><span class="dots" id="stDots"></span><button class="btn primary" id="stNext">다음</button></div>
 </div></div>
 
 <div id="cine" class="hidden"><div class="bar top"></div><div class="bar bot"></div><div class="ct"><b id="cineT"></b><span id="cineS"></span></div><i class="skip">탭하면 건너뛰기</i></div>
