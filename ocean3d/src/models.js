@@ -325,6 +325,56 @@ export function buildTrashGeos() {
   return G;
 }
 
+function dolphinSwim(g, body, fl) {
+  // The whole body swims: an up-down wave runs from the head back to the flukes, barely moving the head and growing
+  // toward the tail stock (u is 0 at the beak, 1 at the flukes); the normals turn with the bend so the shading stays smooth
+  const NOSE = 1.3, LEN = 2.5, W = 7, K = 2.6, amp = (u) => 0.03 + 0.06 * u + 0.12 * u * u, damp = (u) => 0.06 + 0.24 * u;
+  const pa = body.geometry.attributes.position, na = body.geometry.attributes.normal, p0 = pa.array.slice(), n0 = na.array.slice(), nv = pa.count;
+  const U = new Float32Array(nv); for (let i = 0; i < nv; i++) U[i] = Math.max(0, (NOSE - p0[i * 3 + 2]) / LEN);
+  body.geometry.boundingSphere.radius += 0.25;
+  const uF = (NOSE + 1.15) / LEN;
+  return { root: g, anim(t, e, near) {
+    const ph = t * W;
+    // the flukes ride the tail tip and follow its tangent (slope dy/dz), flexed a little further
+    { const a = ph - K * uF, sn = Math.sin(a); fl.position.y = amp(uF) * sn; fl.rotation.x = Math.atan((damp(uF) * sn - amp(uF) * K * Math.cos(a)) / LEN) * 1.4; }
+    if (near === false) return;
+    const pv = pa.array, nn = na.array;
+    for (let i = 0; i < nv; i++) { const u = U[i], a = ph - K * u, sn = Math.sin(a), sl = -(damp(u) * sn - amp(u) * K * Math.cos(a)) / LEN, c = 1 / Math.sqrt(1 + sl * sl), sa = sl * c, j = i * 3;
+      pv[j + 1] = p0[j + 1] + amp(u) * sn; nn[j + 1] = n0[j + 1] * c + n0[j + 2] * sa; nn[j + 2] = -n0[j + 1] * sa + n0[j + 2] * c; }
+    pa.needsUpdate = true; na.needsUpdate = true; } };
+}
+
+// 부캉이, the story's guide: a young dolphin drawn to be liked. A plump body with a domed head and a short beak, big bright eyes with
+// a catch-light, a blush on each cheek, the line of a smile, rounded fins with some thickness, and its teal neckerchief.
+function buddyDolphin() {
+  const g = new THREE.Group(), TOP = '#56a6ea', FIN = '#3d8fd6', tb = topBottom(TOP, '#f6fbff', -0.02, 0.1);
+  // fins are cut from a rounded outline and given thickness; `turn` lays them in the right plane
+  const fin = (pts, d, turn) => turn(new THREE.ExtrudeGeometry(new THREE.Shape(pts.map(([u, v]) => new THREE.Vector2(u, v))), { depth: d, bevelEnabled: true, bevelSize: 0.014, bevelThickness: 0.014, bevelSegments: 2, curveSegments: 10 }).translate(0, 0, -d / 2));
+  const up = (ge) => ge.rotateY(-Math.PI / 2), flat = (ge) => ge.rotateX(Math.PI / 2);
+  const curve = (pts) => { const sh = new THREE.Shape(); sh.moveTo(pts[0][0], pts[0][1]); sh.splineThru(pts.slice(1).map(([u, v]) => new THREE.Vector2(u, v))); sh.closePath(); return sh.getPoints(18).map((v) => [v.x, v.y]); };
+  // body: plump amidships, a domed forehead raised over the lathe's own outline
+  const bodyGeo = lathe([[0, -1.17], [0.09, -1.05], [0.17, -0.82], [0.27, -0.5], [0.36, -0.12], [0.41, 0.25], [0.415, 0.52], [0.39, 0.76], [0.32, 0.95], [0.22, 1.06], [0.13, 1.12], [0, 1.14]], 26);
+  { const p = bodyGeo.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i), z = p.getZ(i), k = Math.exp(-(((z - 0.82) / 0.24) ** 2)); if (y > 0) p.setY(i, y * (1 + 0.2 * k)); } bodyGeo.computeVertexNormals(); }
+  const eye = (sx) => [P(new THREE.SphereGeometry(0.078, 16, 12), '#ffffff', [sx * 0.318, 0.125, 0.8]), P(new THREE.SphereGeometry(0.056, 14, 10), '#14212e', [sx * 0.352, 0.128, 0.822]),
+    P(new THREE.SphereGeometry(0.02, 8, 6), '#ffffff', [sx * 0.388, 0.158, 0.846]), P(new THREE.SphereGeometry(0.01, 6, 4), '#ffffff', [sx * 0.397, 0.112, 0.812]),
+    P(new THREE.SphereGeometry(0.052, 12, 8), '#ff9fb4', [sx * 0.33, -0.005, 0.93], [0, 0, 0], [0.45, 0.8, 1]), // the blush
+    rod([sx * 0.085, -0.045, 1.3], [sx * 0.2, -0.05, 1.08], 0.009, '#2a5f93', 5), rod([sx * 0.2, -0.05, 1.08], [sx * 0.285, -0.015, 0.95], 0.009, '#2a5f93', 5)]; // the smile, running back from the beak
+  const body = new THREE.Mesh(M(
+    P(bodyGeo, '#fff', [0, 0, 0], [0, 0, 0], [0.95, 1, 1], tb),
+    P(lathe([[0.15, 1.02], [0.125, 1.14], [0.1, 1.25], [0.065, 1.32], [0, 1.345]], 16), '#fff', [0, -0.045, 0], [0, 0, 0], [1.05, 0.72, 1], topBottom(TOP, '#f6fbff', -0.05, 0.06)), // the beak
+    ...eye(1), ...eye(-1),
+    P(fin(curve([[0.16, 0.34], [0.02, 0.52], [-0.14, 0.68], [-0.3, 0.74], [-0.34, 0.68], [-0.26, 0.52], [-0.3, 0.33]]), 0.06, up), FIN), // dorsal fin
+    ...[1, -1].map((sx) => P(fin(curve([[sx * 0.22, 0.52], [sx * 0.4, 0.44], [sx * 0.6, 0.2], [sx * 0.62, 0.08], [sx * 0.5, 0.1], [sx * 0.32, 0.24], [sx * 0.2, 0.3]]), 0.05, flat), FIN, [0, -0.2, 0], [0, 0, -sx * 0.38])), // flippers, angled down
+    // neckerchief: a band round the neck and its knot under the chin
+    P(new THREE.TorusGeometry(0.405, 0.05, 10, 28), '#35b9a2', [0, 0, 0.42], [0, 0, 0], [0.96, 1, 1.5]),
+    P(new THREE.ConeGeometry(0.11, 0.24, 4), '#2aa791', [0.05, -0.47, 0.44], [0.25, 0.3, 2.9], [1, 1, 0.45]), P(new THREE.ConeGeometry(0.1, 0.2, 4), '#35b9a2', [-0.07, -0.46, 0.4], [-0.1, -0.2, -2.8], [1, 1, 0.45]),
+    P(new THREE.SphereGeometry(0.06, 10, 8), '#2aa791', [0, -0.4, 0.44]),
+  ), MAT.vcD); g.add(body);
+  const fl = new THREE.Group(); fl.position.z = -1.15;
+  fl.add(new THREE.Mesh(P(fin(curve([[0, 0.12], [0.26, 0.04], [0.52, -0.16], [0.58, -0.34], [0.42, -0.36], [0.2, -0.24], [0, -0.13], [-0.2, -0.24], [-0.42, -0.36], [-0.58, -0.34], [-0.52, -0.16], [-0.26, 0.04]]), 0.05, flat), FIN), MAT.vcD)); g.add(fl);
+  return dolphinSwim(g, body, fl);
+}
+
 // ---------------------------------------------------------------- small fish (instanced)
 export function fishGeo(kind) {
   // [length, height, width] in metres; +z is the head, +y the back
@@ -443,22 +493,7 @@ export const BUILD = {
       P(new THREE.SphereGeometry(0.04, 6, 4), '#050505', [0.2, 0.08, 0.8]), P(new THREE.SphereGeometry(0.04, 6, 4), '#050505', [-0.2, 0.08, 0.8]),
     ), MAT.vcD); g.add(body);
     const fl = new THREE.Group(); fl.position.z = -1.15; fl.add(new THREE.Mesh(P(hFin([[0, 0.1], [0.55, -0.25], [0.35, -0.4], [0, -0.15], [-0.35, -0.4], [-0.55, -0.25]]), '#5d7185'), MAT.vcD)); g.add(fl);
-    // the whole body swims: an up-down wave runs from the head back to the flukes, barely moving the head and growing
-    // toward the tail stock (u is 0 at the beak, 1 at the flukes); the normals turn with the bend so the shading stays smooth
-    const NOSE = 1.3, LEN = 2.5, W = 7, K = 2.6, amp = (u) => 0.03 + 0.06 * u + 0.12 * u * u, damp = (u) => 0.06 + 0.24 * u;
-    const pa = body.geometry.attributes.position, na = body.geometry.attributes.normal, p0 = pa.array.slice(), n0 = na.array.slice(), nv = pa.count;
-    const U = new Float32Array(nv); for (let i = 0; i < nv; i++) U[i] = Math.max(0, (NOSE - p0[i * 3 + 2]) / LEN);
-    body.geometry.boundingSphere.radius += 0.25;
-    const uF = (NOSE + 1.15) / LEN;
-    return { root: g, anim(t, e, near) {
-      const ph = t * W;
-      // the flukes ride the tail tip and follow its tangent (slope dy/dz), flexed a little further
-      { const a = ph - K * uF, sn = Math.sin(a); fl.position.y = amp(uF) * sn; fl.rotation.x = Math.atan((damp(uF) * sn - amp(uF) * K * Math.cos(a)) / LEN) * 1.4; }
-      if (near === false) return;
-      const pv = pa.array, nn = na.array;
-      for (let i = 0; i < nv; i++) { const u = U[i], a = ph - K * u, sn = Math.sin(a), sl = -(damp(u) * sn - amp(u) * K * Math.cos(a)) / LEN, c = 1 / Math.sqrt(1 + sl * sl), sa = sl * c, j = i * 3;
-        pv[j + 1] = p0[j + 1] + amp(u) * sn; nn[j + 1] = n0[j + 1] * c + n0[j + 2] * sa; nn[j + 2] = -n0[j + 1] * sa + n0[j + 2] * c; }
-      pa.needsUpdate = true; na.needsUpdate = true; } };
+    return dolphinSwim(g, body, fl);
   },
   jelly(e) {
     const g = new THREE.Group(); const hue = e ? e.hue : 300; const c = new THREE.Color().setHSL(hue / 360, 0.85, 0.65);
@@ -549,3 +584,4 @@ export const NET_GEO = () => { const g = new THREE.SphereGeometry(1, 24, 16), p 
   for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); v.multiplyScalar(1 + NZ(v.x * 2 + 9, v.y * 2 + v.z * 1.7) * 0.13 + NZ(v.x * 5, v.z * 5 + v.y * 4) * 0.05); p.setXYZ(i, v.x, v.y, v.z); uv.setXY(i, uv.getX(i) * 36, uv.getY(i) * 18); }
   g.computeVertexNormals(); return g; };
 export const NET_MAT = () => TM.net;
+export const BUDDY_MODEL = () => buddyDolphin();

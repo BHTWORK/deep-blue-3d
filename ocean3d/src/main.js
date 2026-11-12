@@ -7,7 +7,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { TAU, clamp, lerp, smooth, rnd, fmt, $, esc, seed, rr, rpick, wpick, SR } from './util.js';
 import { TRASH, SPECIES, SPECIES_ORDER, UP, UP_ORDER, POIS, STORY } from './data.js';
 import { AU, Music } from './audio.js';
-import { MAT, ENVMATS, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO, NET_MAT, P as PM } from './models.js';
+import { MAT, ENVMATS, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO, NET_MAT, BUDDY_MODEL, P as PM } from './models.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { drawCockpit, cockpitLayout, CockpitUI, headingLabel } from './cockpit.js';
 import { sphereLayout, drawSphereCockpit, SphereUI } from './cockpit2.js';
@@ -1308,15 +1308,13 @@ function storyTick() {
 const BUDDY = { model: null, pos: new V3(), vel: new V3(), q: new THREE.Quaternion(), t: 0, ph: 0, party: 0 }, BV = [new V3(), new V3(), new V3(), new V3(), new V3(), new V3()], ZAX = new V3(0, 0, 1);
 // the dialogue box shows the buddy itself: the model with its collar, rendered once into the face circle
 function buddyPortrait() {
-  if (BUDDY.face) return; thumbFor('dolphin'); const b = BUILD.dolphin(); b.root.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.set('#9fd0ff'); } });
-  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.04, 6, 18), new THREE.MeshStandardMaterial({ color: '#3fbfa8', emissive: 0x0d3a33 })); collar.position.z = 0.55; collar.scale.x = 0.88; b.root.add(collar);
-  b.root.rotation.y = -Math.PI / 2 + 0.55; b.root.rotation.z = -0.15; TR.scene.add(b.root); b.root.updateMatrixWorld(true); const ctr = b.root.localToWorld(new V3(0, 0.05, 0.75));
-  TR.cam.position.copy(ctr).add(new V3(0.9, 0.45, 1.7)); TR.cam.lookAt(ctr); TR.r.setClearColor(0x0d2e3a, 1); TR.r.render(TR.scene, TR.cam); TR.scene.remove(b.root); TR.r.setClearColor(0x000000, 0);
+  if (BUDDY.face) return; thumbFor('dolphin'); const b = BUDDY_MODEL();
+  b.root.rotation.y = -Math.PI / 2 + 0.55; b.root.rotation.z = -0.15; TR.scene.add(b.root); b.root.updateMatrixWorld(true); const ctr = b.root.localToWorld(new V3(0, 0.06, 0.82));
+  TR.cam.position.copy(ctr).add(new V3(1.0, 0.4, 2.15)); TR.cam.lookAt(ctr); TR.r.setClearColor(0x0d2e3a, 1); TR.r.render(TR.scene, TR.cam); TR.scene.remove(b.root); TR.r.setClearColor(0x000000, 0);
   BUDDY.face = TR.r.domElement.toDataURL(); $('stFace').style.backgroundImage = `url(${BUDDY.face})`; $('stFace').textContent = '';
 }
 function buddyShow() {
-  if (!BUDDY.model) { const b = BUILD.dolphin(); b.root.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.set('#9fd0ff'); } });
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.04, 6, 18), new THREE.MeshStandardMaterial({ color: '#3fbfa8', emissive: 0x0d3a33, roughness: 0.5 })); collar.position.z = 0.55; collar.scale.x = 0.88; b.root.add(collar); scene.add(b.root); BUDDY.model = b; }
+  if (!BUDDY.model) { const b = BUDDY_MODEL(); scene.add(b.root); BUDDY.model = b; }
   BUDDY.model.root.visible = true; BUDDY.pos.copy(P.pos).addScaledVector(P.fwd, 9); BUDDY.vel.set(0, 0, 0); BUDDY.party = 0;
 }
 function buddyHide() { if (BUDDY.model) BUDDY.model.root.visible = false; }
