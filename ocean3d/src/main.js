@@ -10,7 +10,7 @@ import { AU, Music } from './audio.js';
 import { MAT, ENVMATS, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO, NET_MAT, BUDDY_MODEL, P as PM } from './models.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { drawCockpit, cockpitLayout, CockpitUI, headingLabel } from './cockpit.js';
-import { sphereLayout, drawSphereCockpit, SphereUI } from './cockpit2.js';
+import { sphereLayout, SphereUI, buildCockpit3D, updateCockpit3D, feedCockpit3D, EYE } from './cockpit2.js';
 import { WORLD, heightAt, heightAt0, normalAt, reefPoint, reefFree, U, SEABED, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBleach, buildBaseShip, buildDockRing, gradTex } from './world.js';
 
 const V3 = THREE.Vector3, UPV = new V3(0, 1, 0), ZERO = new V3();
@@ -55,7 +55,7 @@ const G = { vp: { x: 0, y: 0, w: innerWidth, h: innerHeight }, state: 'title', t
   alert: '', alertPri: 0, fullT: 0, creakT: 0, alarmT: 0, lowWarned: false, pendingWin: 0, quality: 2, qualityPref: 'auto', ctxLost: false, shakeOn: true, lastMTip: -99, sens: 1, fp: true, fpTier: -1, glowSrc: [], coralH: -1, bleachH: 0, bleachSet: -1, story: false, talk: false, VW: innerWidth, VH: innerHeight };
 let SV = null; const S = {};
 // the robot arm's state (see ROBOT ARM): ax, ay are the hand's bearing and elevation from the shoulder, tx, ty the piece's
-const ARM = { on: false, it: null, held: null, phase: 'idle', t: 0, k: 0, grip: 0.6, cd: 0, ax: 0, ay: 0, tx: 0, ty: 0, mdx: 0, mdy: 0, cp: 0, was: false, req: false, auto: false, first: false, aimed: false, H: new THREE.Vector3(-0.8, -0.56, 1.85) };
+const ARM = { on: false, it: null, held: null, phase: 'idle', t: 0, k: 0, grip: 0.6, cd: 0, ax: 0, ay: 0, tx: 0, ty: 0, mdx: 0, mdy: 0, cp: 0, was: false, req: false, auto: false, first: false, aimed: false, H: new THREE.Vector3(-1.1, -0.6, 1.9) };
 const DOCK = new V3(2.6, -8, -19);
 const P = { pos: new V3(DOCK.x, DOCK.y - 3, DOCK.z - 15), vel: new V3(), yaw: Math.PI, pitch: -0.1, vyaw: Math.PI, vpitch: 0, roll: 0, bat: 100, hull: 100, kg: 0, cargo: [], beam: false, boost: false, thrust: 0, inv: 0, alive: true, deadT: 0, canDock: false, dmgT: 0, nose: new V3(), fwd: new V3(0, 0, -1) };
 const fwdOf = (yaw, pitch, out = new V3()) => out.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
@@ -601,7 +601,7 @@ function pollGamepad(dt) { const pads = navigator.getGamepads ? navigator.getGam
 // (click, E, Space or the grab button). A hit carries the piece back to the hold; a miss opens the claw again.
 // Folded, the arm lies back along the hull. All of its geometry is in the sub's own space (+z is the bow).
 // =====================================================================
-const ARM_L = 1.3, ARM_REACH = 2.9, ARM_S = new V3(-0.66, -0.3, 1.15), ARM_STOW = new V3(-0.8, -0.56, 1.85); // the shoulder is at -x: the pilot's right
+const ARM_L = 1.3, ARM_REACH = 2.9, ARM_S = new V3(-0.98, -0.34, 1.2), ARM_STOW = new V3(-1.1, -0.6, 1.9); // the shoulder is at -x: the pilot's right
 const ARMG = (() => { const g = new THREE.Group(), Wt = '#d6dbdf', Wd = '#b4bcc2', Dk = '#3b4249', Dd = '#22272c', glow = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false }); glow.color.setScalar(1.6);
   const box = (w, h, d, col, x = 0, y = 0, z = 0) => PM(new THREE.BoxGeometry(w, h, d), col, [x, y, z]), drum = (r, l, col, y) => PM(new THREE.CylinderGeometry(r, r, l, 18).rotateZ(Math.PI / 2), col, [0, y, 0]);
   const part = (geos, strips) => { const o = new THREE.Group(); o.add(new THREE.Mesh(mergeGeometries(geos), MAT.metal)); if (strips) o.add(new THREE.Mesh(mergeGeometries(strips), glow)); g.add(o); return o; };
@@ -661,12 +661,12 @@ function updateArm(dt) {
   A.tx = Math.atan2(L.x, L.z); A.ty = Math.atan2(L.y, Math.hypot(L.x, L.z));
   A.t += dt;
   if (A.first) { // until the sub has swung round to face the piece the hand waits out in front; then it starts a little off to one side
-    if ((Math.abs(A.tx) < 0.45 && (A.gap || 0) < 0.9) || A.t > 4) { A.first = false; A.ax = clamp(A.tx + (it.id % 2 ? 0.38 : -0.38), -0.7, 1.3); A.ay = A.ty + 0.3; } else { A.ax = 0; A.ay = 0.15; A.mdx = A.mdy = 0; } }
+    if (((A.yawErr || 0) < 0.05 && (A.gap || 0) < 0.2 && A.t > 0.3) || A.t > 5) { A.first = false; A.ax = clamp(A.tx + (it.id % 2 ? 0.38 : -0.38), -0.7, 1.3); A.ay = A.ty + 0.3; } else { A.ax = 0; A.ay = 0.15; A.mdx = A.mdy = 0; } }
   if (A.auto) { if (!A.first) { const ex = A.tx - A.ax, ey = A.ty - A.ay, er = Math.hypot(ex, ey), m = er > 1e-4 ? Math.min(1, (1.5 * dt) / er) : 1; A.ax += ex * m; A.ay += ey * m; } }
   else if (!A.first && (A.phase === 'aim' || A.phase === 'miss')) { // steer the hand: the mouse or a drag moves it directly, keys and the stick at a steady rate
     const rate = 0.95 * dt, jx = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0) + (IN.joy.on ? IN.joy.dx : 0) + IN.gp.mx, jy = (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0) - (IN.joy.on ? IN.joy.dy : 0) - IN.gp.my;
     A.ax = clamp(A.ax - clamp(A.mdx, -120, 120) * 0.0019 * G.sens - jx * rate, -0.7, 1.3); A.ay = clamp(A.ay - clamp(A.mdy, -120, 120) * 0.0019 * G.sens + jy * rate, -1.25, 0.5);
-    const ex = A.tx - A.ax, ey = A.ty - A.ay, er = Math.hypot(ex, ey); if (er < 0.3) { const m = Math.min(1, dt * 1.6); A.ax += ex * m; A.ay += ey * m; } } // close to the piece, the hand settles onto it
+    const ex = A.tx - A.ax, ey = A.ty - A.ay, er = Math.hypot(ex, ey); if (er < 0.2) { const m = Math.min(1, dt * 1.6); A.ax += ex * m; A.ay += ey * m; } } // close to the piece, the hand settles onto it
   A.mdx = A.mdy = 0;
   const ca = Math.cos(A.ay); tv2.set(Math.sin(A.ax) * ca, Math.sin(A.ay), Math.cos(A.ax) * ca).multiplyScalar(dist).add(ARM_S); // where the player wants the hand
   const press = !!(inp.beam || k.Space), edge = A.auto ? A.aimed && !A.first : (A.req || (press && !A.was)) && !A.first; A.was = press; A.req = false;
@@ -683,9 +683,9 @@ function updateArm(dt) {
   if (k.KeyX || IN.rmb) { IN.rmb = false; armEnd(3); toast('로봇 팔을 접었어요', 'tip'); }
 }
 // while the arm is out the sub holds station in front of the piece, level, a little above it
-function armHoldStation(dt) { const it = ARM.it; tv1.subVectors(it.pos, P.pos); const yawT = Math.atan2(tv1.x, tv1.z); let dy = yawT - P.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-  if (ARM.phase !== 'carry') { P.yaw += dy * Math.min(1, dt * 3); const h = Math.hypot(tv1.x, tv1.z) || 1, want = 2.9;
-    tv2.set(it.pos.x - (tv1.x / h) * want, Math.min(-2.2, Math.max(it.pos.y + 0.95, heightAt(P.pos.x, P.pos.z) + 1.35)), it.pos.z - (tv1.z / h) * want); { const gap = tv2.sub(P.pos), len = gap.length(); ARM.gap = len; if (len > 1e-3) P.pos.addScaledVector(gap, Math.min(1, (Math.min(len * 1.8, 6.5) * dt) / len)); } }
+function armHoldStation(dt) { const it = ARM.it; tv1.subVectors(it.pos, P.pos); const yawT = Math.atan2(tv1.x, tv1.z); let dy = yawT - P.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); ARM.yawErr = Math.abs(dy);
+  if (ARM.phase !== 'carry') { P.yaw += dy * Math.min(1, dt * 3); const h = Math.hypot(tv1.x, tv1.z) || 1, want = 3.2;
+    tv2.set(it.pos.x - (tv1.x / h) * want, Math.min(-2.2, Math.max(it.pos.y + 0.8, heightAt(P.pos.x, P.pos.z) + 1.12)), it.pos.z - (tv1.z / h) * want); { const gap = tv2.sub(P.pos), len = gap.length(); ARM.gap = len; if (len > 1e-3) P.pos.addScaledVector(gap, Math.min(1, (Math.min(len * 1.8, 6.5) * dt) / len)); } }
   P.pitch += (0 - P.pitch) * Math.min(1, dt * 3); P.vel.multiplyScalar(Math.pow(0.02, dt)); P.beam = false; P.boost = false; }
 const ARM_LOOK = new V3(); // where the pilot is looking while working the arm (see updateCamera)
 // on the overlay: a ring on the hand, a bracket on the piece; both turn gold when the claw would close on it
@@ -715,7 +715,7 @@ function updatePlayer(dt) {
   const boosting = inp.boost && P.alive && ml > 0.1; P.boost = boosting; const spd = S.speed * (boosting ? (G.story ? 1.2 : 1.55) : 1);
   tv1.multiplyScalar(spd); P.vel.lerp(tv1, Math.min(1, 2.6 * dt));
   const op = OPV.copy(P.pos); P.pos.addScaledVector(P.vel, dt);
-  let impact = 0; const fl = heightAt(P.pos.x, P.pos.z) + 1.5;
+  let impact = 0; const fl = heightAt(P.pos.x, P.pos.z) + (ARM.on ? 1.12 : 1.5); // working the arm, the sub settles onto its skids
   if (P.pos.y < fl) { const n = normalAt(P.pos.x, P.pos.z); P.pos.y = fl; const vn = P.vel.dot(n); if (vn < 0) { impact = Math.max(impact, -vn); P.vel.addScaledVector(n, -vn * 1.2); } }
   for (const c of nearColliders(P.pos.x, P.pos.z)) { tv2.set(P.pos.x - c.x, P.pos.y - c.y, P.pos.z - c.z); const d = tv2.length(), m = c.r + 1.4; if (d < m && d > 0.001) { tv2.divideScalar(d); P.pos.addScaledVector(tv2, m - d); const vn = P.vel.dot(tv2); if (vn < 0) { impact = Math.max(impact, -vn); P.vel.addScaledVector(tv2, -vn * 1.2); } } }
   if (P.pos.y > SURF_Y) { P.pos.y = SURF_Y; if (P.vel.y > 0) P.vel.y = 0; } // surfaced: the sail rides above the waterline
@@ -726,7 +726,11 @@ function updatePlayer(dt) {
   // visual orientation
   const turn = ((((P.yaw - P.vyaw + Math.PI) % TAU) + TAU) % TAU) - Math.PI; P.vyaw += turn * Math.min(1, dt * 5);
   P.vpitch += (P.pitch * 0.75 - P.vpitch) * Math.min(1, dt * 4); P.roll += (clamp(-turn * 1.5, -0.5, 0.5) - P.roll) * Math.min(1, dt * 4);
-  if (G.fp || ARM.on) { const yr = angDelta(P.yaw, P.lyaw ?? P.yaw) / Math.max(dt, 1e-3); P.lyaw = P.yaw; P.yr = (P.yr || 0) + (yr - (P.yr || 0)) * Math.min(1, dt * 10); P.vyaw = P.yaw; P.vpitch = P.pitch; P.roll += (clamp(-yr * 0.035, -0.12, 0.12) - P.roll) * Math.min(1, dt * 3);
+  if (G.fp || ARM.on) { const yr = angDelta(P.yaw, P.lyaw ?? P.yaw) / Math.max(dt, 1e-3); P.lyaw = P.yaw; P.yr = (P.yr || 0) + (yr - (P.yr || 0)) * Math.min(1, dt * 10);
+    if (inSphere()) { // the story's modelled cabin: the eyes lead, the hull follows within a few degrees
+      let dy = angDelta(P.yaw, P.vyaw); dy -= dy * Math.min(1, dt * 7); dy = clamp(dy, -0.22, 0.22); P.vyaw = P.yaw - dy;
+      const pt = ARM.on ? 0 : P.pitch; let dp = pt - P.vpitch; dp -= dp * Math.min(1, dt * 7); dp = clamp(dp, -0.16, 0.16); P.vpitch = pt - dp; }
+    else { P.vyaw = P.yaw; P.vpitch = P.pitch; } P.roll += (clamp(-yr * 0.035, -0.12, 0.12) - P.roll) * Math.min(1, dt * 3);
     if (ml > 0.3 && Math.random() < dt * (10 + (boosting ? 25 : 0))) { const cp = camera.position, fw = P.fwd; bubble(cp.x + fw.x * 5 + rnd(-2.5, 2.5), cp.y + fw.y * 5 + rnd(-1.8, 1.8), cp.z + fw.z * 5 + rnd(-2.5, 2.5), 0, rnd(0.3, 1), 0, rnd(0.03, 0.08)); } }
   SUB.root.position.copy(P.pos); if (P.pos.y > -1.6) SUB.root.position.y += Math.sin(G.t * 2) * 0.15;
   SUB.root.rotation.set(-P.vpitch, P.vyaw, P.roll, 'YXZ');
@@ -774,7 +778,7 @@ function updateCamera(dt) {
     tv2.set(CINE.c.x + Math.sin(a) * r, Math.max(CINE.c.y + h, heightAt(CINE.c.x + Math.sin(a) * r, CINE.c.z + Math.cos(a) * r) + 3), CINE.c.z + Math.cos(a) * r);
     camera.position.lerp(tv2, CINE.t < 0.05 ? 1 : 1 - Math.exp(-dt * 4)); tv3.copy(CINE.c); tv3.y += 1; camera.lookAt(tv3); return; }
   if (inSphere()) { // the pilot's eye inside the sphere; with the arm out, the pilot looks down at the work
-    SUB.root.updateMatrixWorld(); camera.position.set(0, 0.12, 1.3).applyMatrix4(SUB.root.matrixWorld);
+    SUB.root.updateMatrixWorld(); camera.position.set(EYE[0] - clamp((P.yr || 0) * 0.012, -0.03, 0.03), EYE[1] + Math.sin(G.t * 1.1) * 0.006, EYE[2]).applyMatrix4(SUB.root.matrixWorld); // (the head leans a touch into a turn)
     if (ARM.on) { armHandWorld(tv3); if (ARM.it && ARM.phase !== 'carry') tv3.lerp(ARM.it.pos, 0.7); if (ARM.t < 0.05) ARM_LOOK.copy(tv3); ARM_LOOK.lerp(tv3, 1 - Math.exp(-dt * 4)); tv2.subVectors(ARM_LOOK, camera.position).normalize();
       ARM.cp += (clamp(Math.asin(tv2.y) + 0.06, -0.8, 0.2) - ARM.cp) * Math.min(1, dt * 4); camera.rotation.set(ARM.cp, P.yaw + Math.PI, 0, 'YXZ'); return; }
     ARM.cp = P.pitch; camera.rotation.set(P.pitch + Math.sin(G.t * 0.9) * 0.004, P.yaw + Math.PI, P.roll, 'YXZ'); return; }
@@ -1120,7 +1124,7 @@ function drawOverlayIn(c, W, H) {
 // looking out past the actual hull, lamps and arm. The arm is always worked from there, whichever view was on.
 const inCockpit = () => G.fp && !G.story && G.state !== 'title' && !G.cine;
 const inSphere = () => G.story && (G.fp || (ARM.on && !ARM.auto)) && G.state !== 'title' && !G.cine;
-const CK = new CockpitUI($('ckdyn')), CK2 = new SphereUI($('ckdyn2'));
+const CK = new CockpitUI($('ckdyn')), CK2 = new SphereUI($('ckdyn2')), CK3 = buildCockpit3D(), CK3Q = { w: 300, h: 190 }; SUB.root.add(CK3.group);
 function redrawCockpit() { if (!inCockpit() || !G.ck) return; drawCockpit($('cockpit'), G.ck, Math.min(devicePixelRatio || 1, 2), G.fpTier < 0 ? 0 : G.fpTier); }
 // HUD lives inside the visible viewport: the canopy glass above the instrument row in first person, the screen in third person
 function layoutHUD() {
@@ -1139,7 +1143,7 @@ function applyView() {
   const on = inCockpit(), sph = inSphere();
   for (const ch of SUB.root.children) if (ch.isMesh && ch !== lightCone) ch.visible = !on && !sph; // from inside, only the arm is seen through the window
   ARMG.g.visible = !on;
-  document.body.classList.toggle('fp', on || sph); document.body.classList.toggle('sphere', sph); $('cockpit').classList.toggle('hidden', !on); $('ckdyn').classList.toggle('hidden', !on); $('cockpit2').classList.toggle('hidden', !sph); $('cockpit2n').classList.toggle('hidden', !sph); $('ckdyn2').classList.toggle('hidden', !sph);
+  document.body.classList.toggle('fp', on || sph); document.body.classList.toggle('sphere', sph); $('cockpit').classList.toggle('hidden', !on); $('ckdyn').classList.toggle('hidden', !on); CK3.group.visible = sph; $('ckdyn2').classList.toggle('hidden', !sph);
   G.fpTier = -1; resize();
 }
 function toggleView() { if (G.state !== 'play') return; G.fp = !G.fp; applyView(); saveSettings(); $('sView').value = G.fp ? '1' : '0'; AU.click(); updateCamera(1); toast(G.fp ? '1인칭 조종석 시점' : '3인칭 추적 시점', '', 'V 키로 전환합니다.'); }
@@ -1148,7 +1152,7 @@ function cycleCam() { if (!inCockpit() || !G.ck || !G.ck.q.scrR) return; FEED.mo
 // just before the main pass overwrites it, and copies that corner onto the monitor's 2D canvas.
 const FEED = { mode: 0, ok: false, n: 0, q: null, w: 0, h: 0, cam: new THREE.PerspectiveCamera(64, 1.45, 0.3, 480) };
 function feedLayout() {
-  const q = FEED.q = inCockpit() && G.ck ? G.ck.q.scrR || null : inSphere() && G.ck2 ? G.ck2.q.scrR : null; if (!q) return;
+  const q = FEED.q = inCockpit() && G.ck ? G.ck.q.scrR || null : inSphere() && G.ck2 ? CK3Q : null; if (!q) return;
   FEED.cam.aspect = q.w / q.h; FEED.cam.updateProjectionMatrix();
   const s = Math.min(1, (G.vp.w - 2) / q.w, (G.vp.h - 2) / q.h, 360 / q.w); FEED.w = Math.max(16, Math.floor(q.w * s)); FEED.h = Math.max(9, Math.floor(q.h * s));
 }
@@ -1164,20 +1168,14 @@ function renderFeed() {
   renderer.render(scene, cam);
   renderer.setScissorTest(false); renderer.setViewport(0, 0, G.vp.w, G.vp.h);
   lightCone.visible = lc; beamCone.visible = bc;
-  const pr = renderer.getPixelRatio(); (G.ck2 ? CK2 : CK).feed(canvas, Math.round(FEED.w * pr), Math.round(FEED.h * pr));
+  const pr = renderer.getPixelRatio(); if (G.ck2) feedCockpit3D(CK3, canvas, Math.round(FEED.w * pr), Math.round(FEED.h * pr), CKS); else CK.feed(canvas, Math.round(FEED.w * pr), Math.round(FEED.h * pr));
 }
 const CKS = { stickL: [0, 0], stickR: [0, 0], inp: { f: 0, s: 0, u: 0 } };
-// Depth in the round-window cockpit: as the view turns, the near layer (displays, console, controllers) slides further than the far
-// one (wall and window ring), and both against the sea, the way things at different distances do when a head moves. A slow sway idles.
-const PAR = { x: 0, y: 0, yaw: 0, pit: 0 };
-function sphereParallax(dt) { const L = G.ck2, pit = ARM.on ? ARM.cp : P.pitch, k = 1 / Math.max(dt, 1e-3);
-  const tx = clamp(angDelta(P.yaw, PAR.yaw) * k * 0.5, -1, 1) + Math.sin(G.t * 0.55) * 0.1, ty = clamp((pit - PAR.pit) * k * 0.6, -1, 1) + Math.sin(G.t * 0.8 + 1) * 0.08; PAR.yaw = P.yaw; PAR.pit = pit;
-  const e = Math.min(1, dt * 5); PAR.x += (tx - PAR.x) * e; PAR.y += (ty - PAR.y) * e;
-  const f = L.bleed * 0.42, n = L.bleed * 0.95, tf = `translate3d(${(PAR.x * f).toFixed(1)}px,${(PAR.y * f).toFixed(1)}px,0)`, tn = `translate3d(${(PAR.x * n).toFixed(1)}px,${(PAR.y * n).toFixed(1)}px,0)`;
-  $('cockpit2').style.transform = tf; $('cockpit2n').style.transform = tn; $('ckdyn2').style.transform = tn; }
 // what the round-window cockpit's screens show: the same state, plus the water temperature (cooler with depth), the arm and the goal's count
 function sphereState() { const s = cockpitState(), st = STORY.steps[SS.i]; s.temp = Math.max(2, 24 - s.depth * 0.16); s.arm = ARM; s.heading = headingLabel(P.yaw); s.bank = clamp(-(P.yr || 0) * 0.25, -0.5, 0.5);
-  s.prog = st && st.goal ? storyProg(st) : null; return s; }
+  s.prog = st && st.goal ? storyProg(st) : null;
+  if (ARM.on) { const k = IN.keys; s.stickL[0] = clamp((k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0) + (IN.joy.on ? IN.joy.dx : 0), -1, 1); s.stickL[1] = clamp((k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0) - (IN.joy.on ? IN.joy.dy : 0), -1, 1); } // the left hand works the arm
+  return s; }
 function cockpitState() {
   const s = CKS, dm = depthOf(P.pos.y), inp = P.inp || s.inp;
   s.t = G.t; s.clock = ST().time; s.depth = dm; s.limit = S.depth; s.speed = P.vel.length(); s.vmax = S.speed * 1.55; s.yaw = P.yaw; s.pos = P.pos;
@@ -1571,7 +1569,7 @@ function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; 
   // labels and markers are 2D text: drawn at the screen's own density (to 2x) whatever the 3D resolution
   G.opr = Math.min(devicePixelRatio || 1, 2); overlay.width = Math.round(G.VW * G.opr); overlay.height = Math.round(G.VH * G.opr);
   FXA.mat.uniforms.uScale.value = f * pr; FXN.mat.uniforms.uScale.value = f * pr;
-  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); if (L) CK.setLayout(L, Math.min(devicePixelRatio || 1, 2)); if (L2) { const dp = Math.min(devicePixelRatio || 1, 2); drawSphereCockpit($('cockpit2'), $('cockpit2n'), L2, dp); CK2.setLayout(L2, dp); } feedLayout(); layoutHUD(); swipeCheck(); }
+  snow.visible = true; flora.grass.visible = q > 0; redrawCockpit(); if (L) CK.setLayout(L, Math.min(devicePixelRatio || 1, 2)); if (L2) { const dp = Math.min(devicePixelRatio || 1, 2); CK2.setLayout(L2, dp); } feedLayout(); layoutHUD(); swipeCheck(); }
 // iOS fires resize while the page scrolls; reallocating every buffer for an unchanged size only costs a frame
 addEventListener('resize', () => { if (innerWidth !== G.VW || innerHeight !== G.VH) resize(); });
 // first touch play: ghost hints over the two drag zones until each has been used for a moment, and a pulsing beam button
@@ -1637,7 +1635,7 @@ function frame(now) {
     // own tone mapping, so a direct render shows half-fogged distance as lighter shapes against the background, and the
     // fog-distance culling above would show as straight edges; through the composer fog mixes first and the end pass tone-maps all
     if ((live || G.needRender) && !G.ctxLost && !GL.isContextLost()) { updateEnv(dt); if (inCockpit() || G.ck2) renderFeed(); composer.render(); drawOverlay(); G.needRender = false; }
-    if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit() && G.ck) CK.update(cockpitState(), dt); else if (G.ck2 && inSphere()) { CK2.update(sphereState(), dt); sphereParallax(dt); } }
+    if (G.state === 'play') { hudAcc += dt; if (hudAcc > 0.08) { hudAcc = 0; updateHUD(); } mmAcc += dt; if (mmAcc > 0.15) { mmAcc = 0; drawMinimap(); } if (inCockpit() && G.ck) CK.update(cockpitState(), dt); else if (G.ck2 && inSphere()) { const st = sphereState(); CK2.update(st, dt); updateCockpit3D(CK3, st, dt); } }
     if (G.state === 'menu' && !$('mapm').classList.contains('hidden')) { mmAcc += dt; if (mmAcc > 0.3) { mmAcc = 0; drawBigMap(); } }
     AU.update(G.state === 'title' ? 20 : depthOf(P.pos.y), P.vel.length() * 12, G.state === 'play' ? P.thrust : 0, G.state === 'play' && P.beam, G.state === 'play');
   } catch (err) { console.error(err); }
@@ -1649,6 +1647,6 @@ genItems(); genRescues(); genSiteItems(); buildItemMeshes(); genCreatures(); bui
 G.poll = items.length;
 loadSettings(); resize(); showTitle();
 function simulate(sec) { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) { const dt = 1 / 30; G.t += dt; U.time.value = G.t; if (G.state === 'play') update(dt); FXA.update(dt); FXN.update(dt); } writeFish(); }
-window.__game = { ARM, SS, AU, IN, SUB, BUDDY, composer, SITES, storyStep, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
+window.__game = { ARM, SS, CK3, AU, IN, SUB, BUDDY, composer, SITES, storyStep, siteTick, startStory, storyEnd, autoQuality, toggleView, simulate, updateCamera, updateEnv, G, P, S, SV: () => SV, items, creatures, schools, rescues, POIS, DOCK, heightAt, startGame, openDock, launch, doSonar, fail, respawn, saveGame, loadGame, MISSIONS, calcStats, camera, renderer, scene, openMap, openCodex, drawBigMap };
 $('loading').classList.add('hidden');
 requestAnimationFrame((t) => { last = t; frame(t); });

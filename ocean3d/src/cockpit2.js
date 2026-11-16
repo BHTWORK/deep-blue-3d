@@ -1,9 +1,12 @@
-// The story's first-person view: the pilot looks out through one pane of glass the full width of the cabin, framed
-// only by a header rail with strips of cold light, a slender pillar at each edge and the sill; a sonar display stands on the left, the arm camera's monitor on the right, a console with
-// its own screen and two hand controllers below; depth, temperature, battery and hull read out in the top corners
-// and a compass tape runs along the top. The frame is painted once per size, on a far and a near layer that
-// main.js slides against each other as the view turns; the screens are small canvases laid over the near one
-// (the same mechanism as the main game's cockpit, cockpit.js).
+// The story's first-person view: the pilot looks out through one pane of glass the full width of the cabin. The cabin is
+// a real model seen from the pilot's eye: a header rail with strips of cold light, a pillar each side, the dash and its
+// cowl, a sonar display on the left and the arm camera's monitor on the right (each a slab on an arm, turned toward
+// the pilot), a console with its own screen between the knees, and two hand controllers that move with the controls.
+// The screens are canvases drawn here and shown as textures; depth, temperature, battery, hull and the compass tape
+// float on the glass as flat read-outs (the same overlay mechanism as the main game's cockpit, cockpit.js).
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { P as PG } from './models.js';
 import { CockpitUI, headingDeg } from './cockpit.js';
 
 const SANS = '"Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -14,83 +17,57 @@ function rrect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x 
 
 export function sphereLayout(W, H, touch) {
   const L = { W, H, touch, q: {}, gauges: [] };
-  // the frame is painted on two layers larger than the screen by `bleed` all round, so that they can slide a little against each
-  // other and against the sea as the pilot's head moves
-  L.bleed = Math.round(Math.max(18, W * 0.02));
   L.view = { x: 0, y: 0, w: W, h: H }; // one pane of glass, the full width and height of the cabin
-  L.q.scrL = Q([W * 0.004, H * 0.335], [W * 0.176, H * 0.03], [W * 0.003, H * 0.245]);
-  L.q.scrR = Q([W * 0.822, H * 0.366], [W * 0.174, -H * 0.026], [-W * 0.003, H * 0.222]);
-  L.q.scrC = Q([W * 0.358, H * 0.8], [W * 0.284, 0], [0, H * 0.16]);
+  // only the read-outs that float on the glass are flat overlays; the displays, console and controllers are solid things in the scene
   L.q.hudL = Q([W * 0.045, H * 0.035], [W * 0.135, H * 0.014], [0, H * 0.17]);
   L.q.hudR = Q([W * 0.862, Math.max(H * 0.085, 50)], [W * 0.13, -H * 0.014], [0, H * 0.17]);
   L.q.comp = Q([W * 0.37, Math.max(4, H * 0.012)], [W * 0.26, 0], [0, Math.max(34, H * 0.072)]);
-  if (!touch) L.q.manip = Q([W * 0.874, H * 0.735], [W * 0.116, H * 0.012], [0, H * 0.112]); // on touch the grab button stands there
-  L.ppY = H * 0.44; L.hudTop = L.q.comp.o[1] + L.q.comp.h + 4;
+  L.ppY = H * 0.5; L.hudTop = L.q.comp.o[1] + L.q.comp.h + 4;
   return L;
 }
 
-// ---------------------------------------------------------------- the painted frame, in two layers
-// far: the cabin wall and the window's deep ring. near: the displays, the console and the hand controllers.
-export function drawSphereCockpit(far, near, L, pr) {
-  const { W, H } = L, B = L.bleed, cx = W / 2, u = W / 1672;
-  const open = (cv) => { cv.width = Math.round((W + B * 2) * pr); cv.height = Math.round((H + B * 2) * pr); Object.assign(cv.style, { left: -B + 'px', top: -B + 'px', width: W + B * 2 + 'px', height: H + B * 2 + 'px' });
-    const c = cv.getContext('2d'); c.setTransform(pr, 0, 0, pr, B * pr, B * pr); c.clearRect(-B, -B, W + B * 2, H + B * 2); return c; };
-  let c = open(far), g;
-  const lin = (x0, y0, x1, y1, st) => { const gg = c.createLinearGradient(x0, y0, x1, y1); st.forEach(([t, col]) => gg.addColorStop(t, col)); return gg; };
-  // the pane: thick glass, a little darker toward its edges, with two faint reflections of the cabin lights
-  g = c.createRadialGradient(cx, H * 0.45, H * 0.42, cx, H * 0.45, W * 0.64); g.addColorStop(0, 'rgba(2,10,18,0)'); g.addColorStop(1, 'rgba(2,10,18,.5)'); c.fillStyle = g; c.fillRect(-B, -B, W + B * 2, H + B * 2);
-  for (const [fx, fy, len, al] of [[0.2, 0.2, 0.34, 0.06], [0.74, 0.3, 0.22, 0.04]]) { c.save(); c.translate(W * fx, H * fy); c.rotate(-0.5); g = c.createLinearGradient(0, -70 * u, 0, 70 * u); g.addColorStop(0, 'rgba(200,230,255,0)'); g.addColorStop(0.5, `rgba(200,230,255,${al})`); g.addColorStop(1, 'rgba(200,230,255,0)'); c.fillStyle = g; c.fillRect(-W * len / 2, -70 * u, W * len, 140 * u); c.restore(); }
-  // what frames it: a header rail arching over the top, deeper at the corners, with strips of cold light let into its lower edge
-  const rail = (dy) => { c.beginPath(); c.moveTo(-B, -B); c.lineTo(W + B, -B); c.lineTo(W + B, H * 0.15 + dy); c.quadraticCurveTo(cx, -H * 0.085 + dy, -B, H * 0.15 + dy); c.closePath(); };
-  c.save(); c.shadowColor = 'rgba(0,0,0,.7)'; c.shadowBlur = 30 * u; c.shadowOffsetY = 10 * u; rail(0); c.fillStyle = lin(0, -B, 0, H * 0.15, [[0, '#0a0e13'], [0.6, '#18212a'], [1, '#2c3844']]); c.fill(); c.restore();
-  rail(-9 * u); c.fillStyle = lin(0, -B, 0, H * 0.14, [[0, '#06090c'], [1, '#141b23']]); c.fill(); // the rail's underside, set back
-  c.strokeStyle = 'rgba(195,222,245,.35)'; c.lineWidth = 1.6 * u; c.beginPath(); c.moveTo(-B, H * 0.15); c.quadraticCurveTo(cx, -H * 0.085, W + B, H * 0.15); c.stroke();
-  c.save(); c.lineCap = 'round'; c.shadowColor = '#9fdcff'; c.shadowBlur = 24 * u; c.strokeStyle = 'rgba(222,244,255,.95)'; c.lineWidth = 8 * u;
-  for (const [t0, t1] of [[0.14, 0.3], [0.7, 0.86]]) { c.beginPath(); for (let i = 0; i <= 12; i++) { const t = t0 + ((t1 - t0) * i) / 12, x = (1 - t) * (1 - t) * -B + 2 * t * (1 - t) * cx + t * t * (W + B), y = ((1 - t) * (1 - t) + t * t) * H * 0.15 + 2 * t * (1 - t) * -H * 0.085 - 6 * u; i ? c.lineTo(x, y) : c.moveTo(x, y); } c.stroke(); }
-  c.restore();
-  // a slender pillar at each edge, and the sill along the bottom behind the console
-  for (const sx of [-1, 1]) { const x = cx + sx * (W * 0.5 + B), w = B + W * 0.016; c.fillStyle = lin(x, 0, x - sx * w, 0, [[0, '#06090c'], [0.7, '#161d25'], [1, '#2a3540']]); c.beginPath(); c.moveTo(x, -B); c.lineTo(x - sx * w, -B); c.lineTo(x - sx * (w + 10 * u), H + B); c.lineTo(x, H + B); c.closePath(); c.fill();
-    c.strokeStyle = 'rgba(190,220,245,.3)'; c.lineWidth = 1.4 * u; c.beginPath(); c.moveTo(x - sx * w, -B); c.lineTo(x - sx * (w + 10 * u), H + B); c.stroke(); }
-  c.save(); c.shadowColor = 'rgba(0,0,0,.7)'; c.shadowBlur = 24 * u; c.shadowOffsetY = -8 * u; c.fillStyle = lin(0, H * 0.9, 0, H + B, [[0, '#2b3642'], [0.08, '#151b22'], [1, '#05070a']]); c.fillRect(-B, H * 0.9, W + B * 2, H * 0.1 + B); c.restore();
-  c.fillStyle = 'rgba(195,222,245,.3)'; c.fillRect(-B, H * 0.9, W + B * 2, 1.5 * u);
-
-  // ---- near layer
-  c = open(near);
-  // a display: a slab with a visible edge, standing off the wall on a bracket and throwing a shadow behind it
-  const slab = (q, pad, side) => { const [ox, oy] = q.o, nU = [q.U[0] / q.w, q.U[1] / q.w], nV = [q.V[0] / q.h, q.V[1] / q.h], P = (a, b) => [ox + nU[0] * a + nV[0] * b, oy + nU[1] * a + nV[1] * b], dx = -side * 16 * u, dy = 12 * u;
-    const poly = (p, sx = 0, sy = 0) => { c.beginPath(); const pts = [P(-p, -p), P(q.w + p, -p), P(q.w + p, q.h + p), P(-p, q.h + p)].map(([x, y]) => [x + sx, y + sy]); c.moveTo((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2); for (let i = 1; i <= 4; i++) c.arcTo(pts[i % 4][0], pts[i % 4][1], pts[(i + 1) % 4][0], pts[(i + 1) % 4][1], 14 * u); c.closePath(); };
-    const m = P(side < 0 ? q.w * 0.3 : q.w * 0.7, q.h + pad); c.fillStyle = lin(m[0] - 26 * u, 0, m[0] + 26 * u, 0, [[0, '#07090c'], [0.5, '#1c232b'], [1, '#07090c']]); c.fillRect(m[0] - 26 * u, m[1] - 10 * u, 52 * u, 120 * u);
-    c.save(); c.shadowColor = 'rgba(0,0,0,.8)'; c.shadowBlur = 40 * u; c.shadowOffsetX = dx * 2; c.shadowOffsetY = dy * 2.2; poly(pad, dx, dy); c.fillStyle = '#06080b'; c.fill(); c.restore();
-    poly(pad, dx, dy); c.fillStyle = '#0a0d11'; c.fill(); poly(pad, dx * 0.5, dy * 0.5); c.fillStyle = '#10151a'; c.fill(); // the slab's edge
-    poly(pad); c.fillStyle = lin(ox, oy - pad, ox, oy + q.h + pad, [[0, '#2b343e'], [0.08, '#161b21'], [1, '#0b0e12']]); c.fill(); c.strokeStyle = 'rgba(175,205,230,.35)'; c.lineWidth = 1.6 * u; c.stroke();
-    poly(pad * 0.3); c.fillStyle = '#02050a'; c.fill(); };
-  slab(L.q.scrL, 20 * u, -1); slab(L.q.scrR, 20 * u, 1);
-  { const [x, y] = L.q.scrR.o; c.fillStyle = '#ff4b3a'; c.shadowColor = '#ff4b3a'; c.shadowBlur = 10 * u; c.beginPath(); c.arc(x + L.q.scrR.w - 6 * u, y - 44 * u, 6 * u, 0, TAU); c.fill(); c.shadowBlur = 0; }
-  // armrests either side, running out of the bottom corners toward the console
-  const top = H * 0.75, cw0 = W * 0.165, cw1 = W * 0.205, FL = H + B + 4;
-  for (const sx of [-1, 1]) { const xo = cx + sx * (W * 0.5 + B);
-    c.save(); c.shadowColor = 'rgba(0,0,0,.8)'; c.shadowBlur = 34 * u; c.shadowOffsetY = -6 * u; c.beginPath(); c.moveTo(cx + sx * cw1, FL); c.lineTo(cx + sx * (cw0 + 26 * u), H * 0.845); c.lineTo(xo, H * 0.795); c.lineTo(xo, FL); c.closePath(); c.fillStyle = lin(0, H * 0.795, 0, H, [[0, '#28323c'], [0.1, '#151b22'], [1, '#06080b']]); c.fill(); c.restore();
-    c.beginPath(); c.moveTo(cx + sx * (cw0 + 26 * u), H * 0.845); c.lineTo(xo, H * 0.795); c.lineTo(xo, H * 0.815); c.lineTo(cx + sx * (cw0 + 30 * u), H * 0.868); c.closePath(); c.fillStyle = 'rgba(160,195,225,.16)'; c.fill(); // the armrest's lit top edge
-    c.save(); c.shadowColor = '#9fdcff'; c.shadowBlur = 14 * u; c.strokeStyle = 'rgba(205,238,255,.8)'; c.lineWidth = 3 * u; c.lineCap = 'round'; c.beginPath(); c.moveTo(cx + sx * (cw0 + 50 * u), H * 0.882); c.lineTo(cx + sx * (cw0 + 104 * u), H * 0.862); c.stroke(); c.restore(); }
-  // the console: a wedge with a lit top face and a darker front, the screen sunk into it
-  c.save(); c.shadowColor = 'rgba(0,0,0,.85)'; c.shadowBlur = 40 * u; c.shadowOffsetY = -8 * u; c.beginPath(); c.moveTo(cx - cw1, FL); c.lineTo(cx - cw0, top + 20 * u); c.quadraticCurveTo(cx - cw0 + 6 * u, top, cx - cw0 + 32 * u, top); c.lineTo(cx + cw0 - 32 * u, top); c.quadraticCurveTo(cx + cw0 - 6 * u, top, cx + cw0, top + 20 * u); c.lineTo(cx + cw1, FL); c.closePath();
-  c.fillStyle = lin(0, top, 0, H, [[0, '#3a4653'], [0.07, '#2a333d'], [0.075, '#161c23'], [1, '#07090c']]); c.fill(); c.restore();
-  c.strokeStyle = 'rgba(190,220,245,.45)'; c.lineWidth = 1.6 * u; c.beginPath(); c.moveTo(cx - cw0 + 32 * u, top + 1); c.lineTo(cx + cw0 - 32 * u, top + 1); c.stroke();
-  for (const sx of [-1, 1]) { c.beginPath(); c.moveTo(cx + sx * cw0, top + 20 * u); c.lineTo(cx + sx * cw1, FL); c.lineTo(cx + sx * (cw1 - 14 * u), FL); c.lineTo(cx + sx * (cw0 - 12 * u), top + 26 * u); c.closePath(); c.fillStyle = sx < 0 ? 'rgba(170,200,230,.12)' : 'rgba(0,0,0,.35)'; c.fill(); }
-  { const q = L.q.scrC, p = 13 * u; c.save(); c.shadowColor = 'rgba(0,0,0,.9)'; c.shadowBlur = 12 * u; rrect(c, q.o[0] - p, q.o[1] - p, q.w + p * 2, q.h + p * 2, 16 * u); c.fillStyle = '#04070a'; c.fill(); c.restore(); c.strokeStyle = 'rgba(160,190,215,.3)'; c.lineWidth = 1.4 * u; c.stroke(); }
-  for (const sx of [-1, 1]) for (const [dy, r] of [[46, 9], [150, 7]]) { const x = cx + sx * (cw0 - 2 * u + dy * 0.14 * u), y = top + dy * u; c.fillStyle = '#030507'; c.beginPath(); c.arc(x, y + 2 * u, (r + 5) * u, 0, TAU); c.fill(); g = c.createRadialGradient(x - 2 * u, y - 2 * u, 0, x, y, r * u); g.addColorStop(0, sx * dy > 100 ? '#9fe6ff' : '#55626e'); g.addColorStop(1, sx * dy > 100 ? '#1d7fa6' : '#1a2027'); c.fillStyle = g; c.beginPath(); c.arc(x, y, r * 0.8 * u, 0, TAU); c.fill(); }
-  // the hand controllers: round grips shaded like cylinders, a ring of light at the thumb
-  for (const sx of [-1, 1]) { const x = cx + sx * W * 0.318, y = H * 0.81;
-    c.save(); c.translate(x, y); c.rotate(-sx * 0.1);
-    c.fillStyle = 'rgba(0,0,0,.55)'; c.beginPath(); c.ellipse(sx * 10 * u, 250 * u, 96 * u, 30 * u, 0, 0, TAU); c.fill(); // its shadow on the armrest
-    c.shadowColor = 'rgba(0,0,0,.8)'; c.shadowBlur = 22 * u; c.shadowOffsetX = -sx * 8 * u;
-    rrect(c, -62 * u, 6 * u, 124 * u, 300 * u, 40 * u); c.fillStyle = lin(-62 * u, 0, 62 * u, 0, [[0, '#050709'], [0.28, '#232a32'], [0.42, '#3b4651'], [0.6, '#1a2027'], [1, '#040506']]); c.fill();
-    rrect(c, -70 * u, -54 * u, 140 * u, 116 * u, 40 * u); c.fillStyle = lin(-70 * u, -54 * u, 70 * u, 62 * u, [[0, '#4a5663'], [0.45, '#222a32'], [1, '#0a0d10']]); c.fill(); c.shadowColor = 'transparent';
-    c.strokeStyle = 'rgba(190,220,245,.3)'; c.lineWidth = 1.5 * u; c.stroke();
-    c.fillStyle = 'rgba(255,255,255,.07)'; rrect(c, -22 * u, 70 * u, 14 * u, 200 * u, 7 * u); c.fill(); // highlight down the grip
-    c.shadowColor = CY; c.shadowBlur = 18 * u; c.strokeStyle = '#c8eeff'; c.lineWidth = 4.5 * u; c.beginPath(); c.arc(0, 2 * u, 20 * u, 0, TAU); c.stroke(); c.shadowBlur = 0; c.fillStyle = '#0c1116'; c.beginPath(); c.arc(0, 2 * u, 14 * u, 0, TAU); c.fill(); c.restore(); }
-  // frame of the manipulator's status box
-  if (L.q.manip) { const q = L.q.manip, p = 9 * u; c.save(); c.transform(q.U[0] / q.w, q.U[1] / q.w, q.V[0] / q.h, q.V[1] / q.h, q.o[0], q.o[1]); c.shadowColor = 'rgba(0,0,0,.7)'; c.shadowBlur = 16 * u; c.shadowOffsetY = 6 * u; rrect(c, -p, -p, q.w + p * 2, q.h + p * 2, 10 * u); c.fillStyle = 'rgba(8,13,19,.86)'; c.fill(); c.shadowColor = 'transparent'; c.strokeStyle = 'rgba(205,230,250,.6)'; c.lineWidth = 1.4 * u; c.stroke(); c.restore(); }
+// ---------------------------------------------------------------- the cabin, modelled
+// Everything is placed about the pilot's eye (the group's origin; +z ahead, +x the pilot's left, in the sub's own space) and belongs
+// to the sub, so when the view turns a little ahead of the hull the near things slide across the far ones as they would for a head.
+export const EYE = [0, 0.12, 0.55];
+export function buildCockpit3D() {
+  const g = new THREE.Group(); g.position.set(...EYE); g.visible = false;
+  // cabin surfaces: lit by the light that comes through the glass, plus a little of their own so they never go black in the deep
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.45, fog: false });
+  mat.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += diffuseColor.rgb * 0.3;'); };
+  const glow = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false }); glow.color.setScalar(1.25);
+  const Dk = '#1c232b', Md = '#2c3742', Lt = '#46535f', Bk = '#0c1014', V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const dir = (az, el, d) => V(Math.sin(az) * Math.cos(el) * d, Math.sin(el) * d, Math.cos(az) * Math.cos(el) * d);
+  const solid = (geos, m = mat) => new THREE.Mesh(mergeGeometries(geos), m);
+  const box = (w, h, d, col, x = 0, y = 0, z = 0, rot = [0, 0, 0]) => PG(new THREE.BoxGeometry(w, h, d), col, [x, y, z], rot);
+  const arc = (R, y, a0, a1, tube, seg, col, sy = 1) => { const c = new THREE.Curve(); c.getPoint = (t) => { const a = a0 + (a1 - a0) * t; return V(Math.sin(a) * R, y, Math.cos(a) * R); }; const ge = new THREE.TubeGeometry(c, seg, tube, 8, false); ge.scale(1, sy, 1); ge.translate(0, y * (1 - sy), 0); return PG(ge, col); };
+  const screen = (w, h, cw, ch) => { const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch; const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, fog: false })); m.material.color.setScalar(0.92); const c = cv.getContext('2d'); c.fillStyle = '#04101c'; c.fillRect(0, 0, cw, ch); return { cv, c, tex, mesh: m, w: cw, h: ch }; }; // (dark until its first picture)
+  // the frame of the pane: a header rail arching round overhead with strips of cold light under it, a pillar each side, the cowl below
+  g.add(solid([arc(1.02, 0.56, -1.25, 1.25, 0.065, 40, Md, 0.7), arc(1.0, 0.5, -1.25, 1.25, 0.03, 40, Dk), arc(1.03, -0.68, -1.4, 1.4, 0.08, 44, Md, 0.75),
+    ...[1, -1].flatMap((s) => [PG(new THREE.CylinderGeometry(0.045, 0.055, 1.3, 10), Md, [Math.sin(s * 0.98) * 1.02, -0.06, Math.cos(0.98) * 1.02]), PG(new THREE.CylinderGeometry(0.07, 0.07, 0.08, 10), Lt, [Math.sin(s * 0.98) * 1.02, 0.54, Math.cos(0.98) * 1.02])])]));
+  g.add(solid([arc(0.985, 0.495, 0.3, 0.72, 0.012, 12, '#fff'), arc(0.985, 0.495, -0.72, -0.3, 0.012, 12, '#fff'), arc(1.0, -0.615, 0.5, 0.78, 0.008, 8, '#cfeaff'), arc(1.0, -0.615, -0.78, -0.5, 0.008, 8, '#cfeaff')], glow));
+  // the dash: a dark shelf from the cowl back toward the pilot, with a padded roll along its near edge
+  g.add(solid([PG(new THREE.RingGeometry(0.46, 1.03, 48, 1, -Math.PI / 2 - 1.4, 2.8).rotateX(-Math.PI / 2), Bk, [0, -0.73, 0]), arc(0.47, -0.72, -1.4, 1.4, 0.03, 36, Dk)]));
+  // a display: a slab with a bezel on an arm, turned to face the pilot
+  const display = (az, el, d, w, h, cw, ch) => { const o = new THREE.Group(), s = screen(w, h, cw, ch); o.position.copy(dir(az, el, d)); o.lookAt(V(0, 0.02, -0.25)); // (a point just behind the eye: turned in, not quite square on)
+    o.add(solid([box(w + 0.06, h + 0.06, 0.04, Dk, 0, 0, -0.021), box(w + 0.075, 0.012, 0.05, Lt, 0, h / 2 + 0.036, -0.018), box(w + 0.075, 0.012, 0.05, Bk, 0, -h / 2 - 0.036, -0.018),
+      box(0.07, 0.05, 0.09, Md, 0, -h / 2 - 0.02, -0.08), PG(new THREE.CylinderGeometry(0.022, 0.028, 0.5, 8), Md, [0, -h / 2 - 0.27, -0.1])]));
+    s.mesh.position.z = 0.001; o.add(s.mesh); g.add(o); return s; };
+  const sonar = display(0.76, -0.03, 0.84, 0.3, 0.21, 432, 300), cam = display(-0.76, -0.05, 0.84, 0.3, 0.19, 384, 243);
+  { const led = new THREE.Mesh(new THREE.SphereGeometry(0.008, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff4b3a, fog: false })); led.material.color.setRGB(3, 0.5, 0.4); cam.mesh.parent.add(led); led.position.set(0.13, 0.12, 0.002); }
+  // the console: a wedge between the knees, its face (and screen) tilted up at the pilot under a small hood
+  const con = new THREE.Group(), cs = screen(0.5, 0.25, 512, 256); con.position.set(0, -0.63, 0.58); con.lookAt(V(0, 0.02, 0)); // low enough to leave the arm's work in clear view above it
+  con.add(solid([box(0.6, 0.34, 0.3, Md, 0, 0, -0.151), box(0.62, 0.03, 0.1, Lt, 0, 0.175, 0.02), box(0.03, 0.34, 0.06, Dk, 0.3, 0, 0), box(0.03, 0.34, 0.06, Dk, -0.3, 0, 0), box(0.52, 0.27, 0.01, Bk, 0, 0, -0.004),
+    box(0.5, 0.5, 0.26, Dk, 0, -0.38, -0.2), ...[1, -1].flatMap((s) => [PG(new THREE.CylinderGeometry(0.018, 0.018, 0.02, 12).rotateX(Math.PI / 2), Lt, [s * 0.275, 0.11, 0.035]), PG(new THREE.CylinderGeometry(0.014, 0.014, 0.02, 12).rotateX(Math.PI / 2), Lt, [s * 0.275, -0.1, 0.035])])]));
+  con.add(solid([PG(new THREE.CylinderGeometry(0.008, 0.008, 0.022, 10).rotateX(Math.PI / 2), '#8fe6ff', [0.275, 0.05, 0.036]), PG(new THREE.CylinderGeometry(0.008, 0.008, 0.022, 10).rotateX(Math.PI / 2), '#8fe6ff', [-0.275, -0.04, 0.036])], glow));
+  cs.mesh.position.z = 0.002; con.add(cs.mesh); g.add(con);
+  // the two hand controllers on their armrest pods; each pivots at its foot and carries a ring of light at the thumb
+  const sticks = [1, -1].map((s) => { const pod = solid([box(0.2, 0.1, 0.5, Md, 0, 0, 0), box(0.22, 0.02, 0.52, Lt, 0, 0.055, 0), PG(new THREE.CylinderGeometry(0.06, 0.075, 0.04, 16), Dk, [0, 0.08, 0.08])]); pod.position.set(s * 0.4, -0.67, 0.32); pod.rotation.y = s * 0.3; g.add(pod);
+    const piv = new THREE.Group(); piv.position.set(0, 0.09, 0.08); pod.add(piv);
+    piv.add(solid([PG(new THREE.CylinderGeometry(0.03, 0.036, 0.17, 14), Bk, [0, 0.085, 0]), PG(new THREE.CapsuleGeometry(0.043, 0.07, 4, 14), Md, [0, 0.2, 0]), box(0.06, 0.03, 0.05, Dk, 0, 0.255, -0.02, [-0.5, 0, 0])]));
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.015, 0.003, 8, 24), glow.clone()); ring.material.vertexColors = false; ring.material.color.setRGB(0.55, 0.85, 0.95); ring.position.set(0, 0.235, -0.046); ring.rotation.x = 0.35; piv.add(ring); return piv; });
+  return { group: g, sonar, cam, console: cs, sticks, t: { sonar: 0, console: 0 } };
 }
 
 // ---------------------------------------------------------------- the live screens
@@ -113,9 +90,9 @@ function drawSonar(c, w, h, st) {
   c.strokeStyle = INK + '.55)'; c.lineWidth = 1; c.beginPath(); c.moveTo(w * 0.885, h * 0.14); c.lineTo(w * 0.885, h * 0.9); c.stroke();
   [0, 20, 40, 60].forEach((v, i) => { const y = h * (0.14 + i * 0.253); c.beginPath(); c.moveTo(w * 0.885, y); c.lineTo(w * 0.905, y); c.stroke(); txt(c, String(v), w * 0.918, y + 5 * k, 14 * k, INK + '.8)'); });
 }
-function drawCamTag(c, w, h, st) {
-  c.clearRect(0, 0, w, h); const k = h / 220;
-  if (!st.camOn) { scrBase(c, w, h); c.strokeStyle = 'rgba(110,190,240,.25)'; c.lineWidth = 1; for (let i = 1; i < 6; i++) { c.beginPath(); c.moveTo(0, (h * i) / 6); c.lineTo(w, (h * i) / 6); c.stroke(); } txt(c, '팔 카메라 대기', w / 2, h * 0.55, 16 * k, INK + '.6)', 'center'); }
+function drawCamTag(c, w, h, st, live) {
+  const k = h / 220;
+  if (!live) { scrBase(c, w, h); c.strokeStyle = 'rgba(110,190,240,.25)'; c.lineWidth = 1; for (let i = 1; i < 6; i++) { c.beginPath(); c.moveTo(0, (h * i) / 6); c.lineTo(w, (h * i) / 6); c.stroke(); } txt(c, '팔 카메라 대기', w / 2, h * 0.55, 16 * k, INK + '.6)', 'center'); }
   const g = c.createLinearGradient(0, 0, 0, 44 * k); g.addColorStop(0, 'rgba(2,8,14,.7)'); g.addColorStop(1, 'rgba(2,8,14,0)'); c.fillStyle = g; c.fillRect(0, 0, w, 44 * k);
   txt(c, '카메라', 12 * k, 27 * k, 19 * k, INK + '.92)', 'left', 600);
 }
@@ -152,19 +129,27 @@ function drawCompass(c, w, h, st) { c.clearRect(0, 0, w, h); const k = h / 68, d
     if (big) txt(c, 'NESW'[m / 90], x, y + 34 * k, 22 * k, '#f2f8fc', 'center', 600); }
   c.beginPath(); c.moveTo(w / 2, y - 12 * k); c.lineTo(w / 2 - 8 * k, y - 25 * k); c.lineTo(w / 2 + 8 * k, y - 25 * k); c.closePath(); c.fill(); c.shadowBlur = 0; }
 const ARM_SAY = { idle: ['대기', 0], unfold: ['펼치는 중…', 0.2], aim: ['손을 쓰레기 위로', 0.45], close: ['잡는 중…', 0.7], miss: ['다시 조준', 0.45], carry: ['회수 중…', 0.9] };
-function drawManip(c, w, h, st) { c.clearRect(0, 0, w, h); const k = h / 110, a = st.arm, key = !a.on ? 'idle' : a.first ? 'unfold' : a.phase, [say, p0] = ARM_SAY[key] || ARM_SAY.idle, p = key === 'carry' ? 0.75 + 0.25 * Math.min(1, a.t / 0.8) : key === 'aim' && a.aimed ? 0.62 : p0;
-  txt(c, '로봇 팔', 4 * k, 26 * k, 21 * k, '#f2f8fc', 'left', 600); txt(c, say, 4 * k, 58 * k, 20 * k, a.aimed ? '#e3bd5f' : INK + '.85)');
-  rrect(c, 2 * k, 78 * k, w - 4 * k, 9 * k, 4 * k); c.fillStyle = INK + '.2)'; c.fill(); if (p > 0) { rrect(c, 2 * k, 78 * k, (w - 4 * k) * p, 9 * k, 4 * k); c.fillStyle = a.aimed ? '#e3bd5f' : '#cfe9fb'; c.fill(); } }
+// the arm's state, along the foot of the console screen: what it is doing and how far along
+function drawManip(c, w, h, st) { const k = h / 256, a = st.arm, key = !a.on ? 'idle' : a.first ? 'unfold' : a.phase, [say, p0] = ARM_SAY[key] || ARM_SAY.idle, p = key === 'carry' ? 0.75 + 0.25 * Math.min(1, a.t / 0.8) : key === 'aim' && a.aimed ? 0.62 : p0, y = h * 0.86;
+  c.fillStyle = 'rgba(3,10,18,.9)'; c.fillRect(0, h * 0.775, w, h * 0.225); c.fillStyle = 'rgba(120,200,255,.3)'; c.fillRect(0, h * 0.775, w, 1);
+  txt(c, '로봇 팔', 14 * k, y + 8 * k, 22 * k, '#f2f8fc', 'left', 600); txt(c, say, 110 * k, y + 8 * k, 21 * k, a.aimed ? '#e3bd5f' : INK + '.85)');
+  rrect(c, w * 0.6, y - 5 * k, w * 0.37, 11 * k, 5 * k); c.fillStyle = INK + '.2)'; c.fill(); if (p > 0) { rrect(c, w * 0.6, y - 5 * k, w * 0.37 * p, 11 * k, 5 * k); c.fillStyle = a.aimed ? '#e3bd5f' : '#cfe9fb'; c.fill(); } }
+// redraws the cabin's screens (each a few times a second) and moves the controllers with the pilot's hands
+export function updateCockpit3D(K, st, dt) {
+  K.t.sonar += dt; if (K.t.sonar > 1 / 12) { K.t.sonar = 0; drawSonar(K.sonar.c, K.sonar.w, K.sonar.h, st); K.sonar.tex.needsUpdate = true; }
+  K.t.console += dt; if (K.t.console > 1 / 8) { K.t.console = 0; drawConsole(K.console.c, K.console.w, K.console.h * 0.775, st); drawManip(K.console.c, K.console.w, K.console.h, st); K.console.tex.needsUpdate = true;
+    if (!st.camOn) { drawCamTag(K.cam.c, K.cam.w, K.cam.h, st); K.cam.tex.needsUpdate = true; } }
+  const e = Math.min(1, dt * 10), [l, r] = K.sticks; // left hand: where to go (or the arm's hand); right hand: where to look
+  l.rotation.x += (st.stickL[1] * 0.28 - l.rotation.x) * e; l.rotation.z += (st.stickL[0] * 0.28 - l.rotation.z) * e;
+  r.rotation.x += (st.stickR[1] * 0.2 - r.rotation.x) * e; r.rotation.z += (st.stickR[0] * 0.28 - r.rotation.z) * e;
+}
+// the arm camera's picture arrives as a corner of the WebGL canvas; it is copied onto the monitor's canvas and labelled
+export function feedCockpit3D(K, src, sw, sh, st) { K.cam.c.drawImage(src, 0, src.height - sh, sw, sh, 0, 0, K.cam.w, K.cam.h); drawCamTag(K.cam.c, K.cam.w, K.cam.h, st, true); K.cam.tex.needsUpdate = true; }
 
 export class SphereUI extends CockpitUI {
-  setLayout(L, dpr) { super.setLayout(L, dpr); const cam = this.cv.cam; if (cam) Object.assign(cam.style, { filter: 'saturate(.9) contrast(1.05)', opacity: '1', borderRadius: '3px' }); }
   update(st, dt) {
-    this.run('scrL', 1 / 15, dt, (c, w, h) => drawSonar(c, w, h, st));
-    this.run('scrR', 1 / 3, dt, (c, w, h) => drawCamTag(c, w, h, st));
-    this.run('scrC', 1 / 10, dt, (c, w, h) => drawConsole(c, w, h, st));
     this.run('hudL', 1 / 5, dt, (c, w, h) => drawReadL(c, w, h, st));
     this.run('hudR', 1 / 5, dt, (c, w, h) => drawReadR(c, w, h, st));
     this.run('comp', 1 / 20, dt, (c, w, h) => drawCompass(c, w, h, st));
-    this.run('manip', 1 / 10, dt, (c, w, h) => drawManip(c, w, h, st));
   }
 }

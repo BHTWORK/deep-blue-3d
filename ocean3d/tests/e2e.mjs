@@ -126,9 +126,10 @@ const SUITES = {
       run(2.5); out.ready = A.on && A.phase === 'aim' && !A.first; out.off = !A.aimed;
       run(0.1, 1); run(0.7); out.miss = !it.col && A.on && A.phase === 'aim'; // a grab beside the piece misses and the claw reopens
       A.ax = A.tx; A.ay = A.ty; run(0.6); out.aimed = A.aimed; out.fp = !document.getElementById('armBox').classList.contains('hidden');
-      // the arm is worked from the story's cockpit, whichever view was on: one full pane of glass (the 3D picture fills the screen) behind its two painted layers
-      // and live screens; the main game's cockpit stays away
-      out.ck = document.body.classList.contains('sphere') && !document.getElementById('cockpit2').classList.contains('hidden') && !document.getElementById('cockpit2n').classList.contains('hidden') && document.getElementById('cockpit').classList.contains('hidden') && g.G.vp.w === innerWidth && g.G.vp.h === innerHeight && document.querySelectorAll('#ckdyn2 canvas').length >= 6;
+      // the arm is worked from the story's cockpit, whichever view was on: a modelled cabin that belongs to the sub (the hull itself is hidden from inside),
+      // seen through one full pane of glass, with the flat read-outs put away while the pilot looks down at the work; the main game's cockpit stays away
+      out.ck = document.body.classList.contains('sphere') && g.CK3.group.visible && g.CK3.group.parent === g.SUB.root && !g.SUB.bodyMesh.visible && document.getElementById('cockpit').classList.contains('hidden')
+        && g.G.vp.w === innerWidth && g.G.vp.h === innerHeight && document.querySelectorAll('#ckdyn2 canvas').length >= 3 && getComputedStyle(document.getElementById('ckdyn2')).visibility === 'hidden';
       // the grab is a real key tap that begins and ends between two frames: it must still count
       dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', bubbles: true })); dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyE', bubbles: true })); run(0.6); out.carry = A.phase === 'carry'; run(1.2); out.got = it.col && !A.on && g.P.cargo.includes(it.id);
       // from 8 m off the arm comes out by itself and the sub closes in to working distance
