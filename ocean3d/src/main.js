@@ -10,7 +10,7 @@ import { AU, Music } from './audio.js';
 import { MAT, ENVMATS, initMaterials, buildSub, buildTrashGeos, fishGeo, lanternDotsGeo, BUILD, NET_GEO, NET_MAT, BUDDY_MODEL, P as PM } from './models.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { drawCockpit, cockpitLayout, CockpitUI, headingLabel } from './cockpit.js';
-import { sphereLayout, SphereUI, buildCockpit3D, updateCockpit3D, feedCockpit3D, EYE } from './cockpit2.js';
+import { sphereLayout, SphereUI, buildCockpit3D, updateCockpit3D, feedCockpit3D, EYE, SEAT } from './cockpit2.js';
 import { WORLD, heightAt, heightAt0, normalAt, reefPoint, reefFree, U, SEABED, buildTerrain, buildWater, buildSky, buildSnow, buildRays, buildFlora, buildSetPieces, buildBleach, buildBaseShip, buildDockRing, gradTex } from './world.js';
 
 const V3 = THREE.Vector3, UPV = new V3(0, 1, 0), ZERO = new V3();
@@ -778,10 +778,11 @@ function updateCamera(dt) {
     tv2.set(CINE.c.x + Math.sin(a) * r, Math.max(CINE.c.y + h, heightAt(CINE.c.x + Math.sin(a) * r, CINE.c.z + Math.cos(a) * r) + 3), CINE.c.z + Math.cos(a) * r);
     camera.position.lerp(tv2, CINE.t < 0.05 ? 1 : 1 - Math.exp(-dt * 4)); tv3.copy(CINE.c); tv3.y += 1; camera.lookAt(tv3); return; }
   if (inSphere()) { // the pilot's eye inside the sphere; with the arm out, the pilot looks down at the work
-    SUB.root.updateMatrixWorld(); camera.position.set(EYE[0] - clamp((P.yr || 0) * 0.012, -0.03, 0.03), EYE[1] + Math.sin(G.t * 1.1) * 0.006, EYE[2]).applyMatrix4(SUB.root.matrixWorld); // (the head leans a touch into a turn)
+    const ln = P.lean = (P.lean ?? 1) + ((ARM.on ? 0 : 1) - (P.lean ?? 1)) * Math.min(1, dt * 3), sk = ln * ln * (3 - 2 * ln), base = P.pitch - SEAT.look; // (sat back under way, leaning in to work the arm)
+    SUB.root.updateMatrixWorld(); camera.position.set(EYE[0] - clamp((P.yr || 0) * 0.012, -0.03, 0.03), EYE[1] + Math.sin(G.t * 1.1) * 0.006, EYE[2] - SEAT.back * sk).applyMatrix4(SUB.root.matrixWorld); // (the head leans a touch into a turn)
     if (ARM.on) { armHandWorld(tv3); if (ARM.it && ARM.phase !== 'carry') tv3.lerp(ARM.it.pos, 0.7); if (ARM.t < 0.05) ARM_LOOK.copy(tv3); ARM_LOOK.lerp(tv3, 1 - Math.exp(-dt * 4)); tv2.subVectors(ARM_LOOK, camera.position).normalize();
-      ARM.cp += (clamp(Math.asin(tv2.y) + 0.06, -0.8, 0.2) - ARM.cp) * Math.min(1, dt * 4); camera.rotation.set(ARM.cp, P.yaw + Math.PI, 0, 'YXZ'); return; }
-    ARM.cp = P.pitch; camera.rotation.set(P.pitch + Math.sin(G.t * 0.9) * 0.004, P.yaw + Math.PI, P.roll, 'YXZ'); return; }
+      ARM.cp += (clamp(Math.asin(tv2.y) + 0.06, -0.8, 0.2) - ARM.cp) * Math.min(1, dt * 4); ARM.co = ARM.cp - base; camera.rotation.set(ARM.cp, P.yaw + Math.PI, 0, 'YXZ'); return; }
+    ARM.co = (ARM.co || 0) * Math.exp(-dt * 5); ARM.cp = base + ARM.co; camera.rotation.set(ARM.cp + Math.sin(G.t * 0.9) * 0.004, P.yaw + Math.PI, P.roll, 'YXZ'); return; }
   if (G.fp) { // cockpit view: eye just behind the front viewport
     SUB.root.updateMatrixWorld(); camera.position.set(0, 0.12, 1.0).applyMatrix4(SUB.root.matrixWorld);
     const sp = clamp(P.vel.length() / S.speed, 0, 1.6); camera.position.y += Math.sin(G.t * 1.1) * 0.05 + Math.sin(G.t * 7.5) * 0.03 * sp;
@@ -1564,7 +1565,7 @@ function resize() { G.VW = innerWidth; G.VH = innerHeight; const q = G.quality; 
   if (L) { // principal point at the middle of the visible glass; F is the virtual frame height
     const py = L.ppY - vp.y, F = 2 * Math.max(py, vp.h - py); f = Math.max(0.72 * G.VH, 0.42 * G.VW);
     camera.fov = (2 * Math.atan(F / 2 / f) * 180) / Math.PI; camera.aspect = vp.w / F; camera.setViewOffset(vp.w, F, 0, F / 2 - py, vp.w, vp.h);
-  } else { camera.clearViewOffset(); camera.fov = 68; camera.aspect = vp.w / vp.h; f = vp.h / (2 * Math.tan((68 * Math.PI) / 360)); }
+  } else { const fv = L2 ? SEAT.fov : 68; camera.clearViewOffset(); camera.fov = fv; camera.aspect = vp.w / vp.h; f = vp.h / (2 * Math.tan((fv * Math.PI) / 360)); }
   camera.updateProjectionMatrix();
   // labels and markers are 2D text: drawn at the screen's own density (to 2x) whatever the 3D resolution
   G.opr = Math.min(devicePixelRatio || 1, 2); overlay.width = Math.round(G.VW * G.opr); overlay.height = Math.round(G.VH * G.opr);

@@ -37,7 +37,8 @@ canvas#cockpit{z-index:3}
 #ckdyn canvas,#ckdyn2 canvas{position:absolute;left:0;top:0;transform-origin:0 0}
 /* the story's round-window cockpit shows depth, battery and sonar itself: the mission card moves under the compass, the minimap goes */
 body.sphere #hudRight .mapbox{display:none}
-body.sphere.arming #ckdyn2{visibility:hidden} /* looking down at the arm's work, the console gives the numbers */
+body.sphere.arming #ckdyn2{visibility:hidden}
+body.sphere.arming #crosshair{display:none} /* looking down at the arm's work, the console gives the numbers */
 body.sphere #hudLeft{left:50%;top:var(--sph-top,48px);transform:translateX(-50%);width:min(300px,34vw)}
 body.sphere #hudMission{background:rgba(6,14,22,.5)}body.sphere #hudMission .md{display:none}
 body.sphere #armBox{top:auto;bottom:calc(27% + 6px)}

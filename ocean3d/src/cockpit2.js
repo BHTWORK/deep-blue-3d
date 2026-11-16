@@ -22,7 +22,7 @@ export function sphereLayout(W, H, touch) {
   L.q.hudL = Q([W * 0.045, H * 0.035], [W * 0.135, H * 0.014], [0, H * 0.17]);
   L.q.hudR = Q([W * 0.862, Math.max(H * 0.085, 50)], [W * 0.13, -H * 0.014], [0, H * 0.17]);
   L.q.comp = Q([W * 0.37, Math.max(4, H * 0.012)], [W * 0.26, 0], [0, Math.max(34, H * 0.072)]);
-  L.ppY = H * 0.5; L.hudTop = L.q.comp.o[1] + L.q.comp.h + 4;
+  L.ppY = H * (0.5 - Math.tan(SEAT.look) / (2 * Math.tan((SEAT.fov * Math.PI) / 360))); L.hudTop = L.q.comp.o[1] + L.q.comp.h + 4; // (the heading sits above the middle of the pane: the view is tipped down)
   return L;
 }
 
@@ -30,6 +30,8 @@ export function sphereLayout(W, H, touch) {
 // Everything is placed about the pilot's eye (the group's origin; +z ahead, +x the pilot's left, in the sub's own space) and belongs
 // to the sub, so when the view turns a little ahead of the hull the near things slide across the far ones as they would for a head.
 export const EYE = [0, 0.12, 0.55];
+// under way the pilot sits back from the glass and looks a little down, so the console and controllers stay in view; working the arm, they lean in to EYE
+export const SEAT = { back: 0.24, look: 0.19, fov: 72 };
 export function buildCockpit3D() {
   const g = new THREE.Group(); g.position.set(...EYE); g.visible = false;
   // cabin surfaces: lit by the light that comes through the glass, plus a little of their own so they never go black in the deep
@@ -48,7 +50,7 @@ export function buildCockpit3D() {
     ...[1, -1].flatMap((s) => [PG(new THREE.CylinderGeometry(0.045, 0.055, 1.3, 10), Md, [Math.sin(s * 0.98) * 1.02, -0.06, Math.cos(0.98) * 1.02]), PG(new THREE.CylinderGeometry(0.07, 0.07, 0.08, 10), Lt, [Math.sin(s * 0.98) * 1.02, 0.54, Math.cos(0.98) * 1.02])])]));
   g.add(solid([arc(0.985, 0.495, 0.3, 0.72, 0.012, 12, '#fff'), arc(0.985, 0.495, -0.72, -0.3, 0.012, 12, '#fff'), arc(1.0, -0.615, 0.5, 0.78, 0.008, 8, '#cfeaff'), arc(1.0, -0.615, -0.78, -0.5, 0.008, 8, '#cfeaff')], glow));
   // the dash: a dark shelf from the cowl back toward the pilot, with a padded roll along its near edge
-  g.add(solid([PG(new THREE.RingGeometry(0.46, 1.03, 48, 1, -Math.PI / 2 - 1.4, 2.8).rotateX(-Math.PI / 2), Bk, [0, -0.73, 0]), arc(0.47, -0.72, -1.4, 1.4, 0.03, 36, Dk)]));
+  g.add(solid([PG(new THREE.RingGeometry(0.46, 1.03, 48, 1, -Math.PI / 2 - 1.4, 2.8).rotateX(-Math.PI / 2), Bk, [0, -0.73, 0]), PG(new THREE.CircleGeometry(0.62, 32).rotateX(-Math.PI / 2), Bk, [0, -0.8, 0.02]), arc(0.47, -0.72, -1.4, 1.4, 0.03, 36, Dk)]));
   // a display: a slab with a bezel on an arm, turned to face the pilot
   const display = (az, el, d, w, h, cw, ch) => { const o = new THREE.Group(), s = screen(w, h, cw, ch); o.position.copy(dir(az, el, d)); o.lookAt(V(0, 0.02, -0.25)); // (a point just behind the eye: turned in, not quite square on)
     o.add(solid([box(w + 0.06, h + 0.06, 0.04, Dk, 0, 0, -0.021), box(w + 0.075, 0.012, 0.05, Lt, 0, h / 2 + 0.036, -0.018), box(w + 0.075, 0.012, 0.05, Bk, 0, -h / 2 - 0.036, -0.018),
@@ -67,7 +69,7 @@ export function buildCockpit3D() {
     const piv = new THREE.Group(); piv.position.set(0, 0.09, 0.08); pod.add(piv);
     piv.add(solid([PG(new THREE.CylinderGeometry(0.03, 0.036, 0.17, 14), Bk, [0, 0.085, 0]), PG(new THREE.CapsuleGeometry(0.043, 0.07, 4, 14), Md, [0, 0.2, 0]), box(0.06, 0.03, 0.05, Dk, 0, 0.255, -0.02, [-0.5, 0, 0])]));
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.015, 0.003, 8, 24), glow.clone()); ring.material.vertexColors = false; ring.material.color.setRGB(0.55, 0.85, 0.95); ring.position.set(0, 0.235, -0.046); ring.rotation.x = 0.35; piv.add(ring); return piv; });
-  return { group: g, sonar, cam, console: cs, sticks, t: { sonar: 0, console: 0 } };
+  return { group: g, sonar, cam, console: cs, sticks, t: { sonar: 1, console: 1 } };
 }
 
 // ---------------------------------------------------------------- the live screens
